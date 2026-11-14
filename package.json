@@ -5,6 +5,7 @@
   "type": "module",
   "description": "Minimal photoreal tactical FPS slice in three.js",
   "scripts": {
+    "build": "node tools/build-web.mjs",
     "assets": "node tools/fetch-assets.mjs",
     "start": "node tools/serve.mjs",
     "shell": "sh tools/shell/build.sh"
