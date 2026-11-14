@@ -3,7 +3,7 @@
 import { BOT_RELOAD_DURATION } from './weapon.js';
 
 export function selfTest(G) {
-  const P = G.player, W = G.weapon, out = [], $ = id => document.getElementById(id);
+  const P = G.player, W = G.weapon, out = [], $ = id => document.getElementById(id), clamp1 = v => Math.max(-1, Math.min(1, v));
   const check = (name, pass, detail = '') => out.push({ name, pass: !!pass, detail: String(detail) });
   const run = (secs, dt = 1 / 60) => G.step(Math.round(secs / dt), dt);
   const park = () => { for (const b of G.bots.list) { b.alive = false; b.root.visible = false; b.gun.visible = false; b.respawnT = 1e9; } };
@@ -161,6 +161,42 @@ export function selfTest(G) {
   const lapMiss = Math.hypot(wk.pos.x - 16, wk.pos.z + 20.5);
   check('bot takes a street corner as an arc: no wall contact, no stop, sideways load and braking a person could manage', lapMiss < 0.5 && wk.bumps === 0 && lapSide < 4.4 && lapAcc < 6 && lapTurn < 3.2 && lapSlow > 1.2 && lapSlow < lapTop - 0.8 && lapSkew < 0.35 && Math.hypot(wk.vel.x, wk.vel.z) < 0.05,
     `${lapT.toFixed(1)} s, top ${lapTop.toFixed(1)} m/s, ${lapSlow.toFixed(1)} m/s through the corner, ${lapSide.toFixed(1)} m/s² sideways, ${lapAcc.toFixed(1)} m/s² peak, ${wk.bumps} wall contacts, stopped ${(lapMiss * 100).toFixed(0)} cm from the mark`);
+  // up a kerb, along the pavement and down again: the legs must not be thrown about, and the body rises on them
+  dummy(6, 2.4, -52, 0.52); wk.state = 'advance';
+  const hipsAt = new G.THREE.Vector3(), hipJoint = hipsAt.clone(), kneeJoint = hipsAt.clone(), ankleJoint = hipsAt.clone(), legWas = [null, null];
+  let ankleFast = 0, kneeFast = 0, bodyFast = 0, climbed = 0, lastBodyY = wk.pos.y;
+  for (const [gx, gz] of [[5.0, -47.5], [5.0, -44], [2.4, -39.5]]) {
+    for (let guard = 0; guard < 600 && Math.hypot(gx - wk.pos.x, gz - wk.pos.z) > 0.35; guard++) {
+      const dx = gx - wk.pos.x, dz = gz - wk.pos.z, d = Math.hypot(dx, dz);
+      wk.wishDir = { x: dx / d, z: dz / d }; wk.wishSpeed = 1.6;
+      G.step(1, 1 / 60);
+      wk.b.hips.getWorldPosition(hipsAt);
+      [[wk.b.lul, wk.b.ll, wk.b.lft], [wk.b.rul, wk.b.rl, wk.b.rft]].forEach(([thigh, shin, foot], side) => {
+        thigh.getWorldPosition(hipJoint); shin.getWorldPosition(kneeJoint); foot.getWorldPosition(ankleJoint);
+        const bend = kneeJoint.clone().sub(hipJoint).angleTo(ankleJoint.clone().sub(kneeJoint)) * 180 / Math.PI, rel = ankleJoint.clone().sub(hipsAt), was = legWas[side];
+        if (was) { ankleFast = Math.max(ankleFast, rel.distanceTo(was.rel) * 60); kneeFast = Math.max(kneeFast, Math.abs(bend - was.bend) * 60); }
+        legWas[side] = { rel, bend };
+      });
+      bodyFast = Math.max(bodyFast, Math.abs(wk.pos.y - lastBodyY) * 60); lastBodyY = wk.pos.y; climbed = Math.max(climbed, wk.pos.y);
+    }
+  }
+  check('bot steps up a kerb, walks the pavement and steps down without its legs being thrown about', climbed > 0.12 && wk.pos.y < 0.03 && ankleFast < 7 && kneeFast < 1100 && bodyFast < 0.9,
+    `kerb ${climbed.toFixed(2)} m: fastest ankle ${ankleFast.toFixed(1)} m/s relative to the hips, knee ${kneeFast.toFixed(0)}°/s, body ${bodyFast.toFixed(2)} m/s up or down`);
+  // the trunk rides the stride quietly: head level and steady, shoulders not rocking
+  dummy(6, 28.5, -58, 0); wk.state = 'advance'; wk.wishDir = { x: 0, z: 1 }; wk.wishSpeed = 1.6; wk.wantYaw = 0; run(2.4);
+  const headQ = new G.THREE.Quaternion(), headUp = hipsAt.clone(), shoulderL = hipsAt.clone(), shoulderR = hipsAt.clone();
+  const span = { tilt: [9, -9], height: [9, -9], shoulders: [9, -9] }, note = (k, v) => { span[k][0] = Math.min(span[k][0], v); span[k][1] = Math.max(span[k][1], v); };
+  for (let f = 0; f < 130; f++) {
+    G.step(1, 1 / 60);
+    wk.b.head.getWorldQuaternion(headQ); headUp.set(0, 1, 0).applyQuaternion(headQ);
+    note('tilt', Math.asin(clamp1(headUp.x * Math.cos(wk.heading) - headUp.z * Math.sin(wk.heading))) * 180 / Math.PI);
+    note('height', wk.b.head.getWorldPosition(hipJoint).y - wk.pos.y);
+    wk.b.la.getWorldPosition(shoulderL); wk.b.ra.getWorldPosition(shoulderR);
+    note('shoulders', Math.atan2(shoulderR.y - shoulderL.y, Math.hypot(shoulderR.x - shoulderL.x, shoulderR.z - shoulderL.z)) * 180 / Math.PI);
+  }
+  const swing = k => span[k][1] - span[k][0];
+  check('walking bot carries its head level and its shoulders steady', swing('tilt') < 3 && swing('height') < 0.065 && swing('shoulders') < 3,
+    `over two strides the head tilts ${swing('tilt').toFixed(1)}° and bobs ${(swing('height') * 100).toFixed(1)} cm, the shoulder line rocks ${swing('shoulders').toFixed(1)}°`);
   G.goto(-29, -61, 0);
   dummy(6, -1.5, -53, 0);
   wk.state = 'combat'; wk.wishDir = { x: 1, z: 0 }; wk.wishSpeed = 2.2;

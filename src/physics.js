@@ -2,6 +2,9 @@
 import { clamp, rng } from './util.js';
 
 export const STEP = 0.42;
+// What a soldier walks up without breaking stride: a kerb or a stair. Anything taller (a crate, a tyre, a stack of
+// bricks) is walked round. The player keeps the full step height.
+export const STRIDE_STEP = 0.24;
 // Surcharge per metre by distance from the nearest obstacle, in cells: brushing a wall is uncomfortable, a stride or
 // two out is where people walk, and the open middle of a street is exposed.
 const LANE = [0, 0.9, 0.12, 0, 0.1, 0.22];
@@ -36,12 +39,12 @@ export function resolveXZ(p, r, height, cols, step = STEP) {
 }
 
 // Highest walkable surface under the cylinder that is no more than one step above the feet.
-export function groundAt(x, z, feetY, r, cols) {
+export function groundAt(x, z, feetY, r, cols, step = STEP) {
   let g = 0, surf = null;
   const rr = r * 0.6;
   for (let i = 0; i < cols.length; i++) {
     const b = cols[i];
-    if (b.y1 > feetY + STEP || b.y1 <= g) continue;
+    if (b.y1 > feetY + step || b.y1 <= g) continue;
     const dx = x - b.x, dz = z - b.z;
     const lx = dx * b.c - dz * b.s, lz = dx * b.s + dz * b.c;
     if (Math.abs(lx) <= b.hx + rr && Math.abs(lz) <= b.hz + rr) { g = b.y1; surf = b.surf; }
@@ -100,7 +103,7 @@ export const losClear = (a, b, cols) => {
 
 // ---- navigation grid ------------------------------------------------------------------------------------------------
 export class NavGrid {
-  constructor(cols, x0, z0, x1, z1) {
+  constructor(cols, x0, z0, x1, z1, step = STRIDE_STEP) {
     this.x0 = x0; this.z0 = z0; this.w = Math.ceil(x1 - x0); this.h = Math.ceil(z1 - z0);
     this.blocked = new Uint8Array(this.w * this.h);
     this.cover = new Uint8Array(this.w * this.h);        // 1 = free cell touching chest-high cover
@@ -109,7 +112,7 @@ export class NavGrid {
     this.edgeX = new Uint8Array(this.w * this.h); this.edgeZ = new Uint8Array(this.w * this.h);
     const pad = 0.42;
     for (const b of cols) {
-      if (b.y1 <= STEP + 0.005 || b.y0 > 1.6) continue;      // anything taller than a step is in the way: the same rule the body's collision uses
+      if (b.y1 <= step + 0.005 || b.y0 > 1.6) continue;      // anything taller than a soldier's step is in the way: the same rule their collision uses
       const ext = b.hx + b.hz + pad + 1;
       for (let gz = Math.max(0, Math.floor(b.z - ext - z0)); gz <= Math.min(this.h - 1, Math.ceil(b.z + ext - z0)); gz++)
         for (let gx = Math.max(0, Math.floor(b.x - ext - x0)); gx <= Math.min(this.w - 1, Math.ceil(b.x + ext - x0)); gx++) {

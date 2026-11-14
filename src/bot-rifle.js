@@ -173,6 +173,10 @@ export function poseBotRifle(bot, dt) {
   // muzzle, aiming up a stair, or making room to withdraw the magazine.
   stock.copy(right.origin).lerp(chest, 0.33).addScaledVector(forward, 0.106 - reload * 0.025);
   stock.y -= 0.033 + (1 - a) * 0.132 - reload * 0.055;
+  // Carried at the low ready, the rifle hangs from the arms, which take up part of each footfall: it rides the
+  // stride more gently than the chest does. Shouldered, it is locked into the pocket and moves with the body.
+  bot.stockY = bot.stockY == null || Math.abs(bot.stockY - stock.y) > 0.3 ? stock.y : damp(bot.stockY, stock.y, 11, dt);
+  stock.y += (bot.stockY - stock.y) * 0.55 * (1 - a);
   stock.addScaledVector(forward, -bot.rifleKick * 0.021);
   restRotation.setFromEuler(euler.set(-0.47 + reload * 0.55, yaw + Math.PI - 0.19 + reload * 0.21, 0.11 - reload * 0.34));
   gunRotation.setFromEuler(euler.set(pitch + bot.rifleKick * 0.047, yaw + Math.PI, 0));
@@ -218,7 +222,11 @@ export function poseBotRifle(bot, dt) {
 
   // In the Vanguard rig the helmet's forward axis is +Z. Keep its gaze tied to the
   // sight direction while aiming instead of inheriting neck roll from the stride.
+  // Out of contact the head is held level and steady on the way it is looking, as a person's is: the eyes stay on
+  // the street while the body rides the stride underneath.
   b.head.getWorldQuaternion(currentGaze);
+  gaze.setFromEuler(euler.set(0.03, yaw + bot.headYaw, 0));
+  currentGaze.slerp(gaze, 0.8 * (1 - a));
   gaze.setFromEuler(euler.set(-pitch + 0.17, yaw, -0.045));
   setWorldRotation(b.head, currentGaze.slerp(gaze, a * 0.78));
 }

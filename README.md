@@ -80,16 +80,29 @@ Key bindings live in the same saved settings object (`binds`); there is no rebin
 - **How they move** — within what a person carrying a rifle and kit can do. Soldiers either walk (about 1.6 m/s) or run
   (a 3.5 m/s jog up to a 5 m/s run) and change between the two in a step or two; each has their own pace. They move up
   briskly while the fighting is far off, run towards a reported contact and close the last stretch at a walk. Starting
-  takes about 3 m/s², planned braking 2.8 m/s², and a bend is taken no faster than 3.8 m/s² of sideways load allows, so
-  they slow before a street corner and walk it as an arc. Going back the way they came, they halt and turn on the spot.
-  Routes keep a shoulder's width off walls, favour the edge of a street over its middle, and differ a little from one
-  soldier to the next. Out of contact the hips follow the feet while the chest turns into the coming bend and the head
-  goes first: along the route, down a side street as it opens, and to either side. At some waypoints they stop and look
-  left and right; most they walk through. They step round each other early and walk round a post instead of into it.
-  Walking steps lengthen and quicken together; running keeps its cadence and lengthens the stride. The part of the sole
-  carrying the weight (heel, then ball of the foot, then toe) stays where it landed. With the rifle up they side-step
-  and back away on separate gaits, no faster than 2.5 and 2 m/s; running for cover they turn and run. Leg IK adjusts
-  foot placement on kerbs and stairs. When the barrel approaches a wall, the soldier tucks the rifle closer to the chest.
+  takes about 3 m/s², planned braking 2.8 m/s², and a bend is taken no faster than 3.8 m/s² of sideways load allows:
+  a street corner is slowed for and walked as an arc, a change of direction in the open is one long curve. Within a
+  step of a wall or a gap they drop to a walk. Going back the way they came, they halt and turn on the spot.
+  Routes keep a shoulder's width off walls, favour the edge of a street over its middle, never squeeze through a gap
+  narrower than a body, and differ a little from one soldier to the next. Out of contact the hips follow the feet
+  while the chest turns into the coming bend and the head goes first: along the route, down a side street as it opens,
+  and to either side. At some waypoints they stop and look left and right; most they walk through. They step round
+  each other early and walk round a post instead of into it.
+- **How they carry themselves** — the clips were made for swinging arms, so the trunk is steadied for someone holding
+  a rifle in both hands: the pelvis keeps part of its bounce (5 cm at a walk, 7 cm at a run), the chest is held near its
+  average attitude instead of rocking with every stride, the head stays level on the way it is looking, and a rifle at
+  the low ready rides the stride more gently than the chest. The body banks into a bend only at a run. Walking steps
+  lengthen and quicken together; running keeps its cadence and lengthens the stride; the first step from a standstill
+  starts at toe-off. The part of the sole carrying the weight (heel, then ball of the foot, then toe) stays where it
+  landed, except that the toe is let creep the last centimetres before it lifts so the knee can bend for the swing
+  instead of trailing straight and whipping forward. With the rifle up they side-step and back away on separate gaits,
+  no faster than 2.5 and 2 m/s; running for cover they turn and run.
+- **Kerbs and steps** — a soldier walks up a kerb or a stair (up to 24 cm) and round anything taller. A planted boot
+  keeps the footing it landed on; a swinging boot takes the ground where the stride will set it down, so it starts to
+  rise at toe-off when the next step is up and holds its height until clear of the edge when the next step is down. The
+  body rises on its legs as the trailing boot comes up, and the pelvis gives a little if a boot's place is out of reach,
+  so no knee locks straight and snaps free. When the barrel approaches a wall, the soldier tucks the rifle closer to
+  the chest.
 - **Physics** — a rigid-body world (Rapier) built from the district's collision boxes. 160-odd pieces of loose clutter
   (chairs, crates, cans, bins, tyres, pots, baskets, gas bottles, hand trucks…) rest as dressed until disturbed, then can be
   shoved by walking into them and knocked about by bullets, with material-dependent mass, friction and bounce; light
@@ -168,10 +181,13 @@ In the browser console, with the dev server running:
   reloads, hit zones, scoring, AI perception, damage, death and respawn, match endings, restart, a 90 s bot-only stretch,
   props shoved and shot, a ragdoll falling to rest and the body staying behind, bot acceleration and stride length,
   planted-sole drift walking, running and strafing, a street corner taken at a run (sideways load, braking, wall
-  contact), the bot magazine reload, sound arrival delay, wall muffling, and echoes.
+  contact), a kerb stepped up and down without the legs being thrown about, head and shoulders steady at a walk, the
+  bot magazine reload, sound arrival delay, wall muffling, and echoes.
 - `tools/locomotion-probe.js` — measures how the soldiers move over minutes of play (see the top of the file):
   `probe.patrol(G, 150)` reports acceleration, turn rates, sole drift, wall clearance, stops and wall contacts;
-  `probe.map`, `probe.sheet` and `probe.film` save a route plot, a contact sheet and film frames to `captures/`.
+  `probe.posture(G)` how far pelvis, shoulders, head and rifle swing over a stride; `probe.steps(G)` how hard the legs
+  are thrown about crossing a kerb; `probe.map`, `probe.sheet` and `probe.film` save a route plot, a contact sheet
+  and film frames to `captures/`.
 - `await G.proof()` — writes fourteen fixed-bookmark screenshots at 1920×1080 to `captures/`; `await G.proof(1754, 864)` does
   the same at 2192×1080 (`*_uw.jpg`).
 - `G.bench()` — the GPU frame-time benchmark above. `G.report()` — the on-screen pacing, audio-level and input snapshot.

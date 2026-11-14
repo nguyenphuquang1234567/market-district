@@ -133,13 +133,14 @@ function measure(G, secs, { dt = 1 / 60, trace = null, each = null } = {}) {
 export function patrol(G, secs = 60, opts = {}) { begin(G, opts); unrendered(G, () => G.step(120, 1 / 30)); return watch(G, secs, opts); }
 
 // Contact sheet: `cols` x `rows` frames of one soldier, camera travelling with it at a fixed bearing.
-export async function sheet(G, name, { bot = G.bots.list[0], secs = 2, cols = 8, rows = 3, cell = 300, bearing = 90, dist = 4.2, height = 1.0, dt = 1 / 60, world = false } = {}) {
+export async function sheet(G, name, { bot = G.bots.list[0], secs = 2, cols = 8, rows = 3, cell = 300, bearing = 90, dist = 4.2, height = 1.0, dt = 1 / 60, world = false, exposure = 0 } = {}) {
   const R = G.R, cv = R.renderer.domElement, n = cols * rows, every = Math.max(1, Math.round(secs / dt / n));
   const keep = { w: cv.style.width, h: cv.style.height, weapon: G.weapon.root.visible, hud: document.getElementById('hud')?.style.display };
   cv.style.width = cell + 'px'; cv.style.height = cell + 'px'; R.renderScale = 1; R.adaptive = false; R.resize();
   const out = document.createElement('canvas'); out.width = cols * cell; out.height = rows * cell;
   const ctx = out.getContext('2d'); let wall = performance.now() / 1000;
-  const fixed = world ? { x: bot.pos.x, z: bot.pos.z, yaw: bot.bodyYaw } : null;
+  const fixed = world ? { x: bot.pos.x, z: bot.pos.z, yaw: bot.bodyYaw } : null, auto = R.autoExposure;
+  if (exposure) { R.autoExposure = false; R.exposureTarget = exposure; for (let k = 0; k < 5; k++) R.render(2, wall); }       // a soldier in shade: open up by hand
   for (let i = 0; i < n; i++) {
     G.step(every, dt); wall += every * dt;
     const yaw = (fixed ? fixed.yaw : bot.bodyYaw) + bearing * Math.PI / 180;
@@ -152,7 +153,7 @@ export async function sheet(G, name, { bot = G.bots.list[0], secs = 2, cols = 8,
     ctx.drawImage(cv, 0, 0, cv.width, cv.height, (i % cols) * cell, Math.floor(i / cols) * cell, cell, cell);
     G.weapon.root.visible = keep.weapon;
   }
-  cv.style.width = keep.w; cv.style.height = keep.h; R.resize();
+  cv.style.width = keep.w; cv.style.height = keep.h; R.resize(); R.autoExposure = auto;
   const blob = await new Promise(r => out.toBlob(r, 'image/jpeg', 0.9));
   await fetch('/__capture/' + name + '.jpg', { method: 'POST', body: blob });
   return `${name}.jpg ${out.width}x${out.height}, one frame every ${(every * dt * 1000).toFixed(0)} ms`;
@@ -206,13 +207,16 @@ export function drive(G, { i = 0, x = 0, z = -52, yaw = 0, dir = [0, 1], speed =
 // Frames for a film of one soldier, shot from a camera that walks with it. Posts name_0001.jpg … to captures/;
 // join them with: ffmpeg -framerate 30 -i captures/name_%04d.jpg -pix_fmt yuv420p captures/name.mp4
 // Call again with the returned state to continue the same shot (a browser task should not run for minutes).
-export async function film(G, name, state = {}, { bot = G.bots.list[0], frames = 150, fps = 30, w = 854, h = 480, bearing = 150, dist = 5.2, height = 1.05, fov = 34 } = {}) {
+export async function film(G, name, state = {}, { bot = G.bots.list[0], frames = 150, fps = 30, w = 854, h = 480, bearing = 150, dist = 5.2, height = 1.05, fov = 34, exposure = 0, each = null } = {}) {
   const R = G.R, cv = R.renderer.domElement, dt = 1 / 60, per = Math.round(60 / fps), cols = G.world.colliders;
   if (state.n == null) { state.n = 0; state.yaw = bot.heading; state.wall = performance.now() / 1000; state.dist = dist; state.x = bot.pos.x; state.z = bot.pos.z; }
   cv.style.width = w + 'px'; cv.style.height = h + 'px'; R.renderScale = 1; R.adaptive = false; R.resize();
   const weapon = G.weapon.root.visible, wrap = (a, b) => Math.atan2(Math.sin(b - a), Math.cos(b - a)), shots = [];
+  const auto = R.autoExposure;
+  if (exposure) { R.autoExposure = false; R.exposureTarget = exposure; for (let k = 0; k < 5; k++) R.render(2, state.wall); }
   for (let i = 0; i < frames; i++) {
-    G.step(per, dt); state.wall += per * dt;
+    for (let k = 0; k < per; k++) { if (each && each(bot, state) === false) { frames = i; break; } G.step(1, dt); }
+    state.wall += per * dt;
     // the camera operator: follows the soldier's line of march loosely and steps closer when a wall gets in the way
     state.yaw += wrap(state.yaw, bot.heading) * 0.03;
     state.x += (bot.pos.x - state.x) * 0.25; state.z += (bot.pos.z - state.z) * 0.25;
@@ -238,5 +242,84 @@ export async function film(G, name, state = {}, { bot = G.bots.list[0], frames =
     G.weapon.root.visible = weapon;
   }
   await Promise.all(shots);
+  R.autoExposure = auto;
   return state;
+}
+
+// How steady the body is on a straight walk: peak-to-peak swing of the pelvis, shoulders, head and rifle over `secs`,
+// in degrees and centimetres. A person's head barely moves; the pelvis lists and turns a few degrees each way.
+export function posture(G, { speed = 1.6, secs = 4, x = -29, z = -58, i = 0 } = {}) {
+  const T = G.THREE, b = drive(G, { i, speed, x, z, settle: 3 }), deg = 180 / Math.PI;
+  const lh = new T.Vector3(), rh = new T.Vector3(), ls = new T.Vector3(), rs = new T.Vector3(), hip = new T.Vector3(), neck = new T.Vector3(), head = new T.Vector3();
+  const fwd = new T.Vector3(), up = new T.Vector3(), q = new T.Quaternion(), gun = new T.Vector3(), stock = new T.Vector3();
+  const series = {}, add = (k, v) => (series[k] || (series[k] = [])).push(v);
+  const wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
+  unrendered(G, () => {
+    for (let k = 0, n = Math.round(secs * 60); k < n; k++) {
+      G.step(1, 1 / 60);
+      const h = b.heading, fx = Math.sin(h), fz = Math.cos(h), sx = fz, sz = -fx;       // forward and sideways on the ground
+      b.b.lul.getWorldPosition(lh); b.b.rul.getWorldPosition(rh); b.b.la.getWorldPosition(ls); b.b.ra.getWorldPosition(rs);
+      b.b.hips.getWorldPosition(hip); b.b.neck.getWorldPosition(neck); b.b.head.getWorldPosition(head);
+      const line = (a, c, name) => {
+        const dx = c.x - a.x, dy = c.y - a.y, dz = c.z - a.z, across = dx * sx + dz * sz, along = dx * fx + dz * fz;
+        add(name + 'RollDeg', Math.atan2(dy, Math.hypot(across, along)) * Math.sign(across || 1) * deg); add(name + 'TurnDeg', Math.atan2(along * Math.sign(across || 1), Math.abs(across)) * deg);
+      };
+      line(lh, rh, 'pelvis'); line(ls, rs, 'shoulders');
+      const tx = neck.x - hip.x, ty = neck.y - hip.y, tz = neck.z - hip.z;
+      add('trunkSideLeanDeg', Math.atan2(tx * sx + tz * sz, ty) * deg); add('trunkForwardLeanDeg', Math.atan2(tx * fx + tz * fz, ty) * deg);
+      b.b.head.getWorldQuaternion(q); fwd.set(0, 0, 1).applyQuaternion(q); up.set(0, 1, 0).applyQuaternion(q);
+      add('headTurnDeg', wrap(Math.atan2(fwd.x, fwd.z) - h) * deg); add('headNodDeg', Math.asin(Math.max(-1, Math.min(1, fwd.y))) * deg);
+      add('headTiltDeg', Math.asin(Math.max(-1, Math.min(1, up.x * sx + up.z * sz))) * deg);
+      add('headSideCm', ((head.x - b.pos.x) * sx + (head.z - b.pos.z) * sz) * 100); add('headHeightCm', (head.y - b.pos.y) * 100);
+      add('hipSideCm', ((hip.x - b.pos.x) * sx + (hip.z - b.pos.z) * sz) * 100); add('hipHeightCm', (hip.y - b.pos.y) * 100);
+      b.gun.localToWorld(gun.set(0, 0, -0.5)); b.gun.localToWorld(stock.set(0, 0, 0.3));
+      const gx = gun.x - stock.x, gy = gun.y - stock.y, gz = gun.z - stock.z;
+      add('rifleTurnDeg', wrap(Math.atan2(gx, gz) - h) * deg); add('riflePitchDeg', Math.atan2(gy, Math.hypot(gx, gz)) * deg);
+      add('rifleHeightCm', (stock.y - b.pos.y) * 100);
+      add('figureLeanDeg', Math.hypot(b.leanF, b.leanS) * deg); add('headingDeg', h * deg);
+    }
+  });
+  const out = { speed: r2(b.speed) };
+  for (const [k, v] of Object.entries(series)) { const lo = Math.min(...v), hi = Math.max(...v); out[k] = { swing: r2(hi - lo), mean: r2(v.reduce((a, c) => a + c, 0) / v.length) }; }
+  return out;
+}
+
+// Walks one soldier across a kerb and back and reports how violently the legs move: the fastest any ankle travels
+// relative to the hips, the hardest it is thrown about, and the biggest change of knee angle in one frame.
+// `legs` lists three way-points [x, z]; pass points on level ground for a baseline.
+export function steps(G, { speed = 1.6, from = [2.4, -52], legs = [[5.0, -47.5], [5.0, -44], [2.4, -39.5]], i = 0, trace = false } = {}) {
+  const T = G.THREE, b = drive(G, { i, speed: 0, x: from[0], z: from[1], settle: 0.5 }), deg = 180 / Math.PI;
+  const ank = [new T.Vector3(), new T.Vector3()], knee = new T.Vector3(), hipj = new T.Vector3(), hips = new T.Vector3();
+  const prev = [null, null], out = { ankleSpeed: 0, ankleAccel: 0, ankleLift: 0, kneeStepDeg: 0, hipDrop: 0, bodyStep: 0, worst: [] }, rows = [];
+  let leg = 0, t = 0, lastY = b.pos.y, lastHip = null;
+  unrendered(G, () => {
+    while (leg < legs.length && t < 40) {
+      const [gx, gz] = legs[leg], dx = gx - b.pos.x, dz = gz - b.pos.z, d = Math.hypot(dx, dz);
+      if (d < 0.35) { leg++; continue; }
+      b.wishDir = { x: dx / d, z: dz / d }; b.wishSpeed = speed; b.state = 'advance';
+      G.step(1, 1 / 60); t += 1 / 60;
+      b.b.hips.getWorldPosition(hips);
+      [[b.b.lul, b.b.ll, b.b.lft], [b.b.rul, b.b.rl, b.b.rft]].forEach(([thigh, shin, foot], s) => {
+        thigh.getWorldPosition(hipj); shin.getWorldPosition(knee); foot.getWorldPosition(ank[s]);
+        const a = knee.clone().sub(hipj), c = ank[s].clone().sub(knee), bend = a.angleTo(c) * deg;
+        const rel = ank[s].clone().sub(hips), p = prev[s];
+        if (p) {
+          const v = rel.clone().sub(p.rel).multiplyScalar(60), acc = p.v ? v.clone().sub(p.v).length() * 60 : 0, kd = Math.abs(bend - p.bend);
+          if (v.length() > out.ankleSpeed) out.ankleSpeed = v.length();
+          if (acc > out.ankleAccel) out.ankleAccel = acc;
+          if (Math.abs(v.y) > out.ankleLift) out.ankleLift = Math.abs(v.y);
+          if (kd > out.kneeStepDeg) out.kneeStepDeg = kd;
+          if (acc > 260 || kd > 9) out.worst.push([r2(t), s ? 'R' : 'L', 'acc', Math.round(acc), 'knee', r2(kd), 'at', r2(b.pos.x), r2(b.pos.z), 'y', r2(b.pos.y), b.plants[s] ? 'planted' : 'swing']);
+          prev[s] = { rel, v, bend };
+        } else prev[s] = { rel, v: null, bend };
+        if (trace) rows.push([r2(t), s, r2(ank[s].y), r2(b.footGround[s]), r2(bend), b.plants[s] ? 1 : 0, r2(b.pos.y), r2(b.floorY), r2(b.pos.x)].join(' '));
+      });
+      out.bodyStep = Math.max(out.bodyStep, Math.abs(b.pos.y - lastY) * 60); lastY = b.pos.y;
+      if (lastHip != null) out.hipDrop = Math.max(out.hipDrop, Math.abs(hips.y - lastHip) * 60); lastHip = hips.y;
+    }
+  });
+  for (const k of ['ankleSpeed', 'ankleAccel', 'ankleLift', 'kneeStepDeg', 'hipDrop', 'bodyStep']) out[k] = r2(out[k]);
+  out.jolts = out.worst.length; out.worst = out.worst.slice(0, 10); out.secs = r2(t);
+  if (trace) out.rows = rows;
+  return out;
 }
