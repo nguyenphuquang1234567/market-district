@@ -30,7 +30,7 @@ export function selfTest(G) {
   const fired = 30 - W.ammo; check('automatic fire consumes rounds and leaves decals', fired >= 4 && fired <= 7 && G.fx.decals.dirt.im.count + G.fx.decals.stone.im.count > d0, `${fired} rounds in 0.4 s`);
   W.toggleMode(); const a0 = W.ammo; P.sim.fire = true; run(0.4); P.sim.fire = false; run(0.1); check('semi-auto fires once per press', a0 - W.ammo === 1, `${a0 - W.ammo} round`); W.toggleMode();
   W.startReload(); run(1.0); const mid = W.ammo; run(1.3); check('tactical reload refills at the insert, not before', mid < 30 && W.ammo === 30 && !W.reloading, `mid ${mid} → ${W.ammo}, reserve ${W.reserve}`);
-  W.ammo = 1; P.sim.fire = true; run(0.5); P.sim.fire = false; run(2.6); check('empty magazine triggers the longer bolt-release reload', W.ammo === 30 && W.reloadEmpty, `ammo ${W.ammo}`);
+  W.ammo = 1; P.sim.fire = true; run(0.5); P.sim.fire = false; run(1.65); check('empty magazine reload seats a fresh magazine and closes the bolt', W.ammo === 30 && W.reloadEmpty && !W.reloading && Math.abs(W.bolt.position.z) < 0.001, `ammo ${W.ammo}`);
   P.sim.ads = true; run(0.5); check('aiming narrows the view and centres the optic', W.ads > 0.95 && G.R.camera.fov < 50 && Math.abs(W.root.position.x) < 0.002, `fov ${G.R.camera.fov.toFixed(1)}`); P.sim.ads = false; run(0.4);
 
   // --- hits, zones, scoring

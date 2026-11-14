@@ -54,7 +54,7 @@ async function start() {
   G.fx = new FX(R);
   G.hud = new HUD(G);
   G.player = new Player(G);
-  G.weapon = new Weapon(R, R.camera, { fire: (s, p, y) => G.player.fire(s, p, y), sound: n => G.audio.weapon(n) });
+  G.weapon = new Weapon(R, R.camera, { fire: (spread, kickYaw) => G.player.fire(spread, kickYaw), sound: n => G.audio.weapon(n) });
   G.weapon.root.visible = false;
   G.rigid = await Rigid.create(G, world.dynamic);
   G.bots = new Bots(G, 4); G.carry = CARRY;

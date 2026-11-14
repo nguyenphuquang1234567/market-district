@@ -14,7 +14,7 @@ export class Player {
     this.pos = V(0, 0, -58); this.vel = V(); this.yaw = 0; this.pitch = 0; this.health = 100; this.alive = false;
     this.crouching = false; this.crouch = 0; this.grounded = true; this.eyeY0 = 1.62; this.camY = 1.62;
     this.keys = new Set(); this.mouse = { dx: 0, dy: 0, l: false, r: false, x: null, y: 0 }; this.sim = null;
-    this.recoilP = 0; this.recoilY = 0; this.punchP = 0; this.punchR = 0; this.fovKick = 0; this.shake = 0; this.bob = 0; this.stepD = 0; this.landDip = 0;
+    this.recoilY = 0; this.punchP = 0; this.punchR = 0; this.fovKick = 0; this.shake = 0; this.bob = 0; this.stepD = 0; this.landDip = 0;
     this.hurtT = 9; this.deadT = 0; this.respawnT = 0; this.kills = 0; this.deaths = 0; this.inSun = true; this.interior = 0; this.probeT = 0; this.mantle = null; this.surf = 'concrete';
     this.ray = new THREE.Raycaster(); this.ray.firstHitOnly = true;
     const el = G.R.renderer.domElement;
@@ -61,7 +61,7 @@ export class Player {
 
   spawn(sp) {
     this.pos.set(sp.x, 0, sp.z); this.vel.set(0, 0, 0); this.yaw = sp.yaw; this.pitch = 0; this.health = 100; this.alive = true; this.crouch = 0; this.crouching = false;
-    this.recoilP = this.recoilY = this.punchP = this.punchR = 0; this.camY = this.pos.y + 1.62; this.mantle = null; this.hurtT = 9;
+    this.recoilY = this.punchP = this.punchR = 0; this.camY = this.pos.y + 1.62; this.mantle = null; this.hurtT = 9;
     this.G.weapon.reset(); this.G.weapon.root.visible = true;
   }
 
@@ -96,7 +96,7 @@ export class Player {
   }
 
   // One hitscan round. Returns nothing; applies damage, impact effects, tracer, recoil.
-  fire(spread, kickP, kickY) {
+  fire(spread, kickYaw) {
     const G = this.G, cam = G.R.camera, R = this.rnd, W = G.weapon;
     const origin = cam.getWorldPosition(V()), dir = cam.getWorldDirection(V());
     const right = tmp.crossVectors(dir, UP).normalize().clone(), up = tmp2.crossVectors(right, dir).clone();
@@ -139,7 +139,7 @@ export class Player {
     G.fx.casing(ej, V(camRight.x * (1.6 + R()) + this.vel.x, 1.4 + R() * 0.9, camRight.z * (1.6 + R()) + this.vel.z).addScaledVector(dir, -0.6 - R() * 0.5), this.pos.y);
     if (this.pos.y + 1.4 - muzzle.y > 0.9 || this.crouch > 0.5) G.fx.kickDust(V(muzzle.x + dir.x * 0.6, this.pos.y + 0.03, muzzle.z + dir.z * 0.6), this.inSun ? 1 : 0.3);
     G.audio.shot(W.shots); G.bots.hear(this.pos, 60, this.team);
-    this.recoilP += kickP; this.recoilY += kickY; this.fovKick = 1; this.shake = Math.min(1, this.shake + 0.12);
+    this.recoilY += kickYaw; this.fovKick = 1;
     G.stats.shots++; if (victim) G.stats.hits++;
   }
 
@@ -210,14 +210,14 @@ export class Player {
     this.hurtT += dt; if (this.hurtT > 5 && this.health < 100) this.health = Math.min(100, this.health + 14 * dt);
     this.flash = Math.max(0, (this.flash || 0) - dt * 2.2);
     // ---- camera
-    this.recoilP = damp(this.recoilP, 0, W.sinceShot < 0.12 ? 2.5 : 9, dt); this.recoilY = damp(this.recoilY, 0, W.sinceShot < 0.12 ? 2.5 : 9, dt);
+    this.recoilY = damp(this.recoilY, 0, W.sinceShot < 0.12 ? 2.5 : 9, dt);
     this.punchP = damp(this.punchP, 0, 9, dt); this.punchR = damp(this.punchR, 0, 9, dt); this.landDip = damp(this.landDip, 0, 8, dt); this.fovKick = damp(this.fovKick, 0, 16, dt); this.shake = damp(this.shake, 0, 6, dt);
     const targetY = this.eyeY - this.landDip * 0.12;
     this.camY = Math.abs(targetY - this.camY) > 1.2 ? targetY : damp(this.camY, targetY, 22, dt);
     const bobA = Math.min(1, speed / 4.3) * (this.grounded ? 1 : 0) * (1 - adsK * 0.7) * S.bob;
     const sh = this.shake * S.shake, t = G.time;
     cam.position.set(this.pos.x + rx * Math.cos(this.bob) * 0.012 * bobA, this.camY + Math.abs(Math.sin(this.bob)) * -0.022 * bobA, this.pos.z + rz * Math.cos(this.bob) * 0.012 * bobA);
-    cam.rotation.set(this.pitch + this.recoilP + this.punchP + Math.sin(t * 47) * 0.004 * sh, this.yaw + Math.PI + this.recoilY + Math.sin(t * 39 + 1) * 0.004 * sh, this.punchR + Math.cos(this.bob) * 0.004 * bobA + (input.s || 0) * -0.012 * Math.min(1, speed / 4), 'YXZ');
+    cam.rotation.set(this.pitch + this.punchP + Math.sin(t * 47) * 0.004 * sh, this.yaw + Math.PI + this.recoilY + Math.sin(t * 39 + 1) * 0.004 * sh, this.punchR + Math.cos(this.bob) * 0.004 * bobA + (input.s || 0) * -0.012 * Math.min(1, speed / 4), 'YXZ');
     const fov = lerp(fovBase, fovAds, adsK) + (sprinting ? 4 : 0) * Math.min(1, speed / 6) + this.fovKick * lerp(0.9, 0.5, adsK);
     cam.fov = damp(cam.fov, fov, 14, dt); cam.updateProjectionMatrix();
     // ---- weapon

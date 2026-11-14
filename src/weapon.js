@@ -361,10 +361,10 @@ const key = (track, t) => {                       // keyframes [[t, ...values]] 
 };
 const RELOAD = {
   gun: [[0, 0, 0, 0, 0, 0, 0], [0.24, -0.03, 0.078, 0.035, 0.38, 0.2, -0.46], [1.5, -0.03, 0.074, 0.035, 0.4, 0.2, -0.5], [1.62, -0.02, 0.06, 0.025, 0.26, 0.14, -0.36], [2.0, 0, 0, 0, 0, 0, 0]],   // x y z  rx ry rz: up into the workspace, magazine well rolled in towards the support hand
-  lh: [[0, 0], [0.1, 0], [0.34, 1], [1.55, 1], [1.9, 0]],          // blend from the handguard grip to the magazine grip
+  lh: [[0, 0], [0.1, 0], [0.34, 1], [1.42, 1], [1.98, 0]],         // return to the handguard as the rifle settles
   mag: [[0, 0], [0.36, 0], [0.52, -0.2], [0.94, -0.2], [1.3, -0.016], [1.4, 0]],
 };
-const RELOAD_EMPTY_EXTRA = 0.55;
+const RELOAD_BOLT_RELEASE = 1.43;
 const INSPECT = [[0, 0, 0, 0, 0, 0, 0], [0.35, -0.05, 0.025, 0.03, 0.05, 0.85, -0.45], [1.05, -0.05, 0.028, 0.03, 0.02, 0.9, -0.5], [1.5, 0.0, 0.03, 0.02, -0.25, -0.75, 0.75], [2.15, 0.0, 0.03, 0.02, -0.22, -0.8, 0.8], [2.6, 0, 0, 0, 0, 0, 0]];
 
 export class Weapon {
@@ -427,7 +427,7 @@ export class Weapon {
   startReload() {
     if (this.reloading || this.ammo >= this.magSize || this.reserve <= 0) return;
     this.reloadEmpty = this.ammo === 0; this.reloadT = 0; this.reloaded = false; this.stage = 0; this.inspectT = -1;
-    this.reloadLen = 2.0 + (this.reloadEmpty ? RELOAD_EMPTY_EXTRA : 0);
+    this.reloadLen = 2.0;
   }
   inspect() { if (!this.reloading && this.inspectT < 0) this.inspectT = 0; }
 
@@ -451,15 +451,15 @@ export class Weapon {
       this.ammo--; this.cool = 0.079; this.sinceShot = 0;
       const n = Math.floor(this.shots), R = this.rnd;
       const move = inp.moving * (inp.grounded ? 1 : 1.6);
-      let spread = lerp(0.016, 0.0009, this.ads) + move * lerp(0.022, 0.006, this.ads) + Math.min(n, 14) * lerp(0.0026, 0.0007, this.ads);
+      let spread = lerp(0.009, 0.0009, this.ads) + move * lerp(0.011, 0.006, this.ads) + Math.min(n, 14) * lerp(0.0014, 0.0007, this.ads);
       if (inp.crouch) spread *= 0.72;
-      if (inp.sprinting) spread = spread * 1.5 + 0.012;            // shooting on the run is allowed, but loose
+      if (inp.sprinting) spread = spread * 1.3 + 0.006;
       if (n === 0 && move < 0.2) spread *= 0.35;
       const pat = [0, 0.1, -0.12, 0.18, 0.26, 0.08, -0.2, -0.32, -0.12, 0.2, 0.34, 0.1, -0.22, -0.3, 0.05][n % 15];
       const scale = lerp(1, 0.62, this.ads) * (inp.crouch ? 0.82 : 1);
-      this.cb.fire(spread, (0.0125 + Math.min(n, 6) * 0.0012) * scale, (pat * 0.011 + (R() - 0.5) * 0.0035) * scale);
+      this.cb.fire(spread, (pat * 0.011 + (R() - 0.5) * 0.0035) * scale);
       this.shots = Math.min(30, this.shots + 1); this.heat = Math.min(1, this.heat + 0.035);
-      this.kickV += lerp(1.25, 0.85, this.ads); this.kickRot.x += lerp(0.026, 0.006, this.ads); this.kickRot.z += (R() - 0.5) * lerp(0.03, 0.008, this.ads); this.kickRot.y += (R() - 0.5) * lerp(0.012, 0.002, this.ads);
+      this.kickV += lerp(1.25, 0.85, this.ads); this.kickRot.z += (R() - 0.5) * lerp(0.03, 0.008, this.ads); this.kickRot.y += (R() - 0.5) * lerp(0.012, 0.002, this.ads);
       this.flashT = 0.045; this.boltT = 0;
       const s = lerp(0.2, 0.3, R()); this.flash.scale.set(s, s, s * 1.6); this.flash.rotation.z = R() * 6.28; this.flash.visible = R() > 0.12;
       if (this.ammo === 0 && this.reserve > 0) this.autoReload = 0.28;
@@ -467,7 +467,9 @@ export class Weapon {
     if (this.autoReload > 0) { this.autoReload -= dt; if (this.autoReload <= 0 && this.ammo === 0) this.startReload(); }
     this.flashT -= dt; if (this.flashT < 0.02) this.flash.visible = false;
     this.light.intensity = this.flashT > 0 ? 9 * (this.flashT / 0.045) : 0;
-    this.boltT = Math.min(1, this.boltT + dt / 0.07); this.bolt.position.z = Math.sin(this.boltT * Math.PI) * 0.038 + (this.ammo === 0 && !this.reloading ? 0.036 : 0);
+    this.boltT = Math.min(1, this.boltT + dt / 0.07);
+    const boltLocked = this.reloading ? this.reloadEmpty && this.reloadT < RELOAD_BOLT_RELEASE : this.ammo === 0;
+    this.bolt.position.z = Math.sin(this.boltT * Math.PI) * 0.038 + (boltLocked ? 0.036 : 0);
 
     // ---- springs
     this.kickV += (-this.kick * 420 - this.kickV * 30) * dt; this.kick += this.kickV * dt * 0.02;
@@ -486,23 +488,19 @@ export class Weapon {
     p.x += -0.035 * this.sprint; p.y += -0.035 * this.sprint - 0.05 * this.wall - this.land * 0.03; p.z += 0.03 * this.sprint + 0.09 * this.wall;
     r.y += 0.62 * this.sprint; r.x += -0.2 * this.sprint - 0.62 * this.wall; r.z += 0.2 * this.sprint;
     // recoil
-    p.z += this.kick; r.x += this.kickRot.x; r.y += this.kickRot.y; r.z += this.kickRot.z;
+    p.z += this.kick; r.y += this.kickRot.y; r.z += this.kickRot.z;
 
     // ---- reload / inspect
     if (this.reloading) {
       const t0 = this.reloadT; this.reloadT += dt; const t = this.reloadT;
-      const g = key(RELOAD.gun, Math.min(t, 1.5) + Math.max(0, t - 1.5 - (this.reloadEmpty ? RELOAD_EMPTY_EXTRA : 0)));
+      const g = key(RELOAD.gun, t);
       p.x += g[1]; p.y += g[2]; p.z += g[3]; r.x += g[4]; r.y += g[5]; r.z += g[6];
-      const w = key(RELOAD.lh, Math.min(t, 1.55) + Math.max(0, t - 1.55 - (this.reloadEmpty ? RELOAD_EMPTY_EXTRA : 0)))[1], m = key(RELOAD.mag, t);
+      const w = key(RELOAD.lh, t)[1], m = key(RELOAD.mag, t);
       this.mag.position.set(0, m[1], m[1] * -0.25); this.mag.visible = !(t > 0.56 && t < 0.9);
       const hp = this.lh.position.copy(this.lhMag).add(this.mag.position).multiplyScalar(w).addScaledVector(this.lhGrip, 1 - w);   // hand rides the magazine
       hp.y -= Math.sin(w * Math.PI) * 0.03; this.lh.quaternion.identity().slerp(this.lhMagQ, w);
-      if (this.reloadEmpty && t > 1.55) {       // slide up the magazine well and thumb the bolt release
-        const k = t < 1.75 ? smooth((t - 1.55) / 0.2) : t < 1.9 ? 1 : Math.max(0, 1 - smooth((t - 1.9) / 0.3));
-        hp.x -= 0.03 * k; hp.y += 0.073 * k; hp.z += 0.015 * k; r.z += 0.06 * k;
-      }
       const cue = (at, name) => { if (t0 < at && t >= at) this.cb.sound(name); };
-      cue(0.02, 'cloth'); cue(0.36, 'magout'); cue(1.3, 'magin'); cue(1.42, 'magtap'); if (this.reloadEmpty) cue(1.78, 'bolt');
+      cue(0.02, 'cloth'); cue(0.36, 'magout'); cue(1.3, 'magin'); cue(1.42, 'magtap'); if (this.reloadEmpty) cue(RELOAD_BOLT_RELEASE, 'bolt');
       if (!this.reloaded && t >= 1.32) { const take = Math.min(this.magSize - this.ammo, this.reserve); this.ammo += take; this.reserve -= take; this.reloaded = true; }
       if (t >= this.reloadLen) { this.reloadT = -1; this.lh.position.copy(this.lhGrip); this.lh.quaternion.identity(); this.mag.position.set(0, 0, 0); this.mag.visible = true; }
     } else if (this.inspectT >= 0) {

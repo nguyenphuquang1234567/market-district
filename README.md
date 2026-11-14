@@ -71,7 +71,7 @@ Key bindings live in the same saved settings object (`binds`); there is no rebin
   with knuckle guards, cuff straps and stitched seams; the support-hand grip is solved so each finger joint rests on the
   handguard. ADS, semi/auto, recoil pattern, inspect, wall lowering, muzzle flash and light, casings, tracers, per-surface
   impacts and decals, light penetration and ricochets. Reloads bring the rifle up, the hand strips and seats the magazine,
-  and an empty reload ends with a thumb on the bolt release.
+  and the bolt closes as the support hand returns after an empty reload.
 - **Bots** — rigged soldiers with separate low-ready and shouldered rifle poses, a support hand that follows the weapon,
   and a visible magazine extraction and insertion. They navigate with A* on a 1 m grid, see only inside a field
   of view (which follows where the head is turned) with line of sight and a detection delay, react to gunfire and footsteps
