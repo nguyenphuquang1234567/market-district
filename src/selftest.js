@@ -77,7 +77,7 @@ export function selfTest(G) {
   G.resetMatch(); G.playing = true; G.hud.show(null); park();
   const Rg = G.rigid, nav = G.world.nav, wrap = (a, b) => Math.atan2(Math.sin(b - a), Math.cos(b - a));
   G.goto(0, -50, 0); P.sim = { f: 1, s: 0, sprint: true }; run(0.8); const am0 = W.ammo; P.sim.fire = true; run(0.6); const runSp = Math.hypot(P.vel.x, P.vel.z); P.sim.fire = false;
-  check('the rifle fires while sprinting, at a cost in pace', am0 - W.ammo >= 4 && runSp > 5 && runSp < 6, `${am0 - W.ammo} rounds at ${runSp.toFixed(1)} m/s`);
+  check('the rifle fires while sprinting, at a cost in pace', am0 - W.ammo >= 4 && Math.abs(runSp - 6.2) < 0.15, `${am0 - W.ammo} rounds at ${runSp.toFixed(1)} m/s`);
   P.sim = { f: 0, s: 0 }; run(0.4);
 
   // --- loose props: shoved by walking into them, knocked about by bullets

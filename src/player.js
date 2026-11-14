@@ -168,7 +168,7 @@ export class Player {
     this.crouching = !!input.crouch && this.grounded;
     if (!this.crouching && this.crouch > 0.5 && ceilingAt(this.pos.x, this.pos.z, this.pos.y + 1.3, 0.3, cols) < this.pos.y + 1.85) this.crouching = true;   // no room to stand
     const sprinting = !!input.sprint && input.f > 0 && !this.crouching && !input.ads;
-    const maxSp = this.crouching ? 2.2 : sprinting ? (input.fire || W.sinceShot < 0.32 ? 5.3 : 6.3) : lerp(4.3, 2.7, adsK);     // firing on the run costs some pace
+    const maxSp = this.crouching ? 2.2 : sprinting ? (input.fire || W.sinceShot < 0.32 ? 6.2 : 7.2) : lerp(4.3, 2.7, adsK);     // firing on the run costs some pace
     this.crouch = damp(this.crouch, this.crouching ? 1 : 0, 11, dt);
     let landed = 0;
     if (this.mantle) {
