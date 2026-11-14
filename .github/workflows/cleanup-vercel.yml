@@ -1,0 +1,41 @@
+name: Keep two Vercel production deployments
+
+on:
+  push:
+    branches: [main]
+  deployment_status:
+  schedule:
+    - cron: '23 * * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Preview deletions
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: market-district-production-cleanup
+  cancel-in-progress: false
+
+jobs:
+  retain:
+    if: >-
+      github.event_name != 'deployment_status' ||
+      (github.event.deployment_status.state == 'success' &&
+       github.event.deployment.environment == 'Production')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Remove older inactive production deployments
+        env:
+          VERCEL_CLEANUP_TOKEN: ${{ secrets.VERCEL_CLEANUP_TOKEN }}
+          CLEANUP_DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && 'true' || 'false' }}
+          EXPECTED_COMMIT: ${{ github.event_name == 'push' && github.sha || '' }}
+        run: node tools/cleanup-vercel.mjs
