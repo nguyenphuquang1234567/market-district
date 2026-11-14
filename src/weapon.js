@@ -446,6 +446,8 @@ export class Weapon {
     this.time += dt; this.cool -= dt; this.sinceShot += dt;
     const canAds = !this.reloading && !inp.sprinting && this.inspectT < 0;
     this.ads = damp(this.ads, inp.ads && canAds ? 1 : 0, 16, dt);
+    const hipKick = inp.ads ? 0 : 1 - this.ads;
+    if (inp.ads) this.kickRot.x = 0;
     // sprint carry: pulling the trigger brings the rifle up out of the carry (about a tenth of a second) and it stays up while firing
     const carry = inp.sprinting && !this.reloading && !(inp.fire && this.ammo > 0) && this.sinceShot > 0.32;
     this.sprint = damp(this.sprint, carry ? 1 : 0, carry ? 9 : 22, dt);
@@ -463,7 +465,8 @@ export class Weapon {
       const spread = this.shotSpread(inp);
       const pat = [0, 0.1, -0.12, 0.18, 0.26, 0.08, -0.2, -0.32, -0.12, 0.2, 0.34, 0.1, -0.22, -0.3, 0.05][n % 15];
       const scale = lerp(1, 0.62, this.ads) * (inp.crouch ? 0.82 : 1);
-      this.cb.fire(spread, (pat * 0.011 + (R() - 0.5) * 0.0035) * scale);
+      this.cb.fire(spread, (pat * 0.011 + (R() - 0.5) * 0.0035) * scale, 0.0025 * hipKick);
+      this.kickRot.x = Math.min(0.018, this.kickRot.x + 0.006 * hipKick);
       this.shots = Math.min(30, this.shots + 1); this.heat = Math.min(1, this.heat + 0.035);
       this.kickV += lerp(1.25, 0.85, this.ads); this.kickRot.z += (R() - 0.5) * lerp(0.03, 0.008, this.ads); this.kickRot.y += (R() - 0.5) * lerp(0.012, 0.002, this.ads);
       this.flashT = 0.045; this.boltT = 0;
@@ -494,7 +497,7 @@ export class Weapon {
     p.x += -0.035 * this.sprint; p.y += -0.035 * this.sprint - 0.05 * this.wall - this.land * 0.03; p.z += 0.03 * this.sprint + 0.09 * this.wall;
     r.y += 0.62 * this.sprint; r.x += -0.2 * this.sprint - 0.62 * this.wall; r.z += 0.2 * this.sprint;
     // recoil
-    p.z += this.kick; r.y += this.kickRot.y; r.z += this.kickRot.z;
+    p.z += this.kick; r.x += this.kickRot.x; r.y += this.kickRot.y; r.z += this.kickRot.z;
 
     // ---- reload / inspect
     if (this.reloading) {
