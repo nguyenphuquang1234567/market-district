@@ -419,6 +419,7 @@ export function buildWorld(R, M) {
     0: [[-29, -60], [0, -60.5], [28.5, -60], [-14, -60], [14, -60], [-3, -52], [3, -55]].map(([x, z]) => ({ x, z, yaw: 0 })),
     1: [[-29, 60], [0, 60.5], [28.5, 60], [-14, 60], [14, 60], [-3, 52], [3, 55]].map(([x, z]) => ({ x, z, yaw: Math.PI })),
   };
+  for (const sp of [...spawns[0], ...spawns[1]]) if (!nav.free(sp.x, sp.z)) nav.center(nav.nearestFree(sp.x, sp.z), sp);      // dressing may have parked something on a spawn point
   const tris = meshes.reduce((s, m) => s + (m.geometry.index ? m.geometry.index.count / 3 : 0), 0);
   console.info(`world: ${meshes.length} meshes, ${Math.round(tris / 1000)}k tris, ${B.colliders.length} colliders, ${buildings.length} buildings, ${B.dynamic.length} loose props`);
   const surfaceAt = (x, z) => {

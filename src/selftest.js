@@ -110,12 +110,57 @@ export function selfTest(G) {
   run(1.2);
   check('the body stays behind when the soldier respawns', dead.alive && !dead.rag && Rg.corpses.length === 1 && Rg.rags.length === 0, `corpses ${Rg.corpses.length}, live ragdolls ${Rg.rags.length}`);
 
-  // --- bot locomotion: strides match ground speed, acceleration is human, the rifle stays on target while the legs go elsewhere
-  park(); const wk = dummy(6, 0, -50, 0); wk.state = 'advance'; wk.wishDir = { x: 0, z: 1 }; wk.wishSpeed = 3.1; wk.wantYaw = 0;
+  // --- bot locomotion: pace changes within human limits, strides that match ground speed, boots that stay where they land,
+  //     corners walked as arcs clear of the walls; then the rifle stays on target while the legs go elsewhere
+  park(); const wk = dummy(6, 0, -50, 0); wk.state = 'advance'; wk.wishDir = { x: 0, z: 1 }; wk.wishSpeed = 3.4; wk.wantYaw = 0;
   let halves = 0, lastHalf = Math.floor(wk.phase * 2), maxAcc = 0, pv = 0; const zs = wk.pos.z;
-  for (let i = 0; i < 156; i++) { G.step(1, 1 / 60); const h = Math.floor(wk.phase * 2); if (h !== lastHalf) { halves++; lastHalf = h; } const sp = Math.hypot(wk.vel.x, wk.vel.z); maxAcc = Math.max(maxAcc, Math.abs(sp - pv) * 60); pv = sp; }
+  for (let i = 0; i < 180; i++) { G.step(1, 1 / 60); const h = Math.floor(wk.phase * 2); if (h !== lastHalf) { halves++; lastHalf = h; } const sp = Math.hypot(wk.vel.x, wk.vel.z); maxAcc = Math.max(maxAcc, Math.abs(sp - pv) * 60); pv = sp; }
   const went = wk.pos.z - zs, stepLen = went / Math.max(1, halves);
-  check('bot strides match ground speed and it accelerates like a person', halves >= 5 && stepLen > 0.55 && stepLen < 1.4 && maxAcc < 16 && went > 6.5, `${went.toFixed(1)} m in ${halves} steps (${stepLen.toFixed(2)} m each), peak ${maxAcc.toFixed(1)} m/s²`);
+  check('bot builds up to a jog no faster than a person can, on strides that match its ground speed', halves >= 5 && stepLen > 0.55 && stepLen < 1.4 && maxAcc < 4.2 && went > 6.5 && wk.runGait > 0.9,
+    `${went.toFixed(1)} m in ${halves} steps (${stepLen.toFixed(2)} m each), peak ${maxAcc.toFixed(1)} m/s², ${pv.toFixed(1)} m/s at a run after 3 s`);
+  // How far the weight-bearing part of each sole wanders between landing and lifting off.
+  // The sole's low point is under the heel, under the ball of the foot, or the toe cap (which bends with the toe joint).
+  const sole = new G.THREE.Vector3();
+  const soleDrift = (bot, frames) => {
+    const held = [null, null]; let worst = 0, contacts = 0;
+    for (let f = 0; f < frames; f++) {
+      G.step(1, 1 / 60);
+      [[bot.b.lft, bot.b.ltoe], [bot.b.rft, bot.b.rtoe]].forEach(([foot, toeJoint], side) => {
+        const plant = bot.plants[side];
+        let low = null, lowY = 9, which = 0;
+        [[foot, 0, -2, 13.3, 0], [foot, 0, 15.8, 12.7, 0], [toeJoint, 1.22, 7.97, -0.04, 0.019]].forEach(([bone, x, y, z, drop], k) => {
+          bone.localToWorld(sole.set(x, y, z));
+          if (sole.y - drop < lowY) { lowY = sole.y - drop; which = k; low = { x: sole.x, z: sole.z }; }
+        });
+        if (!plant || lowY - bot.floorY > 0.02) { held[side] = null; return; }
+        const prior = held[side];
+        if (prior && prior.plant === plant && prior.which === which) { worst = Math.max(worst, Math.hypot(low.x - prior.x, low.z - prior.z)); contacts++; }
+        else held[side] = { plant, which, x: low.x, z: low.z };
+      });
+    }
+    return { worst, contacts };
+  };
+  const jogSole = soleDrift(wk, 90);
+  dummy(6, 0, -50, 0); wk.state = 'advance'; wk.wishDir = { x: 0, z: 1 }; wk.wishSpeed = 1.7; wk.wantYaw = 0; run(1.6);
+  const walkSole = soleDrift(wk, 120), walkGait = wk.runGait;
+  check('walking and running boots stay where they land', walkSole.contacts > 40 && jogSole.contacts > 20 && walkSole.worst < 0.03 && jogSole.worst < 0.03 && walkGait < 0.1,
+    `sole drift ${(walkSole.worst * 100).toFixed(1)} cm walking (${walkSole.contacts} contact frames), ${(jogSole.worst * 100).toFixed(1)} cm running (${jogSole.contacts})`);
+  // a route with a right-angle street corner, taken at a run
+  dummy(6, 0.5, -36, 0); wk.state = 'advance'; wk.setGoal(16, -20.5, true); wk.onPath = true; wk.wishSpeed = 4.6; wk.bumps = 0;
+  let lapAcc = 0, lapSide = 0, lapTurn = 0, lapSkew = 0, lapSlow = 9, lapTop = 0, lapT = 0, lx = wk.pos.x, lz = wk.pos.z, lvx = 0, lvz = 0, lh = wk.heading;
+  while (lapT < 16 && wk.path && wk.pathI < wk.path.length) {
+    G.step(1, 1 / 60); lapT += 1 / 60;
+    const vx = (wk.pos.x - lx) * 60, vz = (wk.pos.z - lz) * 60, sp = Math.hypot(vx, vz), rate = Math.abs(wrap(lh, wk.heading)) * 60;
+    if (lapT > 0.05) lapAcc = Math.max(lapAcc, Math.hypot(vx - lvx, vz - lvz) * 60);
+    lapSide = Math.max(lapSide, sp * rate); lapTurn = Math.max(lapTurn, rate); lapTop = Math.max(lapTop, sp);
+    if (sp > 1) lapSkew = Math.max(lapSkew, Math.abs(wrap(wk.bodyYaw, Math.atan2(vx, vz))));
+    if (lapT > 2 && wk.pathLeft > 4) lapSlow = Math.min(lapSlow, sp);
+    lx = wk.pos.x; lz = wk.pos.z; lvx = vx; lvz = vz; lh = wk.heading;
+  }
+  run(0.6);
+  const lapMiss = Math.hypot(wk.pos.x - 16, wk.pos.z + 20.5);
+  check('bot takes a street corner as an arc: no wall contact, no stop, sideways load and braking a person could manage', lapMiss < 0.5 && wk.bumps === 0 && lapSide < 4.4 && lapAcc < 6 && lapTurn < 3.2 && lapSlow > 1.2 && lapSlow < lapTop - 0.8 && lapSkew < 0.35 && Math.hypot(wk.vel.x, wk.vel.z) < 0.05,
+    `${lapT.toFixed(1)} s, top ${lapTop.toFixed(1)} m/s, ${lapSlow.toFixed(1)} m/s through the corner, ${lapSide.toFixed(1)} m/s² sideways, ${lapAcc.toFixed(1)} m/s² peak, ${wk.bumps} wall contacts, stopped ${(lapMiss * 100).toFixed(0)} cm from the mark`);
   G.goto(-29, -61, 0);
   dummy(6, -1.5, -53, 0);
   wk.state = 'combat'; wk.wishDir = { x: 1, z: 0 }; wk.wishSpeed = 2.2;

@@ -12,9 +12,18 @@ const V = (x, y, z) => new THREE.Vector3(x, y, z);
 const BODY_RADIUS = 0.39;
 const BODY_SPACING = 0.78;
 const UP = V(0, 1, 0);
-// Sole points measured on the Vanguard rig, in the foot bone's local centimetres.
-const HEEL = V(0, -2, 13.3), TOE = V(0, 24, 12.4);
-const footPos = V(), kneePos = V(), legBase = V(), legAxis = V(), heelPos = V(), toePos = V(), soleProbe = V();
+// What a person carrying a rifle and kit can do. Speeds in m/s, accelerations in m/s², turn rates in rad/s.
+const START = 3.3, START_FAST = 1.5;        // pushing off from rest, tapering as the pace approaches a run
+const BRAKE = 2.8, BRAKE_MAX = 4.6;         // planned slowing into a corner or a halt; the hardest stop when surprised
+const GRIP = 3.8;                           // sideways acceleration held through a bend
+const PIVOT = 3.1;                          // turning on the spot
+const SIDE_MAX = 2.5, BACK_MAX = 2.05;      // sidestep and back-pedal pace with the rifle up
+const SHUFFLE = 5.2, SHUFFLE_STOP = 6.4;    // quick changes of direction over a pace or two while fighting
+const WALK_TO_RUN = 2.55, RUN_TO_WALK = 2.05;
+// Sole points measured on the Vanguard rig, in the foot bone's local centimetres: under the heel, under the ball of
+// the foot (the toe joint), and the toe cap. The cap bends with the toe joint, so its height comes from that bone.
+const HEEL = V(0, -2, 13.3), BALL = V(0, 15.8, 12.7), TOE = V(0, 24, 12.4), TOE_END = V(1.22, 7.97, -0.04), CAP_SOLE = 0.019;
+const footPos = V(), kneePos = V(), legBase = V(), legAxis = V(), heelPos = V(), toePos = V(), ballPos = V(), capPos = V(), soleProbe = V();
 const footQuat = new THREE.Quaternion(), footParent = new THREE.Quaternion();
 const NAMES = [['Idris', 'Tarek', 'Sami', 'Nour'], ['Kader', 'Viper', 'Rook', 'Anvil', 'Dagger']];
 const DIFF = { easy: { react: 0.6, err: 1.7, dmg: 0.8 }, normal: { react: 0.36, err: 1.0, dmg: 1 }, hard: { react: 0.22, err: 0.68, dmg: 1.15 } };
@@ -43,6 +52,12 @@ function ik2(a, b, c, target, pole) {
   c.getWorldPosition(pc);
   t4.copy(pa).addScaledVector(dirv, lat);
   aimBone(b, pc, t4);
+}
+
+function segmentDistance(px, pz, a, b) {
+  const dx = b.x - a.x, dz = b.z - a.z, l2 = dx * dx + dz * dz;
+  const t = l2 > 1e-8 ? clamp(((px - a.x) * dx + (pz - a.z) * dz) / l2, 0, 1) : 0;
+  return Math.hypot(px - a.x - dx * t, pz - a.z - dz * t);
 }
 
 // Find the heel strike and the flat-foot part of the stride. The ankle slows during toe-off.
@@ -95,7 +110,11 @@ class Bot {
   constructor(G, team, idx, shared) {
     this.G = G; this.team = team; this.idx = idx; this.name = NAMES[team][idx % NAMES[team].length]; this.isPlayer = false;
     this.rnd = rng(1000 + team * 100 + idx * 7);
-    this.pos = V(0, 0, 0); this.vel = V(); this.yaw = 0; this.pitch = 0; this.health = 100; this.alive = false; this.crouch = 0; this.crouching = false;
+    // No two people move alike: each soldier has a preferred pace and a taste in routes.
+    const temper = rng(77 + team * 31 + idx * 13);
+    this.pace = { walk: 1.5 + temper() * 0.32, jog: 3.25 + temper() * 0.45, run: 4.55 + temper() * 0.5, sway: temper() * 6.28, caution: temper() };
+    this.lanes = G.world.nav.bias(900 + team * 50 + idx * 11);
+    this.pos = V(0, 0, 0); this.vel = V(); this.wishVec = V(); this.yaw = 0; this.pitch = 0; this.health = 100; this.alive = false; this.crouch = 0; this.crouching = false;
     this.root = new THREE.Group(); G.R.scene.add(this.root);
     const model = this.model = cloneSkinned(assets.soldier.scene); this.root.add(model);
     const tint = team === 0 ? new THREE.Color(0.22, 0.48, 0.79) : new THREE.Color(0.92, 0.56, 0.41);
@@ -113,7 +132,8 @@ class Bot {
     const bone = n => model.getObjectByName('mixamorig' + n);
     this.b = { hips: bone('Hips'), spine: bone('Spine'), spine1: bone('Spine1'), spine2: bone('Spine2'), head: bone('Head'), neck: bone('Neck'),
       ra: bone('RightArm'), rf: bone('RightForeArm'), rh: bone('RightHand'), la: bone('LeftArm'), lf: bone('LeftForeArm'), lh: bone('LeftHand'),
-      rul: bone('RightUpLeg'), rl: bone('RightLeg'), rft: bone('RightFoot'), lul: bone('LeftUpLeg'), ll: bone('LeftLeg'), lft: bone('LeftFoot') };
+      rul: bone('RightUpLeg'), rl: bone('RightLeg'), rft: bone('RightFoot'), lul: bone('LeftUpLeg'), ll: bone('LeftLeg'), lft: bone('LeftFoot'),
+      ltoe: bone('LeftToeBase'), rtoe: bone('RightToeBase') };
     this.gun = worldGunMesh(shared.gunMats); G.R.scene.add(this.gun);
     setUpBotRifle(this);
     this.mixer = new THREE.AnimationMixer(model);
@@ -133,16 +153,19 @@ class Bot {
     this.bodyYaw = this.yaw; this.yawVel = 0; this.back = false; this.turning = 0; this.phase = this.rnd(); this.leanF = 0; this.leanS = 0; this.pvx = 0; this.pvz = 0;
     this.headYaw = 0; this.lookGoal = 0; this.lookT = 0; this.pathCap = 9; this.holdT = 0;
     this.wantYaw = this.yaw; this.wantPitch = 0; this.wishDir = null; this.wishSpeed = 0;
+    this.heading = this.yaw; this.headingRate = 0; this.speed = 0; this.push = 0; this.dash = false; this.pathLeft = 0; this.leadYaw = this.yaw; this.farYaw = this.yaw; this.steerErr = 0;
     this.speedAnim = 0; this.travelYaw = this.yaw; this.turnRate = 0; this.gunRaise = 0; this.gunBlocked = false; this.rifleKick = 0;
+    this.runGait = 0; this.running = false; this.bumps = 0; this.grindT = 0; this.settleT = 0; this.dodgeT = 0; this.dodgeSide = 1; this.sideOpen = [0, 0]; this.probeT = this.rnd() * 0.4;
     this.plants = [null, null]; this.releasedPlants = [null, null];
     this.footGround = [this.pos.y, this.pos.y]; this.floorY = this.pos.y;
     this.gaitBlend = { left: 0, right: 0, back: 0 };
     this.nearby = [];
   }
   resetBrain() {
-    this.state = 'advance'; this.target = null; this.seen = new Map(); this.lastKnown = null; this.lostT = 0; this.path = null; this.pathI = 0; this.repath = 0; this.goal = null;
+    this.state = 'advance'; this.target = null; this.seen = new Map(); this.lastKnown = null; this.lostT = 0; this.path = null; this.pathI = 0; this.goal = null;
     this.think = this.rnd() * 0.2; this.ammo = 30; this.reloadT = 0; this.burst = 0; this.burstCool = 0.4; this.fireCool = 0; this.engageT = 0; this.cover = null; this.peek = null; this.coverT = 0; this.atPeek = false;
     this.strafeT = 0; this.lookYaw = null; this.stuckT = 0; this.flinch = 0; this.hurtT = 9; this.reported = 0; this.searchT = 0;
+    this.onPath = false; this.haltT = 0; this.halting = false; this.scanT = 0; this.scanSide = this.rnd() < 0.5 ? -1 : 1; this.scanBase = null; this.offPathT = 0;
   }
 
   spawn(sp) {
@@ -150,6 +173,7 @@ class Bot {
     this.yaw = sp.yaw; this.pitch = 0; this.health = 100; this.alive = true; this.vel.set(0, 0, 0); this.crouch = 0; this.aim = 0; this.crouching = false;
     this.root.visible = true; this.gun.visible = true; this.model.quaternion.identity(); this.model.position.set(0, 0, 0);
     this.resetBrain(); this.resetBody(); this.mixer.timeScale = 1;
+    this.place(this.pos.x, this.pos.z, this.G.world.colliders);                       // clear of anything beside the spawn point before the first visible frame
     this.prevX = this.pos.x; this.prevZ = this.pos.z; this.moveIntent = 0;
     this.animate(0, 0, this.G.world.colliders);
   }
@@ -160,7 +184,7 @@ class Bot {
 
   damage(amount, from, attacker, zone) {
     if (!this.alive) return false;
-    this.health -= amount; this.flinch = 1; this.hurtT = 0; this.vel.multiplyScalar(0.55);
+    this.health -= amount; this.flinch = 1; this.hurtT = 0;
     if (attacker && attacker.alive && attacker.team !== this.team) { this.noticed(attacker, 1); if (this.state !== 'combat') this.lookYaw = Math.atan2(from.x - this.pos.x, from.z - this.pos.z); }
     if (this.health <= 0) {
       this.alive = false; this.deadT = 0; this.respawnT = 4.5 + this.rnd() * 1.5; this.deaths++;
@@ -204,16 +228,46 @@ class Bot {
   setGoal(x, z, run = false) {
     const nav = this.G.world.nav;
     if (!nav.free(x, z)) ({ x, z } = nav.center(nav.nearestFree(x, z), t3));
-    this.goal = { x, z }; this.runTo = run; this.path = nav.path(this.pos.x, this.pos.z, x, z); this.pathI = 0; this.repath = 1.5 + this.rnd();
+    t4.set(x, 0, z);
+    if (resolveXZ(t4, BODY_RADIUS + 0.14, 1.78, this.G.world.colliders)) { x = t4.x; z = t4.z; }      // a spot to stand on, not one with a shoulder in the wall
+    this.goal = { x, z }; this.runTo = run; this.pathI = 0; this.offPathT = 0;
+    const path = this.path = nav.path(this.pos.x, this.pos.z, x, z, this.lanes);
+    this.pathFrom = { x: this.pos.x, z: this.pos.z };
+    if (!path) return;
+    for (let i = 0; i < path.length - 1; i++) {                                         // where the route squeezes past something, walk the middle of the gap, not its edge
+      t4.set(path[i].x, 0, path[i].z);
+      if (resolveXZ(t4, BODY_RADIUS + 0.27, 1.78, this.G.world.colliders)) { path[i].x = t4.x; path[i].z = t4.z; }
+    }
+    for (let i = path.length - 1, left = 0; i >= 0; i--) {                              // distance still to go from each point, for braking
+      path[i].left = left;
+      if (i > 0) left += Math.hypot(path[i].x - path[i - 1].x, path[i].z - path[i - 1].z);
+    }
   }
   pickAdvanceGoal() {
-    const B = this.G.bots, rep = B.reports[this.team].filter(r => this.G.time - r.when < 9);
-    if (rep.length && this.rnd() < 0.7) { const r = rep[rep.length - 1]; this.setGoal(r.pos.x + (this.rnd() - 0.5) * 6, r.pos.z + (this.rnd() - 0.5) * 6, true); return; }
-    const dirZ = this.team === 0 ? 1 : -1;
+    const B = this.G.bots, R = this.rnd, rep = B.reports[this.team].filter(r => this.G.time - r.when < 9);
+    this.haltT = 0;
+    if (rep.length && R() < 0.7) { const r = rep[rep.length - 1]; this.setGoal(r.pos.x + (R() - 0.5) * 6, r.pos.z + (R() - 0.5) * 6, true); return; }
+    const dirZ = this.team === 0 ? 1 : -1, hx = Math.sin(this.heading), hz = Math.cos(this.heading);
     let best = null, bs = -1e9;
-    for (const h of HOTSPOTS) { const sc = (h[1] - this.pos.z) * dirZ * 0.04 + this.rnd() * 2.2 - Math.abs(h[0] - this.pos.x) * 0.012 - (Math.hypot(h[0] - this.pos.x, h[1] - this.pos.z) < 8 ? 3 : 0); if (sc > bs) { bs = sc; best = h; } }
-    this.setGoal(best[0] + (this.rnd() - 0.5) * 3, best[1] + (this.rnd() - 0.5) * 3, this.rnd() < 0.5);
+    for (const h of HOTSPOTS) {
+      const dx = h[0] - this.pos.x, dz = h[1] - this.pos.z, d = Math.hypot(dx, dz);
+      // towards the other side of the district, not the spot just left, and rarely straight back the way they came
+      const sc = dz * dirZ * 0.04 + R() * 2.2 - Math.abs(dx) * 0.012 - (d < 8 ? 3 : 0) + (d > 1 ? (dx * hx + dz * hz) / d * 0.45 : 0);
+      if (sc > bs) { bs = sc; best = h; }
+    }
+    if (R() < 0.4) this.haltT = 1.3 + R() * 2.6;                                        // some places are worth a look round; most are walked through
+    this.setGoal(best[0] + (R() - 0.5) * 3, best[1] + (R() - 0.5) * 3, false);
   }
+  // Stopped with nothing in sight: check one way, then the other, holding each look for a moment.
+  lookAround(dt, reach) {
+    if (this.scanBase == null) { this.scanBase = this.yaw; this.scanT = 0.25 + this.rnd() * 0.45; }
+    this.scanT -= dt;
+    if (this.scanT > 0) return;
+    this.scanT = 0.9 + this.rnd() * 1.2; this.scanSide = -this.scanSide;
+    this.lookYaw = this.scanBase + this.scanSide * reach * (0.45 + this.rnd() * 0.55);
+  }
+  // Own end of the district, with the fighting still some way off.
+  inRear() { return this.pos.z * (this.team === 0 ? 1 : -1) < -22 - this.pace.caution * 10; }
 
   findCover(threat, cols) {
     const nav = this.G.world.nav; let best = null, bs = 1e9;
@@ -252,7 +306,7 @@ class Bot {
       if (this.lostT > 1.3 && this.reloadT <= 0) { this.state = 'search'; this.searchT = 6 + R() * 3; this.cover = null; this.crouching = false; if (this.lastKnown) this.setGoal(this.lastKnown.x + (R() - 0.5) * 3, this.lastKnown.z + (R() - 0.5) * 3, R() < 0.5); }
     }
 
-    let wish = null, speed = 0;
+    let wish = null, speed = 0, onPath = false;
     if (this.state === 'combat') {
       const tg = this.target, aimAt = vis ? tg.pos : this.lastKnown;
       this.engageT += dt;
@@ -266,9 +320,9 @@ class Bot {
         this.peekT -= dt;
         if (!this.atPeek) {
           if (atCover) { this.crouching = true; if (this.peekT <= 0 && this.reloadT <= 0 && c.peek) { this.atPeek = true; this.peekT = 1.2 + R() * 1.3; } }
-          else { wish = this.follow(); speed = Math.min(5.2, this.pathCap); }
+          else { onPath = true; speed = this.pace.run + 0.45; }
         } else {
-          if (c.peek.stand) this.crouching = false; else { this.crouching = false; t1.set(c.peek.x - this.pos.x, 0, c.peek.z - this.pos.z); if (t1.length() > 0.25) { wish = t1.normalize().clone(); speed = 1.8; } }
+          if (c.peek.stand) this.crouching = false; else { this.crouching = false; t1.set(c.peek.x - this.pos.x, 0, c.peek.z - this.pos.z); if (t1.length() > 0.25) { wish = t1.normalize().clone(); speed = 1.7; } }
           if (this.peekT <= 0 || this.reloadT > 0) { this.atPeek = false; this.peekT = 1.2 + R() * 1.8; this.setGoal(c.x, c.z, true); }
         }
         if (aimAt && Math.hypot(c.x - aimAt.x, c.z - aimAt.z) < 5) this.cover = null;                 // flanked: leave
@@ -285,7 +339,7 @@ class Bot {
         }
         const holding = far && this.holdT > 0;
         this.crouching = holding && this.hurtT > 0.8;
-        if (this.strafeGoal && !holding) { t1.set(this.strafeGoal.x - this.pos.x, 0, this.strafeGoal.z - this.pos.z); if (t1.length() > 0.4) { wish = t1.normalize().clone(); speed = far ? 3.6 : 2.2; } }
+        if (this.strafeGoal && !holding) { t1.set(this.strafeGoal.x - this.pos.x, 0, this.strafeGoal.z - this.pos.z); if (t1.length() > 0.4) { wish = t1.normalize().clone(); speed = far ? 2.5 : 2.1; } }
       }
       // fire control: short controlled bursts, longer suppressive ones when the target ducks out of sight
       this.burstCool -= dt; this.fireCool -= dt;
@@ -300,26 +354,82 @@ class Bot {
       }
     } else {
       this.crouching = false;
-      if (this.state === 'search') { this.searchT -= dt; if (this.searchT <= 0 || !this.path) { this.state = 'advance'; this.goal = null; } if (!this.path || this.pathI >= this.path.length) this.lookYaw = (this.lookYaw ?? this.yaw) + dt * 1.6; }
-      if (this.state === 'advance' && (!this.path || this.pathI >= this.path.length)) this.pickAdvanceGoal();
-      wish = this.follow(); speed = Math.min(this.state === 'search' ? 2.2 : this.runTo ? 5.0 : 3.1, this.pathCap);
-      if (wish) { this.wantYaw = Math.atan2(wish.x, wish.z); this.wantPitch = 0; }
-      if (this.lookYaw != null && (!wish || this.state === 'search')) this.wantYaw = this.lookYaw;
-      if (wish) this.lookYaw = null;
+      const arrived = () => !this.path || this.pathI >= this.path.length;
+      if (this.state === 'search') {
+        this.searchT -= dt;
+        if (this.searchT <= 0 || !this.path) { this.state = 'advance'; this.goal = null; this.scanBase = null; this.lookYaw = null; }
+        else if (arrived()) this.lookAround(dt, 1.35);
+      }
+      if (this.state === 'advance') {
+        if (this.halting) {
+          this.haltT -= dt; this.lookAround(dt, 1.05);
+          if (this.haltT <= 0) { this.halting = false; this.scanBase = null; this.lookYaw = null; this.pickAdvanceGoal(); }
+        } else if (arrived()) {
+          if (this.goal && this.haltT > 0) this.halting = true; else this.pickAdvanceGoal();
+        } else if (this.haltT <= 0 && this.pathLeft > 0 && this.pathLeft < 2.8) this.pickAdvanceGoal();       // nothing to stop for: carry on to the next place without breaking stride
+      }
+      if (!arrived() && this.pathLeft > 0 && this.pathLeft < 1.5 && this.goal && G.bots.occupied(this.goal, this)) this.pathI = this.path.length;       // someone is already standing there: stop short
+      onPath = !arrived() && !this.halting;
+      // Pace: move up briskly while the fighting is far off, hurry towards a reported contact and close the last stretch
+      // with care, walk when anything could be round the next corner.
+      const left = this.pathLeft || 99, pace = this.pace;
+      if (this.state === 'search') speed = this.runTo && left > 16 ? pace.jog : pace.walk * 0.88;
+      else if (this.runTo) speed = left > 17 ? pace.run : left > 8 ? pace.jog : pace.walk * 1.12;
+      else speed = this.inRear() && left > 8 ? pace.jog : pace.walk;
+      this.wantPitch = 0;
+      const looking = this.lookYaw != null && (!onPath || this.state === 'search');
+      this.wantYaw = looking ? this.lookYaw : null;                                    // null: nothing in particular to face, so look where the feet are going
+      if (onPath && this.state !== 'search') this.lookYaw = null;
       if (this.ammo < 12 && this.reloadT <= 0) this.reloadT = BOT_RELOAD_DURATION;
     }
-    this.wishDir = wish; this.wishSpeed = wish ? speed : 0;
+    this.onPath = onPath; this.wishDir = onPath ? null : wish; this.wishSpeed = wish || onPath ? speed : 0;
   }
 
+  // The point `dist` metres further along the route from where the soldier stands.
+  ahead(dist, out) {
+    const path = this.path; let x = this.pos.x, z = this.pos.z;
+    for (let i = this.pathI; i < path.length; i++) {
+      const p = path[i], d = Math.hypot(p.x - x, p.z - z);
+      if (d >= dist && d > 1e-4) return out.set(x + (p.x - x) * dist / d, 0, z + (p.z - z) * dist / d);
+      dist -= d; x = p.x; z = p.z;
+    }
+    return out.set(x, 0, z);
+  }
+
+  // Steers for a point a little way ahead along the route, so a corner is walked as an arc and not as a pivot on the
+  // waypoint, and plans the pace: slow enough for the bends coming up and to halt at the end without stamping on the brakes.
   follow() {
-    if (!this.path || this.pathI >= this.path.length) return null;
-    const p = this.path[this.pathI]; t1.set(p.x - this.pos.x, 0, p.z - this.pos.z); const d = t1.length();
-    const n = this.path[this.pathI + 1];
-    if (d < (n ? 0.48 : 0.32)) { this.pathI++; return this.follow(); }
-    // ease off for the corner ahead (or the stop at the end) in proportion to how sharp it is
-    if (!n) this.pathCap = Math.sqrt(16 * Math.max(0.06, d - 0.22));
-    else { const turn = Math.abs(angDiff(Math.atan2(t1.x, t1.z), Math.atan2(n.x - p.x, n.z - p.z))); this.pathCap = lerp(6.5, 1.5, clamp(turn / 1.6, 0, 1)) + d * 1.3; }
-    return t1.multiplyScalar(1 / d).clone();
+    const path = this.path;
+    if (!path || this.pathI >= path.length) { this.pathLeft = 0; return null; }
+    const nav = this.G.world.nav, px = this.pos.x, pz = this.pos.z;
+    for (;;) {                                                                         // let go of points already reached or passed
+      const p = path[this.pathI], n = path[this.pathI + 1], d = Math.hypot(p.x - px, p.z - pz);
+      if (!n) { if (d < 0.26) { this.pathI++; this.pathLeft = 0; return null; } break; }
+      if (d >= 0.4 && !(d < 3 && segmentDistance(px, pz, p, n) < segmentDistance(px, pz, this.pathFrom, p))) break;
+      this.pathFrom = p; this.pathI++;
+    }
+    const p = path[this.pathI], d1 = Math.hypot(p.x - px, p.z - pz);
+    this.pathLeft = d1 + p.left;
+    this.pathBlocked = d1 > 0.6 && !nav.walkable(px, pz, p.x, p.z);
+    const look = clamp(0.75 + 0.42 * this.speed, 0.9, 2.7);
+    this.ahead(look, t1);
+    if (d1 < look && !nav.walkableWide(px, pz, t1.x, t1.z, 0.42)) t1.set(p.x, 0, p.z);  // cutting this corner would brush it: go to the point itself
+    this.ahead(look * 2.2 + 1.5, t2); this.leadYaw = Math.atan2(t2.x - px, t2.z - pz);
+    this.ahead(8, t2); this.farYaw = Math.atan2(t2.x - px, t2.z - pz);
+    // pace plan: v² = v_corner² + 2·a·d for each bend ahead, and for the halt at the end
+    let cap = Math.sqrt(2 * BRAKE * Math.max(0.015, this.pathLeft - 0.18)), dist = d1, ax = px, az = pz;
+    for (let k = this.pathI; k < path.length - 1 && k < this.pathI + 4 && dist < 14; k++) {
+      const b = path[k], c = path[k + 1], leg = Math.hypot(c.x - b.x, c.z - b.z);
+      let turn = Math.abs(angDiff(Math.atan2(b.x - ax, b.z - az), Math.atan2(c.x - b.x, c.z - b.z)));
+      turn *= clamp(leg / 2.2, 0.4, 1);                                                // a kink shorter than a stride or two is smoothed out by the look-ahead
+      const corner = lerp(5.6, 1.45, smooth(clamp((turn - 0.3) / 1.7, 0, 1)));
+      cap = Math.min(cap, Math.sqrt(corner * corner + 2 * BRAKE * Math.max(0, dist - 0.7)));
+      dist += leg; ax = b.x; az = b.z;
+    }
+    this.pathCap = cap;
+    t1.x -= px; t1.z -= pz; t1.y = 0;
+    const len = t1.length();
+    return len > 1e-4 ? this.wishVec.copy(t1).multiplyScalar(1 / len) : null;
   }
 
   // ---- movement + animation ------------------------------------------------------------------------------------------------
@@ -347,20 +457,48 @@ class Bot {
     }
     this.think -= dt;
     if (this.think <= 0) { const step = 0.1; this.think += step; this.brain(step, actors, cols); }
-    this.repath -= dt;
-    if (this.goal && this.repath <= 0 && this.state !== 'combat') { this.setGoal(this.goal.x, this.goal.z, this.runTo); }
-    // Anticipate nearby bodies before interpenetration. Brake while changing direction or aiming off the run line.
-    const want = this.wishDir, currentSpeed = Math.hypot(this.vel.x, this.vel.z);
-    const aimAngle = want ? Math.abs(angDiff(this.yaw, Math.atan2(want.x, want.z))) : 0;
-    const pace = this.state === 'combat' && aimAngle > 0.9 ? Math.min(this.wishSpeed, 2.65) : this.wishSpeed;
-    const sp = this.moveIntent = pace * (this.crouching ? 0.5 : 1) * (1 - this.flinch * 0.5);
-    let wx = want ? want.x * sp : 0, wz = want ? want.z * sp : 0;
+    // ---- where the soldier means to go this instant, and how fast
+    const combat = this.state === 'combat';
+    let want = this.wishDir, cruise = this.wishSpeed;
+    if (this.onPath) {
+      want = this.follow();
+      cruise = want ? Math.min(cruise, this.pathCap) : 0;
+      this.offPathT = want && this.pathBlocked ? this.offPathT + dt : 0;
+      // close enough: nobody shuffles about to stand on an exact spot
+      this.settleT = want && this.pathLeft < 0.9 && this.speed < 0.3 ? this.settleT + dt : 0;
+      if (this.settleT > 0.8) { this.pathI = this.path.length; this.settleT = 0; want = null; cruise = 0; }
+      if (this.offPathT > 0.45 && this.goal) this.setGoal(this.goal.x, this.goal.z, this.runTo);      // shoved off the route: plan again from here
+    } else { this.pathLeft = 0; this.leadYaw = this.farYaw = this.heading; }
+    // Running for cover, a soldier turns and runs. With the rifle up, he side-steps and backs away instead.
+    this.dash = combat && this.onPath && this.wishSpeed > 3 && this.pathLeft > (this.dash ? 1.0 : 2.4);
+    const travel = !combat || this.dash;
+    cruise *= (this.crouching ? 0.5 : 1) * (1 - this.flinch * 0.6);                    // a hit checks the stride
+    if (travel) cruise *= 1 + 0.035 * Math.sin(G.time * 0.63 + this.pace.sway);        // nobody holds a perfectly even pace
+    this.moveIntent = cruise;
+    let wx = want ? want.x * cruise : 0, wz = want ? want.z * cruise : 0;
+    // Anticipate nearby bodies before interpenetration: ease off and steer round them.
     for (const a of actors) {
       if (a === this || !a.alive || Math.abs(a.pos.y - this.pos.y) > 0.9) continue;
       const ax = a.pos.x - this.pos.x, az = a.pos.z - this.pos.z;
       const d = Math.hypot(ax, az);
-      if (d < 0.001 || d > 2.6) continue;
+      if (d < 0.001 || d > 7) continue;
       const nx = ax / d, nz = az / d;
+      if (travel && d > 1.1) {
+        // Seen coming: if the two will pass within a shoulder's width in the next second or so, drift to one side
+        // early (each to the same hand, so two walkers meeting head-on part) and ease off behind a slower one.
+        const rvx = this.vel.x - a.vel.x, rvz = this.vel.z - a.vel.z, rv2 = rvx * rvx + rvz * rvz;
+        const when = rv2 > 0.05 ? (ax * rvx + az * rvz) / rv2 : -1;
+        if (when > 0 && when < 1.7) {
+          const mx = ax - rvx * when, mz = az - rvz * when, miss = Math.hypot(mx, mz);
+          if (miss < 1.05) {
+            const hx = Math.sin(this.heading), hz = Math.cos(this.heading), across = mx * hz - mz * hx;
+            const k = (1 - miss / 1.05) * (1 - when / 1.7) * cruise * 0.85, hand = across > 0.08 ? -1 : 1;
+            wx += hz * hand * k; wz += -hx * hand * k;
+            if (ax * hx + az * hz > 0) { wx -= hx * k * 0.45; wz -= hz * k * 0.45; }
+          }
+        }
+        if (d > 2.6) continue;
+      } else if (d > 2.6) continue;
       const closing = (wx - a.vel.x) * nx + (wz - a.vel.z) * nz;
       const urgency = clamp((1.4 + clamp(closing * 0.23, 0, 1.1) - d) / 1.4, 0, 1);
       const forward = Math.max(0, wx * nx + wz * nz);
@@ -370,16 +508,99 @@ class Bot {
       wx += -nx * away + nz * dodge * side;
       wz += -nz * away - nx * dodge * side;
     }
-    const wishSpeed = Math.hypot(wx, wz);
-    const dvx = wx - this.vel.x, dvz = wz - this.vel.z, dl = Math.hypot(dvx, dvz);
-    const st = (wx * this.vel.x + wz * this.vel.z < currentSpeed * currentSpeed * 0.85 ? 12 : 7.2) * dt;
-    if (dl <= st) { this.vel.x = wx; this.vel.z = wz; } else { this.vel.x += dvx / dl * st; this.vel.z += dvz / dl * st; }
+    if (travel && want) {
+      // Someone in the way is walked round, not backed away from: keep the sideways part of the correction only.
+      const along = wx * want.x + wz * want.z;
+      if (along < 0) { wx -= want.x * along; wz -= want.z * along; }
+    }
+    let wishSpeed = Math.hypot(wx, wz);
+    const limit = Math.max(cruise, 1.2);
+    if (wishSpeed > limit) { wx *= limit / wishSpeed; wz *= limit / wishSpeed; wishSpeed = limit; }
+    this.dodgeT -= dt;
+    if (travel && wishSpeed > 0.3) {
+      // People neither brush along walls nor walk into posts. Feel along the intended course with a slightly wider
+      // body, a step ahead and again two steps ahead, and bend the course round whatever it touches. (Along the
+      // intended course, not the way the body faces: a soldier turning on the spot beside a wall must not chase his
+      // own correction round in circles.)
+      const hx = wx / wishSpeed, hz = wz / wishSpeed, step = 0.4 + this.speed * 0.2;
+      let bend = 0;
+      for (let k = 1; k <= 2 && step * k < (this.onPath ? this.pathLeft + 0.15 : 99); k++) {      // no further than the place being walked to, which may be right beside a wall
+        const fx = this.pos.x + hx * step * k, fz = this.pos.z + hz * step * k;
+        t4.set(fx, this.floorY, fz);
+        if (!resolveXZ(t4, BODY_RADIUS + 0.22, this.height, this.nearby)) continue;
+        const px = t4.x - fx, pz = t4.z - fz, back = -(px * hx + pz * hz);
+        let across = px * hz - pz * hx;
+        if (Math.abs(across) < back * 0.6) {
+          // dead ahead: pick a side and stay with it until past
+          if (this.dodgeT <= 0) this.dodgeSide = Math.abs(across) > 0.01 ? Math.sign(across) : Math.sin(this.heading) * hz - Math.cos(this.heading) * hx >= 0 ? 1 : -1;
+          this.dodgeT = 0.7;
+          across = this.dodgeSide * (Math.abs(across) + back * 0.9);
+        }
+        bend += across / k;
+      }
+      if (bend !== 0) {
+        const k = wishSpeed * 3.2;
+        wx += hz * bend * k; wz += -hx * bend * k;
+        const l = Math.hypot(wx, wz); if (l > 1e-4) { wx *= wishSpeed / l; wz *= wishSpeed / l; }
+      }
+    }
+    if (travel) {
+      // Walking somewhere: the body faces the way it is going. It turns at a rate a person can hold at that speed,
+      // slows for bends it cannot take, and turns before stepping off if the way lies behind it.
+      let target = wishSpeed, err = 0;
+      if (wishSpeed > 0.08) {
+        err = angDiff(this.heading, Math.atan2(wx, wz));
+        if (Math.abs(err) > 2.5 && err * this.headingRate < 0 && Math.abs(this.headingRate) > 0.25) err = -err;       // about-face: finish turning the way already begun
+        const off = Math.abs(err), look = 0.75 + 0.42 * this.speed;
+        target = Math.min(target, Math.sqrt(GRIP * look / (2 * Math.max(0.12, Math.sin(Math.min(off, Math.PI / 2))))));
+        if (off > 1.05) target = Math.min(target, lerp(1.3, 0, clamp((off - 1.05) / 0.85, 0, 1)));
+      } else if (!combat && this.speed < 0.3 && this.wantYaw != null) {
+        // standing: once the shoulders have turned as far as is comfortable, the feet shuffle round after them
+        const off = angDiff(this.heading, this.wantYaw);
+        if (Math.abs(off) > (this.turning > 0 ? 0.1 : 0.62)) { err = off; this.turning = 0.3; }
+      }
+      this.steerErr = err;
+      let turn = Math.min(PIVOT, GRIP / Math.max(this.speed, 0.3));
+      // Going back the way they came, people stop and turn round where they stand. Swinging round in an arc at a walk
+      // would carry them into whatever is beside the path.
+      if (Math.abs(err) > 1.25) turn *= clamp(1.2 - this.speed / 1.1, 0.12, 1);
+      const rate = clamp(err * 5.5, -1, 1) * turn;
+      this.headingRate = damp(this.headingRate, rate, 10, dt);
+      this.heading += this.headingRate * dt;
+      const sp = this.speed;
+      const effort = target > sp ? Math.min(lerp(START, START_FAST, clamp(sp / 5.2, 0, 1)), (target - sp) * 4.5) : -Math.min(BRAKE_MAX + this.flinch * 3, (sp - target) * 5);
+      this.push = damp(this.push, effort, 14, dt);                                     // effort builds over a step; it does not switch on
+      this.speed = Math.max(0, sp + this.push * dt);
+      if (this.speed < 0.03 && target < 0.03) { this.speed = 0; this.push = 0; }
+      this.vel.x = Math.sin(this.heading) * this.speed; this.vel.z = Math.cos(this.heading) * this.speed;
+    } else {
+      // Rifle up: steps in any direction, but only as fast as a person can side-step or back away.
+      const currentSpeed = Math.hypot(this.vel.x, this.vel.z);
+      if (wishSpeed > 0.05) {
+        const rel = Math.abs(angDiff(this.yaw, Math.atan2(wx, wz)));
+        const cap = lerp(lerp(9, SIDE_MAX, smooth(clamp((rel - 0.45) / 0.8, 0, 1))), BACK_MAX, smooth(clamp((rel - 1.7) / 0.9, 0, 1)));
+        if (wishSpeed > cap) { wx *= cap / wishSpeed; wz *= cap / wishSpeed; wishSpeed = cap; }
+      }
+      const dvx = wx - this.vel.x, dvz = wz - this.vel.z, dl = Math.hypot(dvx, dvz);
+      const st = (wx * this.vel.x + wz * this.vel.z < currentSpeed * currentSpeed * 0.85 ? SHUFFLE_STOP + this.flinch * 3 : SHUFFLE) * dt;
+      if (dl <= st) { this.vel.x = wx; this.vel.z = wz; } else { this.vel.x += dvx / dl * st; this.vel.z += dvz / dl * st; }
+      this.speed = Math.hypot(this.vel.x, this.vel.z); this.push = 0; this.headingRate = 0; this.steerErr = 0;
+      this.heading = this.speed > 0.3 ? Math.atan2(this.vel.x, this.vel.z) : this.bodyYaw;
+    }
     this.prevX = this.pos.x; this.prevZ = this.pos.z;
     const x = this.pos.x + this.vel.x * dt, z = this.pos.z + this.vel.z * dt;
-    if (this.place(x, z, cols)) {
+    const touched = this.place(x, z, cols);
+    this.grindT = touched ? this.grindT + dt : Math.max(0, this.grindT - dt * 2);
+    if (this.grindT > 0.3 && this.onPath && this.goal) { this.grindT = 0; this.setGoal(this.goal.x, this.goal.z, this.runTo); }      // pressed against something: find the way round from here
+    if (touched) {
+      this.bumps++;
       const mx = (this.pos.x - this.prevX) / dt, mz = (this.pos.z - this.prevZ) / dt;
       if (Math.hypot(mx, mz) < Math.min(wishSpeed + 0.1, Math.hypot(this.vel.x, this.vel.z))) {
         this.vel.x = lerp(this.vel.x, mx, 0.6); this.vel.z = lerp(this.vel.z, mz, 0.6);
+        this.speed = Math.hypot(this.vel.x, this.vel.z);
+        // up against something: turn to walk along it instead of leaning into it; a side-step simply ends there
+        if (travel && this.speed > 0.05) this.heading += angDiff(this.heading, Math.atan2(this.vel.x, this.vel.z)) * 0.5;
+        else if (!travel && !this.onPath) this.strafeGoal = null;
       }
     }
     return true;
@@ -399,19 +620,34 @@ class Bot {
     this.pos.y = damp(this.pos.y, this.floorY, 14, dt);
     const mx = this.pos.x - this.prevX, mz = this.pos.z - this.prevZ;
     const moved = Math.min(Math.hypot(mx, mz) / dt, Math.hypot(this.vel.x, this.vel.z) + 0.45);
-    if (this.moveIntent > 1 && moved < 0.4) { this.stuckT += dt; if (this.stuckT > 0.9) { this.stuckT = 0; this.path = null; this.cover = null; this.strafeGoal = null; this.repath = 0; if (this.goal) this.setGoal(this.goal.x, this.goal.z, this.runTo); } } else this.stuckT = 0;
-    // facing: the aim eases round to where it is wanted; the pelvis follows the feet and the spine makes up the difference
-    if (this.wantYaw != null) { const maxRate = this.state === 'combat' ? 7.5 : 5; this.yawVel = damp(this.yawVel, clamp(angDiff(this.yaw, this.wantYaw) * 10, -maxRate, maxRate), 16, dt); this.yaw += this.yawVel * dt; }
-    let tgt = this.bodyYaw; this.turning = Math.max(0, this.turning - dt);
+    // held up while facing the way and trying to go (turning round on the spot does not count)
+    if (this.moveIntent > 1 && moved < 0.4 && Math.abs(this.steerErr) < 0.9) { this.stuckT += dt; if (this.stuckT > 0.9) { this.stuckT = 0; this.path = null; this.cover = null; this.strafeGoal = null; if (this.goal) this.setGoal(this.goal.x, this.goal.z, this.runTo); } } else this.stuckT = 0;
+    const combat = this.state === 'combat', travel = !combat || this.dash, priorYaw = this.bodyYaw;
+    this.turning = Math.max(0, this.turning - dt);
     if (moved > 0.25) this.travelYaw += angDiff(this.travelYaw, Math.atan2(mx, mz)) * (1 - Math.exp(-13 * dt));
-    if (moved > 0.55) {
-      const mv = this.travelYaw, rel = Math.abs(angDiff(this.yaw, mv));
-      this.back = rel > (this.back ? 1.75 : 2.05);                                   // moving away from where the rifle points: back-pedal
-      const bodyTurn = this.state === 'combat' ? 0.24 : 1.05;
-      tgt = this.yaw + clamp(angDiff(this.yaw, this.back ? mv + Math.PI : mv), -bodyTurn, bodyTurn);
-    } else if (this.state !== 'combat' || Math.abs(angDiff(this.bodyYaw, this.yaw)) > 0.57 || this.turning > 0) { this.turning = 0.23; tgt = this.yaw; }
-    const priorYaw = this.bodyYaw;
-    this.bodyYaw += clamp(angDiff(this.bodyYaw, tgt), -dt * 6.5, dt * 6.5);
+    if (travel) {
+      // Hips follow the feet. Shoulders and rifle turn a little further: into the bend ahead, or towards whatever has
+      // the soldier's attention, as far as the spine allows at that pace.
+      let watch = this.heading;
+      if (this.wantYaw != null && (combat || moved < 0.3 || this.state === 'search')) watch = this.wantYaw;
+      else if (moved > 0.3) watch = this.heading + clamp(angDiff(this.heading, this.leadYaw) * 0.6, -0.42, 0.42);
+      const reach = lerp(1.0, 0.8, clamp(moved / 4.5, 0, 1));
+      const chest = this.heading + clamp(angDiff(this.heading, watch), -reach, reach);
+      const maxRate = combat ? 6.5 : 3.4;
+      this.yawVel = damp(this.yawVel, clamp(angDiff(this.yaw, chest) * 8, -maxRate, maxRate), 12, dt); this.yaw += this.yawVel * dt;
+      this.back = false;
+      this.bodyYaw += clamp(angDiff(this.bodyYaw, this.heading), -dt * 5.5, dt * 5.5);
+    } else {
+      // Rifle up: the aim eases round to the target; the pelvis follows the feet and the spine makes up the difference.
+      if (this.wantYaw != null) { this.yawVel = damp(this.yawVel, clamp(angDiff(this.yaw, this.wantYaw) * 10, -7.5, 7.5), 16, dt); this.yaw += this.yawVel * dt; }
+      let tgt = this.bodyYaw;
+      if (moved > 0.55) {
+        const mv = this.travelYaw, rel = Math.abs(angDiff(this.yaw, mv));
+        this.back = rel > (this.back ? 1.75 : 2.05);                                   // moving away from where the rifle points: back-pedal
+        tgt = this.yaw + clamp(angDiff(this.yaw, this.back ? mv + Math.PI : mv), -0.24, 0.24);
+      } else if (Math.abs(angDiff(this.bodyYaw, this.yaw)) > 0.57 || this.turning > 0) { this.turning = 0.23; tgt = this.yaw; }
+      this.bodyYaw += clamp(angDiff(this.bodyYaw, tgt), -dt * 6.5, dt * 6.5);
+    }
     const tw = angDiff(this.bodyYaw, this.yaw); if (Math.abs(tw) > 1.25) this.bodyYaw = this.yaw - Math.sign(tw) * 1.25;
     this.turnRate = damp(this.turnRate, angDiff(priorYaw, this.bodyYaw) / dt, 12, dt);
     this.pitch = damp(this.pitch, this.state === 'combat' ? (this.wantPitch || 0) : 0, 8, dt);
@@ -423,11 +659,11 @@ class Bot {
 
   animate(dt, moved, cols) {
     const G = this.G, b = this.b, gait = G.bots.gait;
-    // lean into acceleration and pace like a runner does; the whole figure pivots at the feet
+    // Lean into acceleration and into bends as a runner does; the whole figure pivots at the feet.
     const ax = (this.vel.x - this.pvx) / Math.max(dt, 1e-3), az = (this.vel.z - this.pvz) / Math.max(dt, 1e-3); this.pvx = this.vel.x; this.pvz = this.vel.z;
     const by = this.bodyYaw, bfx = Math.sin(by), bfz = Math.cos(by);
-    this.leanF = damp(this.leanF, clamp((ax * bfx + az * bfz) * 0.014 + (this.vel.x * bfx + this.vel.z * bfz) * 0.013, -0.12, 0.2), 6, dt);
-    this.leanS = damp(this.leanS, clamp((ax * -bfz + az * bfx) * 0.018, -0.15, 0.15), 6, dt);
+    this.leanF = damp(this.leanF, clamp((ax * bfx + az * bfz) * 0.021 + (this.vel.x * bfx + this.vel.z * bfz) * 0.011, -0.13, 0.2), 5, dt);
+    this.leanS = damp(this.leanS, clamp((ax * -bfz + az * bfx) * 0.03, -0.19, 0.19), 5, dt);
     this.root.position.copy(this.pos); this.root.rotation.y = by + Math.PI;            // the rig's rest pose faces -Z
     this.model.rotation.set(-this.leanF, 0, -this.leanS);
     // Keep both clips on the same stride. Turning on the spot advances it with shorter steps.
@@ -435,7 +671,10 @@ class Bot {
     const s = this.speedAnim, Wk = gait.walk, Rn = gait.run;
     const pivot = smooth(clamp((0.8 - s) / 0.8, 0, 1)) * clamp(Math.abs(this.turnRate) / 2.6, 0, 1);
     const wMove = clamp(Math.max(s / 0.67, pivot * 0.82), 0, 1);
-    const wRun = smooth(clamp((s - Wk.v * 1.15) / Math.max(0.5, Rn.v * 0.88 - Wk.v * 1.15), 0, 1)) * (1 - this.crouch);
+    // A person either walks or runs and changes from one to the other within a step or two; nobody cruises half-way.
+    this.running = this.crouch < 0.5 && s > (this.running ? RUN_TO_WALK : WALK_TO_RUN);
+    this.runGait = damp(this.runGait, this.running ? 1 : 0, 7.5, dt);
+    const wRun = smooth(this.runGait) * (1 - this.crouch);
     const motionAngle = angDiff(by, this.travelYaw);
     directionBlend(this.gaitBlend, motionAngle, s, dt);
     const { left, right, back } = this.gaitBlend;
@@ -444,11 +683,12 @@ class Bot {
     const warp = clamp(left * angDiff(Math.PI / 2, motionAngle) + right * angDiff(-Math.PI / 2, motionAngle)
       + back * angDiff(Math.PI, motionAngle), -0.38, 0.38);
     this.act.idle.setEffectiveWeight(1 - wMove); this.act.walk.setEffectiveWeight(wMove * (1 - wRun)); this.act.run.setEffectiveWeight(wMove * wRun);
-    const stepScale = clamp(Math.sqrt(s / Wk.v), 0.30, 1) * (1 - this.crouch * 0.32) * (1 - Math.abs(Math.sin(drift)) * 0.18);
+    // Walking faster means longer and quicker steps in equal measure (both grow with the root of the speed).
+    // Running holds nearly the same cadence from a jog to a sprint and covers the difference in stride.
+    const walkStride = Wk.v * Wk.dur * clamp(Math.sqrt(s / Wk.v), 0.30, 1.2) * (1 - this.crouch * 0.32) * (1 - Math.abs(Math.sin(drift)) * 0.18);
+    const runStride = Math.max(s, 1.6) * lerp(0.78, 0.655, clamp((s - 2.4) / 3, 0, 1));
+    const stride = lerp(walkStride, runStride, wRun);
     const clipStride = lerp(Wk.v * Wk.dur, Rn.v * Rn.dur, wRun);
-    // At jogging pace, build cadence before opening into the full measured run stride.
-    const jogLimit = lerp(2.4, clipStride, smooth(clamp((s - 3.1) / 1.65, 0, 1)));
-    const stride = Math.min(clipStride, jogLimit) * stepScale;
     const reach = stride / clipStride;
     const contact = lerp(lerp(Wk.contact, Rn.contact, wRun), CONTACT, directional);
     const cycleLength = stride * (1 - directional) + (left + right) * STRAFE_STRIDE + back * BACK_STRIDE;
@@ -469,20 +709,38 @@ class Bot {
     // The Character armature is rotated -90° around X, so hips Z is height in centimetres.
     const crouchDrop = this.crouch * lerp(0.35, 0.26, directional);
     b.hips.position.z -= crouchDrop * 100;
-    b.spine.rotation.x += this.crouch * 0.34;
+    // The walk clip was made for swinging arms and carries the chest behind the hips. With a rifle held out in
+    // front, a walking soldier settles the other way: shoulders a little forward over the weapon, head level.
+    const hunch = wMove * (1 - wRun) * (1 - directional) * 0.13;
+    b.spine.rotation.x += this.crouch * 0.34 + hunch * 0.45;
+    b.spine1.rotation.x += hunch * 0.35; b.spine2.rotation.x += hunch * 0.2; b.neck.rotation.x -= hunch * 0.55;
     this.root.updateMatrixWorld(true);
     const legPose = { bfx, bfz, drift, warp, walk: wMove, stride: lerp(reach, 1, directional), pivot, contact, directional, crouchDrop };
-    this.poseFoot(0, b.lul, b.ll, b.lft, legPose, dt);
-    this.poseFoot(1, b.rul, b.rl, b.rft, legPose, dt);
-    // head: on the target in a fight, otherwise checking ahead and to the sides
-    this.lookT -= dt;
-    if (this.lookT <= 0) { this.lookT = 0.8 + this.rnd() * 2.2; this.lookGoal = this.state === 'combat' ? 0 : (this.rnd() - 0.5) * (moved > 1 ? 1.1 : 1.7); }
-    this.headYaw = damp(this.headYaw, this.state === 'combat' ? 0 : this.lookGoal, 5, dt);
+    this.poseFoot(0, b.lul, b.ll, b.lft, b.ltoe, legPose, dt);
+    this.poseFoot(1, b.rul, b.rl, b.rft, b.rtoe, legPose, dt);
+    // Head: on the target in a fight. Otherwise the eyes go first: into the bend the route is about to take, down a
+    // side street as it opens up, and now and then to either side.
+    const calm = this.state !== 'combat';
+    this.lookT -= dt; this.probeT -= dt;
+    if (calm && this.probeT <= 0) {
+      this.probeT = 0.3;
+      for (let k = 0; k < 2; k++) {
+        const a = this.heading + (k ? -1.25 : 1.25), open = rayBoxes(this.pos.x, this.pos.y + 1.5, this.pos.z, Math.sin(a), 0, Math.cos(a), 14, cols, null) > 9;
+        if (open && !this.sideOpen[k] && moved > 0.8 && this.lookT < 2.2) { this.lookGoal = (k ? -1 : 1) * (0.85 + this.rnd() * 0.3); this.lookT = 0.75 + this.rnd() * 0.7; }
+        this.sideOpen[k] = open;
+      }
+    }
+    if (this.lookT <= 0) {
+      this.lookT = 0.9 + this.rnd() * 2.1;
+      this.lookGoal = !calm ? 0 : this.rnd() < 0.3 ? 0 : (this.rnd() - 0.5) * (moved > 1 ? 0.95 : 1.6);
+    }
+    const lead = calm && moved > 0.5 ? clamp(angDiff(this.yaw, this.farYaw) * 0.75, -0.7, 0.7) : 0;
+    this.headYaw = damp(this.headYaw, calm ? clamp(this.lookGoal + lead, -1.2, 1.2) : 0, 5.5, dt);
     b.neck.rotation.y += this.headYaw * 0.35; b.head.rotation.y += this.headYaw * 0.65; b.head.rotation.x -= this.pitch * this.aim * 0.3;
     poseBotRifle(this, dt);
   }
 
-  poseFoot(i, thigh, knee, foot, pose, dt) {
+  poseFoot(i, thigh, knee, foot, toe, pose, dt) {
     const { bfx: fx, bfz: fz, drift, warp, walk, stride, pivot, contact, directional, crouchDrop } = pose;
     foot.getWorldPosition(footPos);
     foot.getWorldQuaternion(footQuat);
@@ -498,41 +756,66 @@ class Bot {
     footPos.y += crouchDrop;
 
     const elapsed = (this.phase + i * 0.5) % 1;
-    const stance = elapsed < contact;
     const flat = clamp(Math.abs(Math.sin(drift)) * walk + pivot * 0.55 + this.crouch * 0.4, 0, 1);
     q1.setFromAxisAngle(UP, this.bodyYaw + Math.PI).multiply(this.G.bots.gait.flatFoot[i]);
     footQuat.slerp(q1, flat);
     heelPos.copy(HEEL).multiplyScalar(0.01).applyQuaternion(footQuat).add(footPos);
+    ballPos.copy(BALL).multiplyScalar(0.01).applyQuaternion(footQuat).add(footPos);
     toePos.copy(TOE).multiplyScalar(0.01).applyQuaternion(footQuat).add(footPos);
+    capPos.copy(TOE_END).applyQuaternion(toe.quaternion).add(toe.position).multiplyScalar(0.01).applyQuaternion(footQuat).add(footPos);
     const cols = this.nearby;
     const heelGround = groundAt(heelPos.x, heelPos.z, this.floorY, 0.055, cols).y;
     const toeGround = groundAt(toePos.x, toePos.z, this.floorY, 0.055, cols).y;
     const floor = Math.max(heelGround, toeGround);
     this.footGround[i] = damp(this.footGround[i], floor, 18, dt);
-    const heightAdjust = Math.max(this.footGround[i] - this.pos.y, floor - Math.min(heelPos.y, toePos.y) + 0.009);
+    // Pushing off, the heel rises over the ball of the foot while the toes stay flat, so the sole's low point is the
+    // heel, the ball or the bent toe cap, never the toe of a rigid boot.
+    const forefoot = Math.min(ballPos.y, capPos.y - CAP_SOLE);
+    // A swinging boot clears the ground by a finger's width at its lowest; it does not brush it.
+    const swing = clamp((elapsed - contact) / (1 - contact), 0, 1), clearance = 0.009 + 0.016 * Math.sin(Math.PI * swing) ** 2 * walk * (1 - directional);
+    const heightAdjust = Math.max(this.footGround[i] - this.pos.y, floor - Math.min(heelPos.y, forefoot) + clearance);
     footPos.y += heightAdjust;
+    // The stride's contact phase says when a boot should be bearing weight; it stays down a little longer if the
+    // forefoot has not yet left the ground.
+    const stance = walk >= 0.25 && (elapsed < contact || (!!this.plants[i] && elapsed < contact + 0.11 && forefoot + heightAdjust - floor < 0.024));
 
-    if (!stance || walk < 0.25) {
-      if (this.plants[i]) this.releasedPlants[i] = this.plants[i];
-      this.plants[i] = null;
-    } else if (!this.plants[i]) {
-      this.plants[i] = { position: footPos.clone(), rotation: footQuat.clone() };
-      this.releasedPlants[i] = null;
+    // Stance: the part of the sole carrying the weight stays where it landed. That is the heel first, then the ball
+    // of the foot as the heel peels up, then the toe as the boot rolls off, so it turns over the spot instead of
+    // skating across it. A boot that has landed also keeps its direction while the body turns above it.
+    let plant = this.plants[i];
+    if (!stance) {
+      if (plant) { plant.t = 0; this.releasedPlants[i] = plant; }
+      this.plants[i] = plant = null;
+    } else {
+      if (plant) footQuat.premultiply(q1.setFromAxisAngle(UP, clamp(angDiff(this.bodyYaw, plant.yaw), -0.75, 0.75)));
+      heelPos.copy(HEEL).multiplyScalar(0.01).applyQuaternion(footQuat).add(footPos);
+      ballPos.copy(BALL).multiplyScalar(0.01).applyQuaternion(footQuat).add(footPos);
+      capPos.copy(TOE_END).applyQuaternion(toe.quaternion).add(toe.position).multiplyScalar(0.01).applyQuaternion(footQuat).add(footPos);
+      let part = plant ? plant.part : 0, lowest = plant ? (part === 0 ? heelPos.y : part === 1 ? ballPos.y : capPos.y - CAP_SOLE) - 0.012 : 9;      // the current pivot keeps the job until another point is clearly lower
+      if (heelPos.y < lowest) { lowest = heelPos.y; part = 0; }
+      if (ballPos.y < lowest) { lowest = ballPos.y; part = 1; }
+      if (capPos.y - CAP_SOLE < lowest) part = 2;
+      const point = part === 0 ? heelPos : part === 1 ? ballPos : capPos;
+      if (!plant) {
+        plant = this.plants[i] = { part, x: point.x, z: point.z, yaw: this.bodyYaw, dx: 0, dz: 0, t: 0 };
+        this.releasedPlants[i] = null;
+      } else if (plant.part !== part) { plant.part = part; plant.x = point.x + plant.dx; plant.z = point.z + plant.dz; }      // weight rolls on: the new pivot is wherever the held boot has it
+      let dx = plant.x - point.x, dz = plant.z - point.z;
+      const far = Math.hypot(dx, dz), limit = lerp(0.24, 0.46, directional);
+      if (far > limit) { dx *= limit / far; dz *= limit / far; plant.x = point.x + dx; plant.z = point.z + dz; }               // the body has outrun the leg: drag the boot rather than tear the knee straight
+      plant.dx = dx; plant.dz = dz;
+      footPos.x += dx; footPos.z += dz;
     }
-    const plant = this.plants[i];
-    const release = clamp((elapsed - contact) / 0.13, 0, 1);
-    if (release === 1 || walk < 0.25) this.releasedPlants[i] = null;
-    const anchor = plant || this.releasedPlants[i];
-    if (anchor) {
-      // Hold the directional plant through toe-off. Hand back to the authored swing once the boot lifts.
-      const enter = smooth(clamp(elapsed / 0.065, 0, 1));
-      const earlyRelease = smooth(clamp((contact - elapsed) / 0.085, 0, 1));
-      const load = plant ? enter * lerp(earlyRelease, 1, directional) : directional * (1 - smooth(release));
-      const limit = lerp(0.21, 0.46, directional);
-      const w = walk * load * Math.min(1, limit / Math.max(0.01, footPos.distanceTo(anchor.position)));
-      footPos.x = lerp(footPos.x, anchor.position.x, w);
-      footPos.z = lerp(footPos.z, anchor.position.z, w);
-      footQuat.slerp(anchor.rotation, w * directional);
+    const released = this.releasedPlants[i];
+    if (released) {
+      // Lifting off: hand the boot back to the authored swing over a few frames.
+      released.t += dt;
+      const k = 1 - smooth(clamp(released.t / 0.11, 0, 1));
+      if (k <= 0) this.releasedPlants[i] = null;
+      else {
+        footPos.x += released.dx * k; footPos.z += released.dz * k;
+        footQuat.premultiply(q1.setFromAxisAngle(UP, clamp(angDiff(this.bodyYaw, released.yaw), -0.75, 0.75) * k));
+      }
     }
 
     // Both ends of the boot need horizontal clearance below the body capsule.
@@ -555,8 +838,10 @@ class Bot {
       foot.getWorldPosition(legBase);
       heelPos.copy(HEEL).multiplyScalar(0.01).applyQuaternion(footQuat).add(legBase);
       toePos.copy(TOE).multiplyScalar(0.01).applyQuaternion(footQuat).add(legBase);
+      ballPos.copy(BALL).multiplyScalar(0.01).applyQuaternion(footQuat).add(legBase);
+      capPos.copy(TOE_END).applyQuaternion(toe.quaternion).add(toe.position).multiplyScalar(0.01).applyQuaternion(footQuat).add(legBase);
       const heelLift = groundAt(heelPos.x, heelPos.z, this.floorY, 0.055, cols).y - heelPos.y;
-      const toeLift = groundAt(toePos.x, toePos.z, this.floorY, 0.055, cols).y - toePos.y;
+      const toeLift = groundAt(toePos.x, toePos.z, this.floorY, 0.055, cols).y - Math.min(ballPos.y, capPos.y - CAP_SOLE);
       const lift = Math.max(heelLift, toeLift);
       if (lift > 0.015) {
         footPos.copy(legBase); footPos.y += lift + 0.009;
@@ -583,6 +868,7 @@ export class Bots {
   }
   reset() { this.reports = [[], []]; for (const b of this.list) { b.alive = false; b.root.visible = false; b.gun.visible = false; b.respawnT = 0.2 + b.idx * 0.3; b.kills = 0; b.deaths = 0; b.mixer.timeScale = 1; b.rag = null; b.dropped = null; b.fall = null; } }
   coverTaken(ci, who) { return this.list.some(b => b !== who && b.alive && b.cover && b.cover.ci === ci); }
+  occupied(spot, who) { return this.actors().some(a => a !== who && a.alive && Math.hypot(a.pos.x - spot.x, a.pos.z - spot.z) < 0.95); }
   report(team, pos, by, enemy) { const r = this.reports[team]; r.push({ pos: pos.clone(), when: this.G.time, by }); if (r.length > 8) r.shift(); if (enemy && team === this.G.player.team) this.G.hud.ping(enemy, 3); }
 
   // Spawn away from hostile eyes: no line of sight to an enemy, as far from them as possible.
@@ -679,7 +965,7 @@ export class Bots {
     if (d >= BODY_SPACING) return;
     const nx = d > 0.001 ? dx / d : Math.cos(a.yaw);
     const nz = d > 0.001 ? dz / d : -Math.sin(a.yaw);
-    const push = Math.min(BODY_SPACING - d, 0.18) * (b.isPlayer ? 1 : 0.5);
+    const push = b.isPlayer ? Math.min(BODY_SPACING - d, 0.18) : Math.min((BODY_SPACING - d) * 0.25, 0.012);     // soldiers ease apart; only the player's momentum shoves at once
     a.place(a.pos.x + nx * push, a.pos.z + nz * push, cols);
     if (!b.isPlayer) b.place(b.pos.x - nx * push, b.pos.z - nz * push, cols);
   }

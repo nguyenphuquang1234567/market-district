@@ -77,10 +77,19 @@ Key bindings live in the same saved settings object (`binds`); there is no rebin
   of view (which follows where the head is turned) with line of sight and a detection delay, react to gunfire and footsteps
   with an uncertain position, share sightings after a delay, use cover and peek, fire in bursts, reload, search after losing
   contact, and respawn out of sight.
-- **How they move** — soldiers slow into turns and steer around nearby bodies before contact. Local direction and speed blend
-  forward, lateral and backward steps while the upper body can keep its aim. Contact phases keep the supporting boot planted
-  while the other foot swings. Leg IK adjusts foot placement on kerbs and stairs. When the barrel approaches a wall, the
-  soldier tucks the rifle closer to the chest.
+- **How they move** — within what a person carrying a rifle and kit can do. Soldiers either walk (about 1.6 m/s) or run
+  (a 3.5 m/s jog up to a 5 m/s run) and change between the two in a step or two; each has their own pace. They move up
+  briskly while the fighting is far off, run towards a reported contact and close the last stretch at a walk. Starting
+  takes about 3 m/s², planned braking 2.8 m/s², and a bend is taken no faster than 3.8 m/s² of sideways load allows, so
+  they slow before a street corner and walk it as an arc. Going back the way they came, they halt and turn on the spot.
+  Routes keep a shoulder's width off walls, favour the edge of a street over its middle, and differ a little from one
+  soldier to the next. Out of contact the hips follow the feet while the chest turns into the coming bend and the head
+  goes first: along the route, down a side street as it opens, and to either side. At some waypoints they stop and look
+  left and right; most they walk through. They step round each other early and walk round a post instead of into it.
+  Walking steps lengthen and quicken together; running keeps its cadence and lengthens the stride. The part of the sole
+  carrying the weight (heel, then ball of the foot, then toe) stays where it landed. With the rifle up they side-step
+  and back away on separate gaits, no faster than 2.5 and 2 m/s; running for cover they turn and run. Leg IK adjusts
+  foot placement on kerbs and stairs. When the barrel approaches a wall, the soldier tucks the rifle closer to the chest.
 - **Physics** — a rigid-body world (Rapier) built from the district's collision boxes. 160-odd pieces of loose clutter
   (chairs, crates, cans, bins, tyres, pots, baskets, gas bottles, hand trucks…) rest as dressed until disturbed, then can be
   shoved by walking into them and knocked about by bullets, with material-dependent mass, friction and bounce; light
@@ -157,8 +166,12 @@ In the browser console, with the dev server running:
 
 - `G.selfTest()` — scripted checks through the real systems: movement, kerbs, mantle, fire modes, firing on the run,
   reloads, hit zones, scoring, AI perception, damage, death and respawn, match endings, restart, a 90 s bot-only stretch,
-  props shoved and shot, a ragdoll falling to rest and the body staying behind, bot stride length and acceleration, torso
-  direction changes, planted-foot drift in a strafe, the bot magazine reload, sound arrival delay, wall muffling, and echoes.
+  props shoved and shot, a ragdoll falling to rest and the body staying behind, bot acceleration and stride length,
+  planted-sole drift walking, running and strafing, a street corner taken at a run (sideways load, braking, wall
+  contact), the bot magazine reload, sound arrival delay, wall muffling, and echoes.
+- `tools/locomotion-probe.js` — measures how the soldiers move over minutes of play (see the top of the file):
+  `probe.patrol(G, 150)` reports acceleration, turn rates, sole drift, wall clearance, stops and wall contacts;
+  `probe.map`, `probe.sheet` and `probe.film` save a route plot, a contact sheet and film frames to `captures/`.
 - `await G.proof()` — writes fourteen fixed-bookmark screenshots at 1920×1080 to `captures/`; `await G.proof(1754, 864)` does
   the same at 2192×1080 (`*_uw.jpg`).
 - `G.bench()` — the GPU frame-time benchmark above. `G.report()` — the on-screen pacing, audio-level and input snapshot.
@@ -194,14 +207,14 @@ src/player.js         input, movement, camera, health, hitscan
 src/bots.js           soldier movement, perception, decisions, fire
 src/soldier-gait.js   directional gait keyframes and blend
 src/bot-rifle.js      low-ready, aim and hand placement on the bot rifle
-src/physics.js        box collision, rays, navigation grid + A*
+src/physics.js        box collision, rays, navigation grid + A* with wall clearance and lanes
 src/rigid.js          rigid-body world: loose props, pushing, bullets, ragdolls, dropped rifles, corpses
 src/fx.js             particles, decals, tracers, casings
 src/sounds.js         modelled sound library (pure JS, computed at boot)
 src/audio.js          audio engine: propagation, occlusion, reflections, reverbs, mix
 src/hud.js            HUD and menus
 src/selftest.js       scripted checks and capture set
-tools/                asset downloader, static server, native window (tools/shell), audio-report.mjs
+tools/                asset downloader, static server, native window (tools/shell), audio-report.mjs, locomotion-probe.js
 ```
 
 Assets and licences are listed in `ASSETS.md`.
