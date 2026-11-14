@@ -13,7 +13,7 @@ export class Player {
     this.G = G; this.team = 0; this.name = 'You'; this.isPlayer = true; this.rnd = rng(8080);
     this.pos = V(0, 0, -58); this.vel = V(); this.yaw = 0; this.pitch = 0; this.health = 100; this.alive = false;
     this.crouching = false; this.crouch = 0; this.grounded = true; this.eyeY0 = 1.62; this.camY = 1.62;
-    this.keys = new Set(); this.mouse = { dx: 0, dy: 0, l: false, r: false }; this.sim = null;
+    this.keys = new Set(); this.mouse = { dx: 0, dy: 0, l: false, r: false, x: null, y: 0 }; this.sim = null;
     this.recoilP = 0; this.recoilY = 0; this.punchP = 0; this.punchR = 0; this.fovKick = 0; this.shake = 0; this.bob = 0; this.stepD = 0; this.landDip = 0;
     this.hurtT = 9; this.deadT = 0; this.respawnT = 0; this.kills = 0; this.deaths = 0; this.inSun = true; this.interior = 0; this.probeT = 0; this.mantle = null; this.surf = 'concrete';
     this.ray = new THREE.Raycaster(); this.ray.firstHitOnly = true;
@@ -21,22 +21,29 @@ export class Player {
     this.inputCount = { keys: 0, moves: 0, clicks: 0 };
     addEventListener('keydown', e => { if (e.repeat) return; this.inputCount.keys++; this.keys.add(e.code); this.onKey(e.code); if (['Space', 'Tab', 'ControlLeft'].includes(e.code)) e.preventDefault(); });
     addEventListener('keyup', e => this.keys.delete(e.code));
-    addEventListener('blur', () => { this.keys.clear(); this.mouse.l = this.mouse.r = false; });
-    const captured = () => document.pointerLockElement === el || (G.noLock && G.playing);
-    let lx = null, ly = 0;
+    addEventListener('blur', () => this.clearInput());
+    const captured = () => G.playing && (document.pointerLockElement === el || G.noLock);
     addEventListener('mousemove', e => {
-      if (!captured()) { lx = null; return; }
+      if (!captured()) return;
       this.inputCount.moves++;
       let dx = e.movementX || 0, dy = e.movementY || 0;
       if (!document.pointerLockElement) {       // unlocked fallback: movement deltas are unreliable here (WebKit), so follow the cursor position instead
-        dx = lx === null ? 0 : clamp(e.clientX - lx, -160, 160); dy = lx === null ? 0 : clamp(e.clientY - ly, -160, 160);
-        lx = e.clientX; ly = e.clientY;
+        const { x, y } = this.mouse;
+        dx = x === null ? 0 : clamp(e.clientX - x, -160, 160); dy = x === null ? 0 : clamp(e.clientY - y, -160, 160);
+        this.mouse.x = e.clientX; this.mouse.y = e.clientY;
       }
       this.mouse.dx += dx; this.mouse.dy += dy;
     });
     addEventListener('mousedown', e => { if (!captured()) return; this.inputCount.clicks++; if (e.button === 0) this.mouse.l = true; if (e.button === 2) this.mouse.r = true; });
     addEventListener('mouseup', e => { if (e.button === 0) this.mouse.l = false; if (e.button === 2) this.mouse.r = false; });
     addEventListener('contextmenu', e => e.preventDefault());
+  }
+
+  clearInput() {
+    this.keys.clear();
+    this.mouse.dx = this.mouse.dy = 0;
+    this.mouse.l = this.mouse.r = false;
+    this.mouse.x = null;
   }
 
   get eyeY() { return this.pos.y + lerp(1.62, 1.08, this.crouch); }

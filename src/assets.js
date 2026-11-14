@@ -39,6 +39,33 @@ const MODELS = {
 
 export const assets = { tex: {}, proto: {}, soldier: null, sky: null };
 
+// Vanguard's red insignia is painted into its diffuse atlas. Shift only those pixels for the blue team,
+// keeping the texture's wear and material detail on the same skin instead of attaching extra geometry.
+function blueInsignia(map) {
+  const canvas = document.createElement('canvas');
+  canvas.width = map.image.width;
+  canvas.height = map.image.height;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(map.image, 0, 0);
+  const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const data = pixels.data;
+  for (let i = 0; i < data.length; i += 4) {
+    const red = data[i], green = data[i + 1], blue = data[i + 2];
+    if (red < 32) continue;
+    const redSaturation = 1 - Math.max(green, blue) / red;
+    const weight = Math.min(1, Math.max(0, (redSaturation - 0.47) / 0.27));
+    if (!weight) continue;
+    data[i] = red + (red * 0.32 - red) * weight;
+    data[i + 1] = green + (red * 0.77 - green) * weight;
+    data[i + 2] = blue + (red * 1.3 - blue) * weight;
+  }
+  ctx.putImageData(pixels, 0, 0);
+  const tex = map.clone();
+  tex.source = new THREE.Source(canvas);
+  tex.needsUpdate = true;
+  return tex;
+}
+
 // The scans are film-resolution; cut each prop to a triangle budget that suits its size on screen.
 const BUDGET = { wall_lamp: 1800, barrier: 6000, barrier2: 4500, car: 12000, shelves: 1400, power_box: 500, ac: 2200, ac_rust: 2200, pot: 420, crate: 1400, cardboard: 900, basket: 700, basket_tall: 700, jerrycan: 800, chair: 2600, plastic_crate: 1300 };
 function simplify(g, target, err = 0.12) {
@@ -119,7 +146,11 @@ export async function loadAssets(renderer, onProgress) {
       for (const [name, re] of defs) assets.proto[name] = bake(g.scene, re, name);
     }));
   }
-  jobs.push(gl.loadAsync('assets/models/soldier.glb').then(g => { assets.soldier = g; }));
+  jobs.push(gl.loadAsync('assets/models/soldier.glb').then(g => {
+    const body = g.scene.getObjectByName('vanguard_Mesh');
+    g.allyMap = blueInsignia(body.material.map);
+    assets.soldier = g;
+  }));
   jobs.push(hl.loadAsync('assets/hdri/sky.hdr').then(t => { assets.sky = t; }));
   await Promise.all(jobs);
   return assets;

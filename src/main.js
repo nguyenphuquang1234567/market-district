@@ -90,35 +90,96 @@ async function start() {
     G.matchLive = true;
   }
   function endMatch(reason) {
-    G.matchLive = false; G.playing = false;
-    if (document.pointerLockElement) document.exitPointerLock();
+    G.matchLive = false;
+    stopPlaying();
+    releaseMouse();
     const d = G.score[0] - G.score[1];
     G.hud.show('results', { win: d === 0 ? null : d > 0, reason }); G.audio.ui('end');
   }
-  // Mouse capture. Raw (unaccelerated) input where the browser offers it; if capture is refused (some embedded
-  // previews), fall back to uncaptured mouse-look so the game is still playable there. Esc pauses in that mode.
-  const noLock = () => { if (G.noLock && G.playing) return; G.noLock = true; G.playing = G.matchLive; G.hud.show(null); G.audio.resume(); $('hint').classList.add('on'); last = performance.now(); };
   G.resetMatch = resetMatch;
-  const lock = async () => {
-    if (G.noLock) return noLock();
-    try { await canvas.requestPointerLock({ unadjustedMovement: true }); }
-    catch { try { await canvas.requestPointerLock(); } catch { noLock(); } }
-    setTimeout(() => { if (G.matchLive && !G.playing && document.pointerLockElement !== canvas && !G.auto) noLock(); }, 700);
+  // Each Deploy or Resume click can grant a fresh pointer lock, even after a previous refusal.
+  let capture = null;
+  const clearCapture = () => {
+    clearTimeout(capture?.timeout);
+    capture = null;
   };
-  const pause = () => { if (!G.playing) return; G.playing = false; if (G.matchLive) { G.hud.show('pause'); G.audio.suspend(); } };
-  document.addEventListener('pointerlockerror', noLock);
-  addEventListener('keydown', e => { if (e.code === 'Escape' && G.noLock) pause(); });
+  const setUnlockedLook = unlocked => {
+    G.noLock = unlocked;
+    canvas.classList.toggle('unlocked-look', unlocked);
+    $('hint').classList.toggle('on', unlocked);
+  };
+  const startPlaying = unlocked => {
+    clearCapture();
+    G.player.clearInput();
+    setUnlockedLook(unlocked);
+    G.playing = true;
+    G.hud.show(null);
+    G.audio.resume();
+    last = performance.now();
+  };
+  const stopPlaying = () => {
+    clearCapture();
+    G.player.clearInput();
+    setUnlockedLook(false);
+    G.playing = false;
+  };
+  const releaseMouse = () => {
+    if (document.pointerLockElement === canvas) document.exitPointerLock();
+  };
+  const fallback = attempt => {
+    if (capture === attempt && G.matchLive) startPlaying(true);
+  };
+  const lock = async () => {
+    if (capture) return;
+    const attempt = capture = { legacy: false, timeout: 0 };
+    const request = options => {
+      const result = options ? canvas.requestPointerLock(options) : canvas.requestPointerLock();
+      // Older browsers report success or failure solely through the document events.
+      attempt.legacy = result === undefined;
+      if (attempt.legacy) attempt.timeout = setTimeout(() => fallback(attempt), 1000);
+      return result;
+    };
+    try {
+      await request({ unadjustedMovement: true });
+    } catch (error) {
+      if (capture !== attempt) return;
+      if (error.name === 'NotSupportedError') {
+        try { await request(); return; } catch { /* pointer lock itself was refused */ }
+      }
+      fallback(attempt);
+    }
+  };
+  const pause = () => {
+    const wasPlaying = G.playing;
+    stopPlaying();
+    if (wasPlaying && G.matchLive) { G.hud.show('pause'); G.audio.suspend(); }
+  };
+  document.addEventListener('pointerlockerror', () => {
+    if (capture?.legacy) fallback(capture);
+  });
+  addEventListener('keydown', e => {
+    if (e.code === 'Escape' && !G.auto && (G.playing || capture)) {
+      pause();
+      releaseMouse();
+    }
+  });
   const begin = () => { G.audio.start(); G.audio.ui('click'); if (!G.matchLive) { resetMatch(); G.audio.ui('start'); } lock(); };
   $('deploy').onclick = begin; $('resume').onclick = begin;
   $('restart').onclick = $('again').onclick = () => { G.audio.start(); resetMatch(); G.audio.ui('start'); lock(); };
   for (const b of document.querySelectorAll('button')) b.addEventListener('mouseenter', () => G.audio.ui('hover'));
   document.addEventListener('pointerlockchange', () => {
     const locked = document.pointerLockElement === canvas;
-    if (locked) { G.playing = G.matchLive; G.hud.show(null); G.audio.resume(); last = performance.now(); }
-    else if (!G.auto && !G.noLock) pause();
+    if (locked) {
+      if (!G.matchLive || (!capture && !G.playing)) releaseMouse();
+      else if (capture || G.noLock) startPlaying(false);
+    } else if (!G.auto && G.playing && !G.noLock) pause();
   });
-  document.addEventListener('visibilitychange', () => { if (document.hidden && document.pointerLockElement) document.exitPointerLock(); });
-  addEventListener('blur', () => { if (document.pointerLockElement) document.exitPointerLock(); else if (G.noLock && !G.auto) pause(); });
+  const loseFocus = () => {
+    if (!G.auto && (G.playing || capture)) pause();
+    releaseMouse();
+  };
+  document.addEventListener('visibilitychange', () => { if (document.hidden) loseFocus(); });
+  addEventListener('blur', loseFocus);
   addEventListener('resize', () => R.resize());
   matchMedia(`(resolution: ${devicePixelRatio}dppx)`).addEventListener?.('change', () => R.resize());
 

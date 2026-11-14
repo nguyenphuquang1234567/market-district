@@ -1,7 +1,7 @@
 // Tiny static file server (no dependencies).  Usage: npm start  →  http://localhost:5173
 import { createServer } from 'node:http';
 import { createReadStream, statSync, mkdirSync, createWriteStream } from 'node:fs';
-import { extname, join, normalize, dirname } from 'node:path';
+import { extname, join, normalize, dirname, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -26,7 +26,7 @@ createServer((req, res) => {
   }
   if (p.endsWith('/')) p += 'index.html';
   const file = normalize(join(ROOT, p));
-  if (!file.startsWith(ROOT)) { res.writeHead(403).end(); return; }
+  if (!file.startsWith(ROOT + sep) || file.toLowerCase().split(sep).includes('.git')) { res.writeHead(403).end(); return; }
   let st;
   try { st = statSync(file); } catch { res.writeHead(404).end('not found'); return; }
   const heavy = p.startsWith('/assets/') || p.startsWith('/node_modules/');

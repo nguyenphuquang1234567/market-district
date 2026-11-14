@@ -4,8 +4,8 @@ import { clamp } from './util.js';
 export const STEP = 0.42;
 
 // Push a vertical cylinder (feet at p.y, given radius/height) out of every box it overlaps. Mutates p.
-export function resolveXZ(p, r, height, cols) {
-  const y0 = p.y + STEP, y1 = p.y + height;
+export function resolveXZ(p, r, height, cols, step = STEP) {
+  const y0 = p.y + step, y1 = p.y + height;
   let hit = false;
   for (let it = 0; it < 3; it++) {
     let moved = false;

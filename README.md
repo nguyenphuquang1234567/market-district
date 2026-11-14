@@ -23,9 +23,9 @@ has changed, the bake runs again at boot with a progress bar; `?bake=1` forces i
 
 ### Playing with a locked mouse
 
-Mouse capture needs the game to be the top-level page: a normal browser tab works. Embedded previews refuse capture, in which
-case the game falls back to unlocked aiming (Esc pauses). There is also a small native window (macOS, needs the Xcode command
-line tools) that always grants capture:
+Play in a normal browser tab for mouse capture. **Esc** pauses and frees the cursor. **Resume** requests capture again.
+If an embedded preview blocks capture, the cursor stays hidden over the playfield during unlocked aiming.
+The game also has a native macOS window that grants capture (requires the Xcode command line tools).
 
 ```bash
 npm run shell
@@ -76,13 +76,10 @@ Key bindings live in the same saved settings object (`binds`); there is no rebin
   of view (which follows where the head is turned) with line of sight and a detection delay, react to gunfire and footsteps
   with an uncertain position, share sightings after a delay, use cover and peek, fire in bursts, reload, search after losing
   contact, and respawn out of sight.
-- **How they move** — velocity changes no faster than legs allow (they lean into a start, brake for a stop, and ease off for
-  a corner in proportion to how sharp it is); they keep an arm's length from each other. One stride phase drives both the
-  walk and run clips, with cadence taken from ground speed over a stride length measured on the rig at boot, so blends never
-  mix a left step with a right one and feet do not skate. The pelvis follows the feet while the spine twists to keep the
-  rifle on target, so they strafe and back-pedal instead of sliding; the head scans when nothing is in sight; feet are placed
-  on kerbs and stairs; caught in the open at range they take a knee to shoot and shift between bursts; the support hand goes
-  to the magazine on a reload.
+- **How they move** — soldiers slow into turns and steer around nearby bodies before contact. Ground speed drives the
+  walk/run blend, with planted feet on level ground and individual foot heights on kerbs and stairs. The legs follow
+  the direction of travel on strafes and retreats while the upper body keeps aim. When the barrel approaches a wall,
+  the soldier tucks the rifle closer to the chest.
 - **Physics** — a rigid-body world (Rapier) built from the district's collision boxes. 160-odd pieces of loose clutter
   (chairs, crates, cans, bins, tyres, pots, baskets, gas bottles, hand trucks…) rest as dressed until disturbed, then can be
   shoved by walking into them and knocked about by bullets, with material-dependent mass, friction and bounce; light
@@ -100,8 +97,9 @@ Key bindings live in the same saved settings object (`binds`); there is no rebin
   and directions are traced from the walls actually around you, three reverberant spaces (street, narrow passage, room)
   crossfaded by the same rays, hearing that dips for a moment after each of your own shots, humming air-conditioning units
   where they hang, birds, awnings, cicadas and distant fighting.
-- **HUD** — minimap with footprints, view wedge and pings; compass, score and clock; kill feed; health and ammo; hit markers;
-  damage direction; elimination banner; start, pause and results screens.
+- **HUD** — a blue circle identifies a visible ally and a red diamond identifies a visible enemy within 45 m. Aim at
+  a soldier to see **Ally** or **Enemy**. The minimap, scoreboard and kill feed use the same colors. The HUD also shows
+  the compass, clock, health, ammo, hit confirmation, damage direction and elimination banners.
 
 ## Left out on purpose
 

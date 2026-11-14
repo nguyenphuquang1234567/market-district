@@ -8,11 +8,17 @@
   :root { --ui: "Avenir Next Condensed", "DIN Condensed", "Roboto Condensed", "Arial Narrow", sans-serif; --pad: clamp(18px, 2.6vh, 34px); --ally: #6fb1ff; --foe: #ff6a55; --ink: #f2eee4; }
   html, body { margin: 0; height: 100%; background: #0b0b0c; overflow: hidden; color: var(--ink); font-family: var(--ui); -webkit-font-smoothing: antialiased; user-select: none; }
   #view { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  #view.unlocked-look { cursor: none; }
   .panel { background: linear-gradient(180deg, rgba(12, 14, 16, .46), rgba(12, 14, 16, .30)); border: 1px solid rgba(255, 255, 255, .16); }
 
   /* ---------- HUD ---------- */
   #hud { position: fixed; inset: 0; pointer-events: none; opacity: 0; transition: opacity .18s; text-transform: uppercase; letter-spacing: .08em; text-shadow: 0 1px 3px rgba(0, 0, 0, .55); }
   #hud.on { opacity: 1; }
+  .team-mark { position: absolute; top: 0; left: 0; color: var(--ally); }
+  .team-mark.enemy { color: var(--foe); }
+  .team-mark::before { content: ""; position: absolute; width: 7px; height: 7px; box-sizing: border-box; border: 2px solid currentColor; border-radius: 50%; background: #12151a; box-shadow: 0 0 0 1px #12151a; transform: translate(-50%, -50%); }
+  .team-mark.enemy::before { width: 6px; height: 6px; border: 0; border-radius: 0; background: currentColor; transform: translate(-50%, -50%) rotate(45deg); }
+  .team-mark span { position: absolute; padding: 2px 6px; background: rgba(12, 14, 16, .87); border: 1px solid currentColor; transform: translate(-50%, calc(-100% - 8px)); font-size: 11px; font-weight: 700; line-height: 1.1; }
   #minimap { position: absolute; left: var(--pad); top: var(--pad); width: 180px; height: 180px; border: 1px solid rgba(255, 255, 255, .22); background: rgba(10, 12, 14, .38); }
   #top { position: absolute; top: var(--pad); left: 50%; transform: translateX(-50%); display: grid; justify-items: center; gap: 6px; }
   #compass { width: 320px; height: 22px; -webkit-mask-image: linear-gradient(90deg, transparent, #000 22%, #000 78%, transparent); mask-image: linear-gradient(90deg, transparent, #000 22%, #000 78%, transparent); }
@@ -85,10 +91,11 @@
 <canvas id="view"></canvas>
 
 <div id="hud">
+  <div id="teamMarks" aria-hidden="true"></div>
   <canvas id="minimap" width="360" height="360"></canvas>
   <div id="top">
     <canvas id="compass" width="640" height="44"></canvas>
-    <div id="scorebar" class="panel"><span class="t0">Allies<b id="s0">0</b></span><span class="sep"></span><span id="mode">Team Deathmatch</span><span id="timer">10:00</span><span class="sep"></span><span class="t1"><b id="s1">0</b>Hostiles</span></div>
+    <div id="scorebar" class="panel"><span class="t0"><span aria-hidden="true">○</span> Allies<b id="s0">0</b></span><span class="sep"></span><span id="mode">Team Deathmatch</span><span id="timer">10:00</span><span class="sep"></span><span class="t1"><b id="s1">0</b>Enemies <span aria-hidden="true">◆</span></span></div>
   </div>
   <div id="feed"></div>
   <div id="health" class="panel"><div class="lbl">Health</div><div id="hp">100</div><div id="hpbar"></div></div>
@@ -124,7 +131,7 @@
 </div>
 
 <div id="perf"></div>
-<div id="hint">Mouse capture unavailable in this view — open the game in its own browser tab for locked aiming · Esc pauses</div>
+<div id="hint">Mouse capture unavailable · Esc pauses · Resume retries capture</div>
 <div id="boot"><div class="in"><span id="bootText">Loading</span><div class="bar"><i id="bootBar"></i></div></div></div>
 <script type="module" src="./src/main.js"></script>
 </body>

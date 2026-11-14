@@ -1,6 +1,10 @@
 // DOM heads-up display and menus. Drawn at native resolution above the 3D canvas, untouched by post-processing.
+import { Raycaster, Vector3 } from 'three';
+import { rayActor } from './bots.js';
+
 const $ = id => document.getElementById(id);
 const TEAM = ['#6fb1ff', '#ff6a55'];
+const MARK_RANGE = 45;
 
 export class HUD {
   constructor(G) {
@@ -8,6 +12,11 @@ export class HUD {
     this.mm = $('minimap').getContext('2d'); this.cp = $('compass').getContext('2d');
     $('hpbar').innerHTML = '<i></i>'.repeat(10); $('abar').innerHTML = '<i></i>'.repeat(30);
     this.feed = []; this.hitT = 0; this.dmgT = 0; this.bannerT = 0; this.pings = new Map();
+    this.marks = new Map(); this.markLayer = $('teamMarks');
+    this.markRay = new Raycaster(); this.markRay.firstHitOnly = true;
+    this.markPoint = new Vector3(); this.markDirection = new Vector3(); this.aimDirection = new Vector3();
+    this.headPoint = new Vector3(); this.bodyPoint = new Vector3();
+    this.markHits = []; this.focusedMark = null;
   }
   set(id, v) { if (this.last[id] !== v) { this.last[id] = v; $(id).textContent = v; } }
   cls(id, name, on) { const k = id + '.' + name; if (this.last[k] !== on) { this.last[k] = on; $(id).classList.toggle(name, on); } }
@@ -41,7 +50,68 @@ export class HUD {
     for (const f of this.feed) { f.t -= dt; if (f.t < 1) f.row.style.opacity = Math.max(0, f.t).toFixed(2); }
     for (const [a, t] of this.pings) { if (t - dt <= 0) this.pings.delete(a); else this.pings.set(a, t - dt); }
     this.cls('dead', 'on', !P.alive && G.matchLive); if (!P.alive) this.set('respawn', Math.max(0, P.respawnT).toFixed(1));
-    this.minimap(); this.compass();
+    this.identifyTeams(); this.minimap(); this.compass();
+  }
+
+  identifyTeams() {
+    const { player, bots, R } = this.G;
+    const camera = R.camera, origin = camera.position, point = this.markPoint;
+    camera.getWorldDirection(this.aimDirection);
+    let focused = null, focusDistance = MARK_RANGE;
+    for (const bot of bots.list) {
+      let mark = this.marks.get(bot);
+      if (!mark) {
+        const el = document.createElement('div');
+        const name = document.createElement('span');
+        const ally = bot.team === player.team;
+        el.className = `team-mark ${ally ? 'ally' : 'enemy'}`;
+        name.textContent = ally ? 'Ally' : 'Enemy';
+        name.hidden = true;
+        el.append(name); this.markLayer.append(el);
+        mark = { el, name }; this.marks.set(bot, mark);
+      }
+
+      const visible = player.alive && this.projectMark(bot, camera);
+      if (mark.el.hidden === visible) mark.el.hidden = !visible;
+      if (!visible) continue;
+      mark.el.style.transform = `translate(${((point.x + 1) * 50).toFixed(2)}vw, ${((1 - point.y) * 50).toFixed(2)}vh)`;
+      const aimHit = rayActor(origin, this.aimDirection, bot, focusDistance);
+      if (aimHit) { focused = mark; focusDistance = aimHit.t; }
+    }
+    if (focused && this.blocked(origin, this.aimDirection, focusDistance)) focused = null;
+    if (this.focusedMark !== focused) {
+      if (this.focusedMark) this.focusedMark.name.hidden = true;
+      if (focused) focused.name.hidden = false;
+      this.focusedMark = focused;
+    }
+  }
+
+  projectMark(bot, camera) {
+    const origin = camera.position;
+    if (!bot.alive || !bot.root.visible || bot.pos.distanceToSquared(origin) > MARK_RANGE ** 2) return false;
+    const head = bot.b.head.getWorldPosition(this.headPoint);
+    const chest = bot.b.spine2.getWorldPosition(this.bodyPoint);
+    head.lerp(chest, -0.25); // the head joint itself sits at the bottom of the helmet
+    const point = this.markPoint.copy(head).addScaledVector(camera.up, 0.23).project(camera);
+    if (Math.abs(point.z) > 1 || Math.abs(point.x) > 0.98 || Math.abs(point.y) > 0.98) return false;
+
+    // The mark floats above the model, while sight checks pass through a visible part of its body.
+    return this.hasSight(origin, head) || this.hasSight(origin, chest);
+  }
+
+  hasSight(origin, target) {
+    const direction = this.markDirection.subVectors(target, origin);
+    const distance = direction.length();
+    return distance > 0.02 && !this.blocked(origin, direction.divideScalar(distance), distance - 0.02);
+  }
+
+  blocked(origin, direction, far) {
+    const { world, rigid } = this.G, ray = this.markRay, hits = this.markHits;
+    ray.set(origin, direction);
+    ray.far = far;
+    hits.length = 0;
+    ray.intersectObjects(world.rayMeshes, false, hits);
+    return hits.length > 0 || !!rigid.ray(origin, direction, far);
   }
 
   minimap() {
@@ -62,8 +132,17 @@ export class HUD {
       if (!b.alive) continue;
       const mine = b.team === P.team; if (!mine && !this.pings.has(b)) continue;
       const x = X(b.pos.x, b.pos.z), y = Y(b.pos.x, b.pos.z); if (x < 6 || y < 6 || x > S - 6 || y > S - 6) continue;
-      g.fillStyle = TEAM[b.team]; g.globalAlpha = mine ? 1 : Math.min(1, this.pings.get(b) * 1.5);
-      g.beginPath(); if (mine) g.arc(x, y, 5, 0, 6.3); else { g.moveTo(x, y - 7); g.lineTo(x + 7, y); g.lineTo(x, y + 7); g.lineTo(x - 7, y); } g.fill(); g.globalAlpha = 1;
+      g.globalAlpha = mine ? 1 : Math.min(1, this.pings.get(b) * 1.5);
+      g.beginPath();
+      if (mine) {
+        g.arc(x, y, 5, 0, Math.PI * 2);
+        g.fillStyle = '#12151a'; g.fill();
+        g.strokeStyle = TEAM[b.team]; g.lineWidth = 3; g.stroke();
+      } else {
+        g.moveTo(x, y - 7); g.lineTo(x + 7, y); g.lineTo(x, y + 7); g.lineTo(x - 7, y);
+        g.fillStyle = TEAM[b.team]; g.fill();
+      }
+      g.globalAlpha = 1;
     }
     g.fillStyle = '#fff'; g.beginPath(); g.moveTo(c, c - 10); g.lineTo(c + 7, c + 8); g.lineTo(c, c + 4); g.lineTo(c - 7, c + 8); g.closePath(); g.fill();
   }
