@@ -1,0 +1,198 @@
+// Scripted acceptance run through the real game systems. In the browser console: await G.selfTest()
+// Uses fixed time steps and the seeded RNGs, so results are repeatable.
+export function selfTest(G) {
+  const P = G.player, W = G.weapon, out = [], $ = id => document.getElementById(id);
+  const check = (name, pass, detail = '') => out.push({ name, pass: !!pass, detail: String(detail) });
+  const run = (secs, dt = 1 / 60) => G.step(Math.round(secs / dt), dt);
+  const park = () => { for (const b of G.bots.list) { b.alive = false; b.root.visible = false; b.gun.visible = false; b.respawnT = 1e9; } };
+  const dummy = (i, x, z, yaw = Math.PI) => { const b = G.bots.list[i]; b.spawn({ x, z, yaw }); b.think = 1e9; b.wishDir = null; b.wishSpeed = 0; return b; };
+  G.manual = true; G.auto = true; G.frozen = true;
+  G.resetMatch(); G.playing = true; G.hud.show(null);
+
+  // --- startup
+  check('match starts live with full kit', G.matchLive && P.alive && P.health === 100 && W.ammo === 30 && W.reserve === 120, `hp ${P.health} ammo ${W.ammo}/${W.reserve}`);
+  park();
+
+  // --- movement and collision
+  G.goto(0, -50, 0); P.sim.f = 1; run(2); const walked = P.pos.z + 50;
+  check('walk speed ~4.3 m/s', walked > 7.5 && walked < 9, walked.toFixed(2) + ' m in 2 s');
+  P.sim.sprint = true; const z0 = P.pos.z; run(1); check('sprint is faster', P.pos.z - z0 > 5.5, (P.pos.z - z0).toFixed(2) + ' m/s'); P.sim.sprint = false;
+  P.sim.crouch = true; run(0.5); const zc = P.pos.z; run(1); check('crouch slows and lowers the eye', P.pos.z - zc < 2.6 && P.eyeY < 1.2, `${(P.pos.z - zc).toFixed(2)} m/s, eye ${P.eyeY.toFixed(2)}`); P.sim.crouch = false; P.sim.f = 0; run(0.4);
+  G.goto(0.5, -36, 0); run(0.2); P.tryJump(); run(0.25); const air = P.pos.y; run(1); check('jump leaves the ground and lands', air > 0.5 && P.grounded && P.pos.y < 0.01, `apex sample ${air.toFixed(2)} m`);
+  G.goto(2.5, -40, -90); P.sim.f = 1; run(3); check('steps up the kerb and is stopped by the wall', Math.abs(P.pos.y - 0.14) < 0.02 && P.pos.x > -5.7 && P.pos.x < -4.9, `x ${P.pos.x.toFixed(2)} y ${P.pos.y.toFixed(2)}`); P.sim.f = 0;
+  G.goto(-1.6, -47.95, 0); run(0.2); P.tryJump(); run(0.6); check('mantles a chest-high barrier', P.pos.y > 0.6, `y ${P.pos.y.toFixed(2)}`);
+
+  // --- gunplay
+  G.goto(0, -30, 0, -3); run(0.3); const d0 = G.fx.decals.dirt.im.count + G.fx.decals.stone.im.count;
+  P.sim.fire = true; run(0.4); P.sim.fire = false; run(0.2);
+  const fired = 30 - W.ammo; check('automatic fire consumes rounds and leaves decals', fired >= 4 && fired <= 7 && G.fx.decals.dirt.im.count + G.fx.decals.stone.im.count > d0, `${fired} rounds in 0.4 s`);
+  W.toggleMode(); const a0 = W.ammo; P.sim.fire = true; run(0.4); P.sim.fire = false; run(0.1); check('semi-auto fires once per press', a0 - W.ammo === 1, `${a0 - W.ammo} round`); W.toggleMode();
+  W.startReload(); run(1.0); const mid = W.ammo; run(1.3); check('tactical reload refills at the insert, not before', mid < 30 && W.ammo === 30 && !W.reloading, `mid ${mid} → ${W.ammo}, reserve ${W.reserve}`);
+  W.ammo = 1; P.sim.fire = true; run(0.5); P.sim.fire = false; run(2.6); check('empty magazine triggers the longer bolt-release reload', W.ammo === 30 && W.reloadEmpty, `ammo ${W.ammo}`);
+  P.sim.ads = true; run(0.5); check('aiming narrows the view and centres the optic', W.ads > 0.95 && G.R.camera.fov < 50 && Math.abs(W.root.position.x) < 0.002, `fov ${G.R.camera.fov.toFixed(1)}`); P.sim.ads = false; run(0.4);
+
+  // --- hits, zones, scoring
+  let foe = dummy(3, 0, -18); G.goto(0, -30, 0, 0); run(0.3);
+  P.sim.pitch = Math.atan2(1.15 - P.eyeY, 12); P.sim.ads = true; run(0.5); W.toggleMode();
+  const hp0 = foe.health; P.sim.fire = true; run(0.05); P.sim.fire = false; run(0.15);
+  check('body hit registers', hp0 - foe.health > 30 && hp0 - foe.health < 40, `${(hp0 - foe.health).toFixed(0)} damage`);
+  P.sim.pitch = Math.atan2(foe.pos.y + foe.height - 0.13 - P.eyeY, 12); run(0.4); const s0 = G.score[0];
+  P.sim.fire = true; run(0.05); P.sim.fire = false; run(0.2);
+  check('headshot eliminates, scores and reaches the kill feed', !foe.alive && G.score[0] === s0 + 1 && P.kills === 1 && $('feed').children.length > 0, `score ${G.score}`);
+  W.toggleMode(); P.sim.ads = false;
+
+  // --- AI perception: field of view, occlusion, detection delay
+  park(); foe = dummy(4, 0, -16, 0); G.goto(0, -26, 0); foe.think = 0; foe.wishDir = null; foe.yaw = 0; foe.wantYaw = 0;
+  foe.perceive(0.5, [P], G.world.colliders); check('enemy facing away does not notice the player', (foe.seen.get(P)?.t || 0) < 0.01, `awareness ${(foe.seen.get(P)?.t || 0).toFixed(2)}`);
+  foe.yaw = Math.PI; let t = 0; while (t < 2 && !(foe.seen.get(P)?.vis)) { foe.perceive(0.05, [P], G.world.colliders); t += 0.05; }
+  check('enemy facing the player detects after a short delay', t > 0.1 && t < 1.2, `${t.toFixed(2)} s`);
+  foe.seen.clear(); G.goto(-29, -26, 0); P.pos.set(-29, 0, -26); for (let i = 0; i < 40; i++) foe.perceive(0.05, [P], G.world.colliders);
+  check('no detection through buildings', (foe.seen.get(P)?.t || 0) === 0, 'player one block over');
+  foe.think = 1e9; park();
+
+  // --- damage, critical state, death, respawn, regeneration
+  G.goto(0, -45, 0); run(0.2); P.damage(75, { x: 5, z: -45 }, null, 'body'); run(0.1);
+  check('damage lowers health and shows a directional indicator', Math.round(P.health) === 25 && +$('dmg').style.opacity > 0.5 && $('health').classList.contains('low'), `hp ${P.health.toFixed(0)}`);
+  run(7.5); check('health regenerates after a delay', P.health > 55, `hp ${P.health.toFixed(0)} after 7.5 s`);
+  const s1 = G.score[1]; P.damage(200, { x: 5, z: -45 }, null, 'body'); run(0.2);
+  check('death disables the player and scores for the other team', !P.alive && G.score[1] === s1 + 1 && $('dead').classList.contains('on'), `score ${G.score}`);
+  run(4.2); check('respawn restores health and ammunition', P.alive && P.health === 100 && W.ammo === 30, `hp ${P.health}`);
+
+  // --- match end by score, restart, end by time
+  park(); foe = dummy(5, P.pos.x, P.pos.z + 8); G.score[0] = 29; foe.damage(500, P.pos, P, 'body');
+  check('score limit ends the match with a results screen', !G.matchLive && $('results').classList.contains('on') && $('resTitle').textContent === 'VICTORY', $('resTitle').textContent);
+  G.resetMatch(); G.playing = true; G.hud.show(null);
+  check('restart resets score, clock, feed and effects', G.matchLive && G.score[0] === 0 && G.score[1] === 0 && Math.round(G.timeLeft) === 600 && $('feed').children.length === 0 && G.fx.decals.stone.im.count === 0, `score ${G.score} time ${Math.round(G.timeLeft)}`);
+  G.timeLeft = 0.05; run(0.2); check('time limit ends the match', !G.matchLive && $('results').classList.contains('on'), $('resStats').querySelector('.sum')?.textContent || '');
+
+  // --- an unscripted bot-only stretch: both teams should find each other and trade
+  G.resetMatch(); G.playing = true; G.hud.show(null); P.sim = { f: 0, s: 0 }; G.goto(-29, -61, 0);
+  for (let i = 0; i < 90; i++) { run(1, 1 / 30); P.health = 100; }
+  const fights = G.bots.list.reduce((s, b) => s + b.kills, 0);
+  check('bots navigate, engage and score on their own (90 s)', fights >= 3, `${fights} eliminations, score ${G.score}`);
+
+  // --- firing on the run
+  G.resetMatch(); G.playing = true; G.hud.show(null); park();
+  const Rg = G.rigid, nav = G.world.nav, wrap = (a, b) => Math.atan2(Math.sin(b - a), Math.cos(b - a));
+  G.goto(0, -50, 0); P.sim = { f: 1, s: 0, sprint: true }; run(0.8); const am0 = W.ammo; P.sim.fire = true; run(0.6); const runSp = Math.hypot(P.vel.x, P.vel.z); P.sim.fire = false;
+  check('the rifle fires while sprinting, at a cost in pace', am0 - W.ammo >= 4 && runSp > 5 && runSp < 6, `${am0 - W.ammo} rounds at ${runSp.toFixed(1)} m/s`);
+  P.sim = { f: 0, s: 0 }; run(0.4);
+
+  // --- loose props: shoved by walking into them, knocked about by bullets
+  let prop = null, from = null;
+  for (const it of Rg.props) {
+    if (it.name !== 'chair' && it.name !== 'plastic_crate' && it.name !== 'stool') continue;
+    for (const [dx, dz] of [[0, -2.2], [0, 2.2], [2.2, 0], [-2.2, 0]]) { const x = it.home.x + dx, z = it.home.z + dz; if (nav.free(x, z) && nav.walkable(x, z, it.home.x + dx * 0.35, it.home.z + dz * 0.35)) { prop = it; from = { x, z, yaw: Math.atan2(-dx, -dz) }; break; } }
+    if (prop) break;
+  }
+  if (prop) {
+    G.goto(from.x, from.z, from.yaw * 180 / Math.PI, 0); run(1.5);
+    const c0 = prop.body.translation(), sx = c0.x, sz = c0.z;
+    P.sim = { f: 1, s: 0, yaw: from.yaw, pitch: 0 }; run(0.9); P.sim = { f: 0, s: 0, yaw: from.yaw, pitch: 0 }; run(0.6);
+    const c1 = prop.body.translation(), pushed = Math.hypot(c1.x - sx, c1.z - sz), bx = c1.x, by = c1.y, bz = c1.z;
+    check('walking into loose clutter shoves it aside', pushed > 0.15, `${prop.name} moved ${pushed.toFixed(2)} m`);
+    G.goto(P.pos.x - Math.sin(from.yaw) * 1.1, P.pos.z - Math.cos(from.yaw) * 1.1, from.yaw * 180 / Math.PI, 0); run(0.3);            // step back and shoot its centre of mass
+    const cm = prop.body.worldCom(), dist = Math.hypot(cm.x - P.pos.x, cm.z - P.pos.z), hits0 = G.stats.shots;
+    P.sim = { f: 0, s: 0, yaw: Math.atan2(cm.x - P.pos.x, cm.z - P.pos.z), pitch: -Math.atan2(P.eyeY - cm.y, dist), fire: true }; run(0.4); P.sim.fire = false; run(0.8);
+    const c2 = prop.body.translation(), knocked = Math.hypot(c2.x - bx, c2.y - by, c2.z - bz);
+    check('bullets knock loose clutter about', knocked > 0.03, `${G.stats.shots - hits0} rounds moved it ${knocked.toFixed(2)} m`);
+  } else check('a loose prop with open ground beside it exists', false, 'none found');
+  P.sim = { f: 0, s: 0 };
+
+  // --- ragdoll: the body falls under physics, the rifle drops, and a corpse is left when the soldier respawns
+  park(); G.goto(0, -50, 0); let dead = dummy(5, 0, -44); run(0.3);
+  dead.damage(500, P.pos, P, 'body'); dead.respawnT = 3.4; run(0.05);
+  const rag = dead.rag, h0 = rag ? rag.height() : 0, dropped = !!dead.dropped; run(2.8);
+  const h1 = rag ? rag.height() : 9, rsp = rag ? rag.speed() : 9;
+  check('a kill hands the body to a ragdoll that falls and comes to rest', !!rag && dropped && h0 > 0.9 && h1 < 0.45 && rsp < 0.6, `chest ${h0.toFixed(2)} m -> ${h1.toFixed(2)} m, still moving ${rsp.toFixed(2)} m/s, rifle dropped ${dropped}`);
+  run(1.2);
+  check('the body stays behind when the soldier respawns', dead.alive && !dead.rag && Rg.corpses.length === 1 && Rg.rags.length === 0, `corpses ${Rg.corpses.length}, live ragdolls ${Rg.rags.length}`);
+
+  // --- bot locomotion: strides match ground speed, acceleration is human, the rifle stays on target while the legs go elsewhere
+  park(); const wk = dummy(6, 0, -50, 0); wk.state = 'advance'; wk.wishDir = { x: 0, z: 1 }; wk.wishSpeed = 3.1; wk.wantYaw = 0;
+  let halves = 0, lastHalf = Math.floor(wk.phase * 2), maxAcc = 0, pv = 0; const zs = wk.pos.z;
+  for (let i = 0; i < 156; i++) { G.step(1, 1 / 60); const h = Math.floor(wk.phase * 2); if (h !== lastHalf) { halves++; lastHalf = h; } const sp = Math.hypot(wk.vel.x, wk.vel.z); maxAcc = Math.max(maxAcc, Math.abs(sp - pv) * 60); pv = sp; }
+  const went = wk.pos.z - zs, stepLen = went / Math.max(1, halves);
+  check('bot strides match ground speed and it accelerates like a person', halves >= 5 && stepLen > 0.55 && stepLen < 1.4 && maxAcc < 16 && went > 6.5, `${went.toFixed(1)} m in ${halves} steps (${stepLen.toFixed(2)} m each), peak ${maxAcc.toFixed(1)} m/s²`);
+  wk.state = 'combat'; wk.wantYaw = Math.PI / 2; wk.wishDir = { x: 0, z: -1 }; wk.wishSpeed = 2.2; run(1.3);
+  const twist = Math.abs(wrap(wk.bodyYaw, wk.yaw)); wk.wishDir = { x: -1, z: 0 }; run(1.0); const back = wk.back;
+  check('bots hold their aim while moving: torso twists when strafing, they back-pedal when retreating', twist > 0.5 && twist < 1.3 && back, `twist ${(twist * 57.3).toFixed(0)}°, back-pedalling ${back}`);
+  park();
+
+  // --- sound: modelled library, arrival delay, walls muffle, echoes come from the real surroundings
+  const A = G.audio, takes = Object.values(A.raw).reduce((n, v) => n + v.length, 0);
+  check('sound library is modelled and complete', Object.keys(A.raw).length >= 40 && A.raw.shot.length >= 4 && A.raw.shot[0].length === 2, `${Object.keys(A.raw).length} sounds, ${takes} takes`);
+  A.lpos.x = 0; A.lpos.y = 1.6; A.lpos.z = -50;
+  const hid = [[14, -50], [-14, -50], [20, -44], [-20, -44]].map(([x, z]) => ({ x, y: 1.5, z })).find(q => A.blocked(A.lpos, q) && A.blocked(A.lpos, { x: q.x, y: q.y + 1.6, z: q.z }));
+  const o1 = {}, o2 = {}, dVis = A._carry({ x: 0, y: 1.5, z: -30 }, o1); if (hid) A._carry(hid, o2);
+  check('sound arrives late by distance and is muffled by walls', !!hid && Math.abs(o1.delay - dVis / 343) < 1e-6 && o1.lp > 12000 && o2.lp < 4000 && o2.gain < o1.gain * 0.7, `20 m in the open: ${Math.round(o1.delay * 1000)} ms late, top end ${Math.round(o1.lp)} Hz; behind a wall: ${Math.round(o2.lp || 0)} Hz at ${(o2.gain ?? 0).toFixed(2)} gain`);
+  A.start(); A._surroundings({ x: 0, y: 1.6, z: -50 }, 0, A.now);
+  const street = A.stats().echoesMs.filter(v => v != null); A._surroundings({ x: -29, y: 1.6, z: -50 }, 0, A.now); const alley = A.stats().echoesMs.filter(v => v != null);
+  check('echo delays follow the surrounding walls (tighter in the alley than the street)', street.length >= 2 && alley.length >= 2 && Math.min(...alley) < Math.min(...street) && Math.min(...street) < 150, `street ${street.join('/')} ms, alley ${alley.join('/')} ms`);
+  G.resetMatch(); G.playing = false; G.manual = false; G.auto = false; G.frozen = false; G.matchLive = false; G.hud.show('start');
+  return out;
+}
+
+// Deterministic screenshot set (posted to ./captures by the dev server). In the console: await G.proof()  — or G.proof(1754, 864) for 2192x1080.
+export async function proof(G, w = 1536, h = 864) {
+  const P = G.player, W = G.weapon, $ = id => document.getElementById(id), out = [], tag = w === 1536 ? '' : '_uw';
+  const run = (secs, dt = 1 / 60) => G.step(Math.round(secs / dt), dt);
+  const park = () => { for (const b of G.bots.list) { b.alive = false; b.root.visible = false; b.gun.visible = false; b.respawnT = 1e9; } };
+  const snap = async name => out.push(await G.capture(name + tag, w, h));
+  G.manual = true; G.auto = true; G.frozen = true; G.resetMatch(); G.playing = true; G.hud.show(null); park();
+  G.goto(-29, -58.5, 0, 5); run(1); await snap('01_spawn_alley');
+  G.goto(0.6, -56, 0, 2); run(1); await snap('02_main_street');
+  G.goto(1.5, -9, 14, 6); run(1); await snap('03_arch_plaza');
+  G.goto(28.4, -47, 0, 3); run(1); await snap('04_market_lane');
+  const rm = G.world.anchors.find(a => a.kind === 'room' && a.bd.street[Object.keys(a.bd.street).find(k => a.bd.street[k] === 'main')]), p = rm.P((rm.ra + rm.rb) / 2 + 0.6, 0, rm.D - 1.0);
+  G.goto(p.x, p.z, Math.atan2(rm.N.x, rm.N.z) * 180 / Math.PI, 0); run(2.5); await snap('05_interior_to_sunlight');
+  G.goto(-9, -6, 40, 0); run(0.5); W.inspect(); run(0.8); await snap('06_inspect');
+  run(2.2); P.sim.ads = true; run(0.6); await snap('07_ads');
+  P.sim.ads = false; G.goto(-4.4, -9.5, 96, -4); run(0.6); P.sim.fire = true; run(0.1); await snap('08_muzzle_flash'); run(0.3); P.sim.fire = false; run(0.35); await snap('09_impacts');
+  G.goto(-9, -6, 40, 0); run(0.4); W.startReload(); run(1.38); await snap('12_reload'); run(1.0);      // fresh magazine being seated
+  const foe = G.bots.list[3]; foe.spawn({ x: 1.5, z: 6, yaw: Math.PI }); foe.think = 1e9; foe.state = 'combat'; foe.aim = 1; foe.wantYaw = Math.PI;
+  G.goto(1, -4, 2, 0); run(0.8); await snap('10_enemy_encounter');
+  P.damage(82, foe.pos, null, 'body'); run(0.35); await snap('11_critical_health');
+  P.health = 100; P.hurtT = 9; P.flash = 0; G.matchLive = true; foe.damage(500, P.pos, P, 'body'); foe.respawnT = 1e9; run(0.32); await snap('13_ragdoll_falling'); run(2.2); await snap('14_ragdoll_at_rest');      // the body under physics, rifle dropped
+  park(); G.resetMatch(); G.playing = false; G.manual = false; G.auto = false; G.frozen = false; G.matchLive = false; G.hud.show('start');
+  return out;
+}
+
+// Auto-play driver (?demo=1): walks the district, turns to visible enemies, aims and fires. Used for on-screen
+// frame-pacing runs and gameplay recordings; it feeds the same input object a human does.
+export function demoDriver(G) {
+  const P = G.player, W = G.world, spots = [[0, -40], [0, -8], [-11, -2], [0, 20], [28.5, 20], [28.5, -20], [0, -22], [-29, -20], [-29, 10], [0, 40]];
+  let path = null, pi = 0, goal = 0, yaw = 0, pitch = 0, repath = 0, burst = 0, rest = 0;
+  const eye = { x: 0, y: 0, z: 0 }, tp = { x: 0, y: 0, z: 0 };
+  return dt => {
+    if (!P.sim || P.sim.demo !== true) { P.sim = { f: 0, s: 0, demo: true }; yaw = P.yaw; pitch = P.pitch; path = null; }
+    const S = P.sim; if (!P.alive) return;
+    P.health = Math.max(P.health, 70);
+    eye.x = P.pos.x; eye.y = P.eyeY; eye.z = P.pos.z;
+    let foe = null, fd = 70;
+    for (const b of G.bots.list) {
+      if (!b.alive || b.team === P.team) continue;
+      const d = Math.hypot(b.pos.x - P.pos.x, b.pos.z - P.pos.z); if (d > fd) continue;
+      tp.x = b.pos.x; tp.y = b.eyeY - 0.25; tp.z = b.pos.z;
+      if (G.los(eye, tp)) { foe = b; fd = d; }
+    }
+    let wantYaw = yaw, wantPitch = 0;
+    repath -= dt; rest -= dt;
+    if (foe) {
+      wantYaw = Math.atan2(foe.pos.x - P.pos.x, foe.pos.z - P.pos.z); wantPitch = Math.atan2(foe.eyeY - 0.3 - P.eyeY, fd);
+      const err = Math.abs(Math.atan2(Math.sin(wantYaw - yaw), Math.cos(wantYaw - yaw)));
+      S.ads = fd > 12; S.f = fd > 25 ? 0.6 : 0; S.s = 0;
+      if (err < 0.035 && rest <= 0) { burst += dt; S.fire = true; if (burst > 0.45) { burst = 0; rest = 0.35; } } else S.fire = false;
+    } else {
+      S.fire = false; S.ads = false; burst = 0;
+      if (!path || pi >= path.length || repath <= 0) { if (!path || pi >= path.length) goal = (goal + 1 + Math.floor(G.time)) % spots.length; path = W.nav.path(P.pos.x, P.pos.z, spots[goal][0], spots[goal][1]) || []; pi = 0; repath = 4; }
+      const p = path[pi];
+      if (p) { const dx = p.x - P.pos.x, dz = p.z - P.pos.z; if (Math.hypot(dx, dz) < 0.7) pi++; else wantYaw = Math.atan2(dx, dz); }
+      S.f = 1; S.s = 0; S.sprint = false;
+      if (G.weapon.ammo < 10 && !G.weapon.reloading) G.weapon.startReload();
+    }
+    const dy = Math.atan2(Math.sin(wantYaw - yaw), Math.cos(wantYaw - yaw)), turn = (foe ? 5.5 : 2.6) * dt;
+    yaw += Math.max(-turn, Math.min(turn, dy)); pitch += (wantPitch - pitch) * Math.min(1, dt * 6);
+    S.yaw = yaw; S.pitch = pitch;
+  };
+}

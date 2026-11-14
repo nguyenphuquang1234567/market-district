@@ -1,0 +1,416 @@
+// Street dressing: cover, market stalls, cloth, cables, rooftop clutter, plants, litter. Everything is seeded.
+import * as THREE from 'three';
+import { FLOOR0, PARAPET, SIDEWALK } from './world.js';
+
+const V = (x, y, z) => new THREE.Vector3(x, y, z);
+const I = new THREE.Matrix4();
+const UP = V(0, 1, 0);
+const FADED = [[0.92, 0.9, 0.84], [0.85, 0.72, 0.5], [0.55, 0.68, 0.78], [0.78, 0.45, 0.36], [0.62, 0.7, 0.55], [0.9, 0.85, 0.7], [0.5, 0.55, 0.62], [0.88, 0.78, 0.74]];
+const SPICE = [[0.86, 0.6, 0.1], [0.62, 0.16, 0.08], [0.52, 0.38, 0.2], [0.82, 0.46, 0.2], [0.9, 0.87, 0.78], [0.45, 0.5, 0.25], [0.3, 0.2, 0.14]];
+
+export function dress({ B, M, rnd, buildings, anchors, low }) {
+  const mat4 = (p, rotY = 0, s = 1, rx = 0, rz = 0) => new THREE.Matrix4().compose(p, new THREE.Quaternion().setFromEuler(new THREE.Euler(rx, rotY, rz, 'YXZ')), typeof s === 'number' ? V(s, s, s) : s);
+
+  // cylinder between two points
+  const rod = (a, b, r, key = 'iron', color) => {
+    const d = b.clone().sub(a), len = d.length();
+    const m = new THREE.Matrix4().compose(a.clone().add(b).multiplyScalar(0.5), new THREE.Quaternion().setFromUnitVectors(UP, d.normalize()), V(1, 1, 1));
+    B.geom(key, new THREE.CylinderGeometry(r, r, len, 6), m, { color, uvScaleY: len });
+  };
+  const cable = (a, b, sag, r = 0.012) => {
+    const pts = [];
+    for (let i = 0; i <= 10; i++) { const t = i / 10, p = a.clone().lerp(b, t); p.y -= sag * 4 * t * (1 - t); pts.push(p); }
+    B.geom('cable', new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 14, r, 4, false), I);
+    return pts;
+  };
+  // deformable cloth sheet: fn(s,t) -> { p, w } where w is how freely the vertex moves in the wind
+  const sheet = (key, nu, nv, fn, o = {}) => {
+    const g = new THREE.PlaneGeometry(1, 1, nu, nv), pos = g.attributes.position, uv = g.attributes.uv, wind = [];
+    let zs = 0;
+    for (let i = 0; i < pos.count; i++) {
+      const s = uv.getX(i), t = 1 - uv.getY(i), r = fn(s, t);
+      pos.setXYZ(i, r.p.x, r.p.y, r.p.z); wind.push(r.w); zs += r.p.z;
+      uv.setXY(i, s * (o.us || 1) + (o.uo || 0), t * (o.vs || 1));
+    }
+    g.computeVertexNormals();
+    const ph = rnd() * 6.28;
+    B.geom(key, g, I, { color: o.color, xf: i => [wind[i], ph, 0] });
+  };
+
+  const bagG = (() => {
+    const g = new THREE.SphereGeometry(1, 12, 8), p = g.attributes.position, f = v => Math.sign(v) * Math.pow(Math.abs(v), 0.55);
+    for (let i = 0; i < p.count; i++) p.setXYZ(i, f(p.getX(i)) * 0.31, f(p.getY(i)) * 0.105, f(p.getZ(i)) * 0.165);
+    g.computeVertexNormals(); return g;
+  })();
+  function sandbags(cx, cz, len, rows, rot = 0, y0 = 0) {
+    const c = Math.cos(rot), s = Math.sin(rot), n = Math.max(1, Math.floor(len / 0.57));
+    for (let r = 0; r < rows; r++) for (let i = 0; i < n - (r % 2); i++) {
+      const l = (i - (n - 1 - (r % 2)) / 2) * 0.575 + rnd.range(-0.02, 0.02), d = rnd.range(-0.025, 0.025), g = rnd.range(0.82, 1.0);
+      B.geom('burlap', bagG, mat4(V(cx + l * c + d * s, y0 + 0.1 + r * 0.183, cz - l * s + d * c), rot + rnd.range(-0.09, 0.09), V(rnd.range(0.94, 1.05), rnd.range(0.92, 1.06), 1), 0, rnd.range(-0.05, 0.05)),
+        { uvScale: 2.2, color: [g, g * 0.97, g * 0.9] });
+    }
+    B.collide(cx, y0 + rows * 0.092, cz, len, rows * 0.184, 0.38, rot, 'fabric');
+  }
+
+  function rubble(x, z, r, h) {
+    const g = new THREE.SphereGeometry(1, 16, 7, 0, Math.PI * 2, 0, Math.PI / 2), p = g.attributes.position;
+    for (let i = 0; i < p.count; i++) {
+      const a = p.getX(i), b = p.getY(i), c = p.getZ(i), k = 0.82 + 0.22 * Math.sin(a * 9.1 + c * 7.3) * Math.cos(c * 11.7 - a * 5.9) + 0.1 * Math.sin(a * 23 + c * 19);
+      p.setXYZ(i, a * k, b * (0.7 + 0.5 * Math.abs(Math.sin(a * 5 + c * 4))), c * k);
+    }
+    g.computeVertexNormals();
+    B.geom('rubble', g, mat4(V(x, -0.03, z), rnd() * 6.28, V(r, h, r * rnd.range(0.7, 1))), { uvScale: r * 0.9, color: [0.62, 0.57, 0.5] });
+    for (let i = 0; i < 7 + r * 5; i++) {
+      const a = rnd() * 6.28, d = r * Math.sqrt(rnd()) * 1.25, s = rnd.range(0.1, 0.42), hh = Math.max(0, h * (1 - d / r)) * 0.8;
+      B.geom(rnd.pick(['concrete', 'w_brick', 'w_damaged', 'dirty']), new THREE.BoxGeometry(s * rnd.range(0.8, 1.8), s * rnd.range(0.4, 0.9), s),
+        mat4(V(x + Math.cos(a) * d, hh + s * 0.2, z + Math.sin(a) * d), rnd() * 6.28, 1, rnd.range(-0.6, 0.6), rnd.range(-0.6, 0.6)), { uvScale: 0.35, color: [0.9, 0.88, 0.84] });
+    }
+    anchors.push({ kind: 'stain', x, z, r: r * 2.2, s: 0.35 });
+  }
+
+  function pallet(x, y, z, rot) {
+    const c = Math.cos(rot), s = Math.sin(rot), o = { rot, tile: 0.9, color: [0.82, 0.78, 0.72] };
+    for (let i = -2; i <= 2; i++) B.box('planks', x + i * 0.25 * s, y + 0.125, z + i * 0.25 * c, 1.2, 0.022, 0.1, o);
+    for (let i = -1; i <= 1; i++) B.box('planks', x + i * 0.52 * c, y + 0.057, z - i * 0.52 * s, 0.1, 0.1, 1.0, o);
+  }
+
+  function tray(p, rot, fruit, n = 12) {
+    B.box('planks', p.x, p.y + 0.035, p.z, 0.6, 0.07, 0.42, { rot, tile: 0.7 });
+    const c = Math.cos(rot), s = Math.sin(rot), size = { apple: 0.075, lemon: 0.07, lime: 0.062, pomegranate: 0.095, onion: 0.075, sweet_potato: 0.09 }[fruit];
+    const cols = Math.floor(0.54 / size), rws = Math.floor(0.36 / size);
+    let k = 0;
+    for (let layer = 0; layer < 2 && k < n; layer++) for (let j = 0; j < rws - layer && k < n; j++) for (let i = 0; i < cols - layer && k < n; i++) {
+      if (layer && rnd.chance(0.45)) continue;
+      const lx = (i - (cols - 1 - layer) / 2) * size + rnd.range(-0.008, 0.008), lz = (j - (rws - 1 - layer) / 2) * size + rnd.range(-0.008, 0.008);
+      B.prop(fruit, p.x + lx * c + lz * s, p.y + 0.07 + layer * size * 0.78 + (fruit === 'sweet_potato' || fruit === 'lemon' ? 0.03 : 0), p.z - lx * s + lz * c, rnd() * 6.28, rnd.range(0.92, 1.12), fruit === 'sweet_potato' || fruit === 'lemon' ? [Math.PI / 2, rnd.range(-0.4, 0.4)] : [rnd.range(-0.5, 0.5), rnd.range(-0.5, 0.5)]);
+      k++;
+    }
+  }
+
+  function sack(x, y, z, col) {
+    const pr = [[0, 0], [0.2, 0], [0.265, 0.1], [0.275, 0.26], [0.25, 0.42], [0.265, 0.47], [0.24, 0.5], [0.2, 0.46]].map(([a, b]) => new THREE.Vector2(a, b));
+    const s = rnd.range(0.85, 1.15);
+    B.geom('burlap', new THREE.LatheGeometry(pr, 12), mat4(V(x, y, z), rnd() * 6.28, V(s, s * rnd.range(0.85, 1.1), s)), { uvScale: 3 });
+    const top = new THREE.CircleGeometry(0.215 * s, 12); top.rotateX(-Math.PI / 2);
+    B.geom('matte', top, mat4(V(x, y + 0.455 * s * 0.92, z)), { color: col });
+  }
+
+  // Market stall: timber frame, counter, cloth roof with a loose valance, and goods.
+  function stall(x, z, rot, o = {}) {
+    const c = Math.cos(rot), s = Math.sin(rot), W = o.w || 2.5, D = 1.5, Hf = 2.2, Hb = 2.55, y0 = o.y || 0;
+    const L = (lx, ly, lz) => V(x + lx * c + lz * s, y0 + ly, z - lx * s + lz * c);
+    const wood = { rot, tile: 1.0, color: rnd.pick([[0.85, 0.8, 0.72], [0.7, 0.66, 0.6], [0.95, 0.9, 0.8]]) };
+    for (const [lx, lz, h] of [[-W / 2, -D / 2, Hb], [W / 2, -D / 2, Hb], [-W / 2, D / 2, Hf], [W / 2, D / 2, Hf]]) { const p = L(lx, h / 2, lz); B.box('planks', p.x, p.y, p.z, 0.07, h, 0.07, wood); }
+    for (const [lz, h] of [[-D / 2, Hb], [D / 2, Hf]]) { const p = L(0, h, lz); B.box('planks', p.x, p.y, p.z, W + 0.2, 0.06, 0.06, wood); }
+    for (const lx of [-W / 2, W / 2]) rod(L(lx, Hb, -D / 2), L(lx, Hf, D / 2), 0.03, 'planks', wood.color);
+    const ct = L(0, 0.86, 0.1); B.box('planks', ct.x, ct.y, ct.z, W - 0.1, 0.045, 0.9, wood);
+    for (const [lx, lz] of [[-W / 2 + 0.15, -0.28], [W / 2 - 0.15, -0.28], [-W / 2 + 0.15, 0.48], [W / 2 - 0.15, 0.48]]) { const p = L(lx, 0.42, lz); B.box('planks', p.x, p.y, p.z, 0.06, 0.84, 0.06, wood); }
+    const sk = L(0, 0.52, 0.55); B.box('planks', sk.x, sk.y, sk.z, W - 0.1, 0.6, 0.02, { rot, tile: 1.3, color: rnd.pick(FADED) });
+    B.collide(x + 0.1 * s, y0 + 0.45, z + 0.1 * c, W - 0.1, 0.9, 0.9, rot, 'wood');
+    const key = rnd.pick(['cloth_plain', 'cloth_plain', 'cloth_red', 'cloth_green']), tint = key === 'cloth_plain' ? rnd.pick(FADED) : [1, 1, 1];
+    sheet(key, 10, 9, (u, t) => {
+      const lx = (u - 0.5) * (W + 0.35), body = Math.min(1, t / 0.82), edge = Math.sin(Math.PI * u) * Math.sin(Math.PI * body);
+      if (t <= 0.82) return { p: L(lx, Hb + 0.04 + (Hf - Hb) * body - 0.13 * edge, -D / 2 - 0.12 + (D + 0.42) * body), w: 0.5 * edge };
+      const k = (t - 0.82) / 0.18;
+      return { p: L(lx, Hf + 0.04 - 0.3 * k, D / 2 + 0.3 + 0.03 * k), w: 0.5 + 1.2 * k };
+    }, { color: tint, us: key === 'cloth_plain' ? 3 : 1.6, vs: key === 'cloth_plain' ? 2.4 : 1.3 });
+    // goods
+    const goods = o.goods || rnd.pick(['fruit', 'fruit', 'spice', 'pots', 'crates']);
+    if (goods === 'fruit') {
+      const f = ['lemon', 'sweet_potato', 'onion', 'apple', 'pomegranate', 'lime'];
+      for (let i = -1; i <= 1; i++) if (rnd.chance(0.85)) tray(L(i * 0.75, 0.885, 0.12 + rnd.range(-0.08, 0.08)), rot + rnd.range(-0.08, 0.08), f[rnd.int(0, i === 0 ? 5 : 2)], rnd.int(9, 13));
+      const p = L(W / 2 + 0.45, 0, 0.5); B.prop('plastic_crate', p.x, p.y, p.z, rot + rnd.range(-0.4, 0.4)); if (rnd.chance(0.6)) B.prop('plastic_crate', p.x, p.y + 0.25, p.z, rot + rnd.range(-0.4, 0.4));
+    } else if (goods === 'spice') {
+      for (let i = 0; i < 4; i++) { const p = L(-W / 2 + 0.35 + i * 0.62, 0, 1.0 + rnd.range(-0.06, 0.1)); sack(p.x, p.y, p.z, SPICE[rnd.int(0, SPICE.length - 1)]); }
+      for (let i = -1; i <= 1; i++) { const p = L(i * 0.7, 0.885, 0.1); B.prop(rnd.pick(['basket', 'basket', 'basket_tall']), p.x, p.y, p.z, rot + rnd.range(-0.3, 0.3), rnd.range(1.1, 1.5)); }
+    } else if (goods === 'pots') {
+      for (let i = 0; i < 5; i++) { const p = L(rnd.range(-W / 2 + 0.25, W / 2 - 0.25), 0.885, rnd.range(-0.2, 0.4)); B.prop('pot', p.x, p.y, p.z, rnd() * 6.28, rnd.range(0.7, 1.2)); }
+      for (let i = 0; i < 4; i++) { const p = L(-W / 2 - 0.3 + rnd.range(-0.3, 0.3), 0, 0.4 + i * 0.36); B.prop('pot', p.x, p.y, p.z, rnd() * 6.28, rnd.range(1.3, 1.9)); }
+    } else {
+      for (let i = -1; i <= 1; i++) { const p = L(i * 0.72, 0.885, 0.1); B.prop(rnd.pick(['cardboard', 'plastic_crate', 'basket']), p.x, p.y, p.z, rot + rnd.range(-0.3, 0.3), 1); }
+      const p = L(-W / 2 - 0.5, 0, 0.3); B.prop('crate', p.x, p.y, p.z, rot + rnd.range(-0.3, 0.3));
+    }
+    if (rnd.chance(0.5)) { const p = L(rnd.range(-0.6, 0.6), 0, -0.3); B.prop('stool', p.x, p.y, p.z, rnd() * 6.28); }
+  }
+
+  function palm(x, z, h, lean = 0.6) {
+    const la = rnd() * 6.28, seg = 10, top = V(x + Math.cos(la) * lean, h, z + Math.sin(la) * lean);
+    const pts = []; for (let i = 0; i <= seg; i++) { const t = i / seg; pts.push(V(x + Math.cos(la) * lean * t * t, h * t, z + Math.sin(la) * lean * t * t)); }
+    const tg = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 14, 0.2, 9, false), tp = tg.attributes.position;
+    for (let i = 0; i < tp.count; i++) {       // taper + flare at the base
+      const y = tp.getY(i) / h, k = 0.8 + 0.5 * Math.pow(1 - y, 6) - 0.12 * y, ax = x + Math.cos(la) * lean * y * y, az = z + Math.sin(la) * lean * y * y;
+      tp.setX(i, ax + (tp.getX(i) - ax) * k); tp.setZ(i, az + (tp.getZ(i) - az) * k);
+    }
+    tg.computeVertexNormals();
+    B.geom('bark', tg, I, { uvScale: 3, uvScaleY: 1 });
+    B.collide(x, h / 2, z, 0.5, h, 0.5, 0, 'wood');
+    const n = 26 + rnd.int(0, 6);
+    for (let i = 0; i < n; i++) {
+      const az = (i / n) * 6.28 * 3.1 + rnd.range(-0.25, 0.25), tier = i % 3, len = rnd.range(2.7, 3.7), e0 = [1.05, 0.5, -0.1][tier] + rnd.range(-0.2, 0.2), bend = [1.5, 1.7, 1.3][tier] + rnd.range(-0.2, 0.3);
+      const dry = tier === 2 && rnd.chance(0.5), g = rnd.range(0.34, 0.56), col = dry ? [0.8, 0.62, 0.36] : [g * 1.0, g, g * 0.62];
+      const dx = Math.cos(az), dz = Math.sin(az), spine = [V(0, 0, 0)];
+      for (let k = 1; k <= 8; k++) { const a = e0 - bend * (k / 8), prev = spine[k - 1]; spine.push(V(prev.x + Math.cos(a) * len / 8, prev.y + Math.sin(a) * len / 8, 0)); }
+      const ph = rnd() * 6.28;
+      const fg = new THREE.PlaneGeometry(1, 1, 2, 8), fp = fg.attributes.position, fu = fg.attributes.uv, wind = [];
+      for (let k = 0; k < fp.count; k++) {
+        const u = fu.getX(k), t = fu.getY(k), sp = spine[Math.round(t * 8)], wd = (u - 0.5) * 0.95, fold = Math.abs(u - 0.5) * 0.28;
+        fp.setXYZ(k, top.x + dx * sp.x - dz * wd, top.y + sp.y + fold - 0.1, top.z + dz * sp.x + dx * wd); wind.push(t * t * 1.4);
+      }
+      fg.computeVertexNormals();
+      B.geom('frond', fg, I, { color: col, xf: k => [wind[k], ph, 0] });
+    }
+    B.geom('bark', new THREE.SphereGeometry(0.34, 8, 6), mat4(top.clone().add(V(0, -0.15, 0)), 0, V(1, 1.2, 1)), { uvScale: 2, color: [0.8, 0.75, 0.6] });
+  }
+
+  const dish = (p, yaw) => {
+    const pr = []; for (let i = 0; i <= 8; i++) { const r = (i / 8) * 0.42; pr.push(new THREE.Vector2(r, r * r * 0.75)); } for (let i = 8; i >= 0; i--) { const r = (i / 8) * 0.42; pr.push(new THREE.Vector2(r, r * r * 0.75 - 0.012)); }
+    B.geom('metal_white', new THREE.LatheGeometry(pr, 16), mat4(p.clone().add(V(0, 0.55, 0)), yaw, 1, -1.0, 0), { color: [0.9, 0.9, 0.88], uvScale: 0.6 });
+    rod(p, p.clone().add(V(0, 0.55, 0)), 0.022); rod(p.clone().add(V(0, 0.55, 0)), p.clone().add(V(Math.sin(yaw) * 0.42, 0.85, Math.cos(yaw) * 0.42)), 0.01);
+  };
+  const tank = (p, black) => {
+    for (const [a, b] of [[-0.45, -0.45], [0.45, -0.45], [-0.45, 0.45], [0.45, 0.45]]) rod(V(p.x + a, p.y, p.z + b), V(p.x + a, p.y + 0.9, p.z + b), 0.03);
+    B.box('metal_plate', p.x, p.y + 0.93, p.z, 1.2, 0.05, 1.2, { tile: 1.2 });
+    B.geom(black ? 'matte' : 'metal_white', new THREE.CylinderGeometry(0.56, 0.56, 1.3, 16), mat4(V(p.x, p.y + 1.61, p.z)), { color: black ? [0.05, 0.05, 0.055] : [0.85, 0.87, 0.9], uvScale: 2, uvScaleY: 1 });
+    B.geom(black ? 'matte' : 'metal_white', new THREE.SphereGeometry(0.56, 16, 6, 0, 6.2832, 0, 1.2), mat4(V(p.x, p.y + 2.2, p.z), 0, V(1, 0.3, 1)), { color: black ? [0.05, 0.05, 0.055] : [0.85, 0.87, 0.9] });
+  };
+
+  // clay pot, optionally with a hardy plant in it
+  const planter = (q, s, planted = true) => {
+    B.prop('pot', q.x, q.y, q.z, rnd() * 6.28, s);
+    if (planted) B.prop(rnd.pick(['bush_b', 'bush_c', 'weed_b']), q.x, q.y + 0.19 * s, q.z, rnd() * 6.28, s * rnd.range(0.7, 1.0));
+  };
+
+  // =========================================== anchor-driven dressing =====================================================
+  const stalls = [];
+  for (const a of anchors.slice()) {
+    if (a.street === 'none') continue;
+    const { p, N, T } = a, rotN = N ? Math.atan2(N.x, N.z) : 0;
+    const at = (u, y, d) => V(p.x + T.x * u + N.x * d, y, p.z + T.z * u + N.z * d);   // d = metres out from the wall
+    const gy = a.street === 'main' ? SIDEWALK : 0;
+    if (a.kind === 'door') {
+      if (rnd.chance(0.4)) { const l = at(0, 1.75, 0.25); B.prop('wall_lamp', l.x, l.y, l.z, rotN, 0.6); }
+      if (rnd.chance(0.4)) { const q = at(rnd.sign() * 0.95, gy, 0.3); planter(q, rnd.range(1.3, 1.9)); }
+    } else if (a.kind === 'shutter' || a.kind === 'shop') {
+      if (rnd.chance(a.kind === 'shop' ? 0.85 : 0.4) && a.street !== 'market') {     // sloped canopy with support rods
+        const w = a.w + 0.5, out = 1.75, key = rnd.pick(['cloth_plain', 'cloth_plain', 'cloth_red', 'cloth_green']), tint = key === 'cloth_plain' ? rnd.pick(FADED) : [1, 1, 1];
+        sheet(key, 8, 6, (u, t) => {
+          const lx = (u - 0.5) * w, body = Math.min(1, t / 0.85), e = Math.sin(Math.PI * u) * Math.sin(Math.PI * Math.min(1, body));
+          if (t <= 0.85) return { p: at(lx, 3.12 - 0.62 * body - 0.07 * e, 0.03 + out * body), w: 0.4 * e };
+          const k = (t - 0.85) / 0.15; return { p: at(lx, 2.5 - 0.26 * k, 0.03 + out + 0.02 * k), w: 0.4 + 1.1 * k };
+        }, { color: tint, us: key === 'cloth_plain' ? 3 : 1.6, vs: key === 'cloth_plain' ? 2.4 : 1.2 });
+        for (const u of [-w / 2 + 0.05, w / 2 - 0.05]) { rod(at(u, 3.12, 0.03), at(u, 2.5, out + 0.03), 0.014); rod(at(u, 2.35, 0.03), at(u, 2.5, out + 0.03), 0.012); }
+        rod(at(-w / 2 + 0.05, 2.5, out + 0.03), at(w / 2 - 0.05, 2.5, out + 0.03), 0.014);
+      }
+      if (a.kind === 'shop') {
+        for (const sgn of [-1, 1]) {
+          const q = at(sgn * (a.w / 2 + 0.45), gy, 0.5), k = rnd.int(0, 4);
+          if (k === 0) { sack(q.x, q.y, q.z, rnd.pick(SPICE)); const q2 = at(sgn * (a.w / 2 + 0.5), gy, 1.05); sack(q2.x, q2.y, q2.z, rnd.pick(SPICE)); }
+          else if (k === 1) { B.prop('crate', q.x, q.y, q.z, rotN + rnd.range(-0.3, 0.3)); B.prop('basket', q.x, q.y + 0.32, q.z, rnd() * 6.28, 1.3); }
+          else if (k === 2) B.prop('chair', q.x, q.y, q.z, rotN + rnd.range(-0.6, 0.6));
+          else if (k === 3) { B.prop('plastic_crate', q.x, q.y, q.z, rotN); B.prop('plastic_crate', q.x, q.y + 0.25, q.z, rotN + 0.2); }
+        }
+      }
+    } else if (a.kind === 'room') {
+      const { P, ra, rb, D, y } = a, mid = (ra + rb) / 2, rotIn = rotN;
+      const sh = P(mid - 0.7, y, D - 0.32); B.prop('shelves', sh.x, sh.y, sh.z, rotIn, 0.95);
+      const sh2 = P(mid + 0.75, y, D - 0.32); B.prop('shelves', sh2.x, sh2.y, sh2.z, rotIn, 0.95);
+      for (let k = 0; k < 9; k++) { const q = P(mid + rnd.range(-1.2, 1.2), y + rnd.pick([0.42, 0.87, 1.3]) * 0.9, D - 0.3); B.prop(rnd.pick(['cardboard', 'basket', 'jerrycan', 'pot']), q.x, q.y, q.z, rnd() * 6.28, rnd.range(0.55, 0.8)); }
+      const tb = P(mid + rnd.range(-0.4, 0.4), y, 2.3); B.propSolid('table', tb.x, tb.y, tb.z, rotIn + rnd.range(-0.2, 0.2), 1, 'wood');
+      const bk = P(mid, y + 0.8, 2.3); B.prop(rnd.pick(['basket_tall', 'basket', 'cardboard']), bk.x, bk.y, bk.z, rnd() * 6.28, 1.2);
+      const cr = P(ra + 0.6, y, D - 1.4); B.propSolid('crate', cr.x, cr.y, cr.z, rotIn + 1.57 + rnd.range(-0.2, 0.2), 1.1, 'wood');
+      const sk = P(rb - 0.55, y, D - 1.3); sack(sk.x, sk.y, sk.z, rnd.pick(SPICE)); const sk2 = P(rb - 0.6, y, D - 1.95); sack(sk2.x, sk2.y, sk2.z, rnd.pick(SPICE));
+      const bulb = P(mid, a.h - 0.5, 2.2); rod(P(mid, a.h, 2.2), bulb, 0.006, 'cable');
+    } else if (a.kind === 'balcony') {
+      const k = rnd.int(0, 5), top = p.y + 1.0;
+      if (k <= 1) {             // laundry / rug over the rail
+        const w = rnd.range(0.7, Math.min(1.5, a.w - 0.4)), u0 = rnd.range(-a.w / 2 + 0.2, a.w / 2 - 0.2 - w), len = rnd.range(0.7, 1.2), key = k === 0 ? 'rug' : rnd.pick(['cloth_plain', 'cloth_red', 'cloth_green']);
+        sheet(key, 4, 5, (u, t) => ({ p: at(u0 + u * w, top + 0.02 - t * len, 0.03 + 0.02 * t), w: t * (key === 'rug' ? 0.15 : 0.9) }), { color: key === 'cloth_plain' ? rnd.pick(FADED) : [1, 1, 1], us: key === 'rug' ? 1 : 1.5, vs: key === 'rug' ? 1.3 : 1.5 });
+      } else if (k === 2) planter(at(rnd.range(-0.4, 0.4), p.y, -0.3), 1.5);
+      else if (k === 3) dish(at(a.w / 2 - 0.2, p.y + 0.5, -0.1), rotN + rnd.range(-0.6, 0.6));
+      if (rnd.chance(0.3)) planter(at(rnd.range(-a.w / 2 + 0.3, a.w / 2 - 0.3), p.y, -rnd.range(0.2, 0.7)), rnd.range(0.9, 1.4));
+    } else if (a.kind === 'window') {
+      if (rnd.chance(0.6)) { const w = a.w * rnd.range(0.7, 1.1), len = rnd.range(0.8, 1.4); sheet(rnd.chance(0.5) ? 'rug' : 'cloth_plain', 3, 5, (u, t) => ({ p: at((u - 0.5) * w, p.y - 0.02 - t * len, 0.09 + 0.01 * t), w: t * 0.5 }), { color: rnd.pick(FADED), us: 1.2, vs: 1.4 }); }
+    } else if (a.kind === 'wall') {
+      const r = rnd();
+      if (a.street === 'alley') {
+        if (r < 0.2) { const q = at(rnd.range(-0.6, 0.6), 0, 0.42); B.propSolid(rnd.chance(0.5) ? 'trashcan' : 'trashcan_rust', q.x, q.y, q.z, rnd() * 6.28, 1, 'metal', 0.8); const b = at(rnd.range(-1.2, 1.2), 0, 0.5); B.prop('trashbag', b.x, b.y, b.z, rnd() * 6.28, rnd.range(0.9, 1.2)); }
+        else if (r < 0.36) { const q = at(0, 0, 0.55); B.propSolid('drum', q.x, q.y, q.z, rnd() * 6.28, 1, 'metal', 0.85); if (rnd.chance(0.5)) { const q2 = at(0.72, 0, 0.5); B.propSolid('drum_plastic', q2.x, q2.y, q2.z, rnd() * 6.28, 1, 'wood', 0.85); } anchors.push({ kind: 'stain', x: q.x, z: q.z, r: 1.6, s: 0.5 }); }
+        else if (r < 0.5) { const q = at(0, 0, 0.5); pallet(q.x, 0, q.z, rotN + rnd.range(-0.2, 0.2)); B.prop('cardboard', q.x, 0.14, q.z, rnd() * 6.28, 1.2); B.collide(q.x, 0.25, q.z, 1.1, 0.5, 0.9, rotN); }
+        else if (r < 0.62) { for (let i = 0; i < 3; i++) { const q = at(rnd.range(-0.5, 0.5), i * 0.16, 0.5 + rnd.range(-0.05, 0.05)); B.prop('tyre', q.x, q.y + 0.08, q.z, rnd() * 6.28, 1, [Math.PI / 2, 0]); } }
+        else if (r < 0.72) { const q = at(0, 0, 0.48); B.prop('ladder', q.x, q.y, q.z, rotN + Math.PI / 2, 1.5); }
+        else if (r < 0.8) { const q = at(0, 0, 0.45); B.prop('hand_truck', q.x, q.y, q.z, rotN + rnd.range(-0.3, 0.3)); }
+      } else if (a.street === 'main' || a.street === 'plaza' || a.street === 'cross') {
+        if (r < 0.14) { const q = at(0, gy, 0.3); B.prop('utility_box', q.x, q.y, q.z, rotN, 1); B.collide(q.x, gy + 0.55, q.z, 0.5, 1.1, 0.45, rotN, 'metal'); }
+        else if (r < 0.3) { const q = at(rnd.range(-0.5, 0.5), gy, 0.4); B.prop('chair', q.x, q.y, q.z, rotN + rnd.range(-0.7, 0.7)); if (rnd.chance(0.5)) { const q2 = at(rnd.range(0.4, 0.9), gy, 0.5); B.prop('stool', q2.x, q2.y, q2.z, rnd() * 6.28); } }
+        else if (r < 0.45) { for (let i = 0; i < 2; i++) planter(at(rnd.range(-0.9, 0.9), gy, rnd.range(0.25, 0.5)), rnd.range(1.4, 2.2), i === 0); }
+        else if (r < 0.58) { const q = at(0, gy, 0.5); B.propSolid('crate', q.x, q.y, q.z, rotN + rnd.range(-0.2, 0.2), 1.15, 'wood'); if (rnd.chance(0.6)) B.prop('cardboard', q.x + rnd.range(-0.1, 0.1), q.y + 0.37, q.z, rnd() * 6.28); }
+        else if (r < 0.68) { const q = at(0, gy, 0.42); B.propSolid('trashcan_rust', q.x, q.y, q.z, rnd() * 6.28, 1, 'metal', 0.8); }
+        else if (r < 0.76) planter(at(0, gy, 0.35), 2.2);
+        else if (r < 0.84) { const q = at(0, gy, 0.4); B.propSolid('propane', q.x, q.y, q.z, rnd() * 6.28, 1.1, 'metal', 0.8); const q2 = at(0.45, gy, 0.38); B.prop('lpg', q2.x, q2.y, q2.z, rnd() * 6.28, 1); }
+      } else if (a.street === 'market' && N.x > 0) {
+        stalls.push(a);
+      }
+    } else if (a.kind === 'roof') {
+      const bd = a.bd, H = bd.H, inx = 1.0;
+      if (bd.x1 - bd.x0 < 6 || bd.z1 - bd.z0 < 6) continue;
+      const rp = () => V(rnd.range(bd.x0 + inx, bd.x1 - inx), H, rnd.range(bd.z0 + inx, bd.z1 - inx));
+      const ep = () => { const q = rp(); const e = rnd.int(0, 3); if (e === 0) q.x = bd.x0 + 1.1; else if (e === 1) q.x = bd.x1 - 1.1; else if (e === 2) q.z = bd.z0 + 1.1; else q.z = bd.z1 - 1.1; return q; };
+      if (bd === low) { sandbags(-18.2, -9, 3.4, 3, Math.PI / 2, H); B.propSolid('mil_crate', -22, H, -8, 0.4, 1.2, 'wood'); B.propSolid('drum', -25.6, H, -15.6, 0, 1, 'metal', 0.85); tank(V(-25.4, H, -5), true); continue; }
+      if (rnd.chance(0.7)) tank(ep(), rnd.chance(0.5));
+      if (rnd.chance(0.6)) dish(ep(), rnd() * 6.28);
+      if (rnd.chance(0.5)) dish(ep(), rnd() * 6.28);
+      if (rnd.chance(0.7)) { const q = ep(), h = rnd.range(2.6, 4.6); rod(q, q.clone().add(V(0, h, 0)), 0.016); for (let i = 0; i < 4; i++) { const y = h - 0.25 - i * 0.28, w = 0.5 - i * 0.07; rod(V(q.x - w, H + y, q.z), V(q.x + w, H + y, q.z), 0.007); } }
+      if (rnd.chance(0.45)) { const q = rp(); B.box(bd.wall, q.x, H + 1.25, q.z, 2.6, 2.5, 2.4, { color: bd.tint, tile: bd.tile }); B.box('concrete', q.x, H + 2.55, q.z, 2.9, 0.12, 2.7, { color: bd.trim }); }
+      if (rnd.chance(0.5)) { const q = ep(); B.prop(rnd.chance(0.5) ? 'ac' : 'ac_rust', q.x, H, q.z, rnd() * 6.28, 1); }
+      if (rnd.chance(0.3)) { const q = ep(); for (let i = 0; i < 2; i++) B.geom('metal_white', new THREE.CylinderGeometry(0.09, 0.09, 1.5, 8), mat4(V(q.x + i * 0.5, H + 0.75, q.z)), { color: [0.6, 0.6, 0.6] }); }
+    }
+  }
+
+  const bAt = (x, z) => buildings.find(b => x >= b.x0 && x <= b.x1 && z >= b.z0 && z <= b.z1);
+  const wallNear = (x, z, rank) => {
+    const c = buildings.map(b => { const qx = Math.min(b.x1, Math.max(b.x0, x)), qz = Math.min(b.z1, Math.max(b.z0, z)); return { b, qx, qz, d: Math.hypot(qx - x, qz - z) }; }).filter(o => o.d > 1).sort((p, q) => p.d - q.d)[rank];
+    return V(c.qx, c.b.H - rnd.range(0.2, 1.0), c.qz);
+  };
+
+  // =========================================== main street =================================================================
+  const stain = (x, z, r, s = 0.6) => anchors.push({ kind: 'stain', x, z, r, s });
+  const barrier = (x, z, rot, tall) => B.propSolid(tall ? 'barrier2' : 'barrier', x, 0, z, rot, 1, 'concrete', 0.95);
+  const crates = (x, z, rot, n = 2, y = 0) => { B.propSolid('crate', x, y, z, rot, 1.2, 'wood'); if (n > 1) B.propSolid('mil_crate', x + 0.05, y + 0.385, z, rot + 0.25, 1.05, 'wood'); if (n > 2) { B.propSolid('crate', x + Math.cos(rot) * 1.05, y, z - Math.sin(rot) * 1.05, rot + 1.4, 1.2, 'wood'); } };
+  const drums = (x, z, n = 3) => { for (let i = 0; i < n; i++) { const a = i * 2.1 + rnd.range(-0.3, 0.3), d = i ? 0.42 : 0; B.propSolid(rnd.chance(0.7) ? 'drum' : 'drum_plastic', x + Math.cos(a) * d, 0, z + Math.sin(a) * d, rnd() * 6.28, 1, 'metal', 0.85); } stain(x, z, 2, 0.55); };
+  const car = (x, z, rot) => { B.prop('car', x, 0, z, rot, 1); B.collide(x, 0.62, z, 1.75, 1.25, 4.3, rot, 'fabric'); stain(x, z, 3.2, 0.5); };
+
+  barrier(-1.6, -47, 0.08); barrier(2.3, -44.5, -0.12, true); drums(3.3, -47.2, 3);
+  car(2.75, -36, 0.03); crates(-3.0, -38, 0.3, 3);
+  sandbags(-1.8, -28.5, 3.6, 5, 0.05); B.propSolid('mil_crate_open', 0.7, 0, -29.2, 0.5, 1.1, 'wood');
+  barrier(-2.6, -20.5, 1.45, true); barrier(2.8, -19, 1.7, true); barrier(0.2, -15.5, 0.1);
+  crates(3.0, -9.5, 1.3, 3); drums(-3.2, -6.5, 2);
+  barrier(-2.9, 1.5, 0.05, true); barrier(0.0, 2.6, -0.06); barrier(3.0, 1.2, 0.1, true); sandbags(0, 3.35, 2.4, 3, -0.04);
+  rubble(-4.6, 9.5, 1.8, 0.75); rubble(4.9, 17.2, 1.4, 0.6);
+  car(-2.7, 27, -0.06); barrier(2.4, 24.5, 0.15); drums(3.4, 30, 3);
+  sandbags(1.9, 35, 3.6, 5, -0.07); crates(-2.8, 37.5, -0.2, 2);
+  barrier(-1.5, 45, -0.1, true); barrier(2.2, 47.5, 0.07); crates(3.1, 52, 0.9, 3);
+  for (const [x, z] of [[0.6, -52], [-1.2, -12], [1.5, 22], [-0.8, 41]]) B.prop('manhole', x, -0.052, z, rnd() * 6.28, 1.05);
+  // cross streets and spawn streets
+  barrier(-16, -20.6, 0.1, true); drums(-12, -18.6, 2); barrier(15, -19.4, -0.05); crates(18.5, -21.3, 0.2, 2);
+  barrier(-15, 19.5, 0.08); crates(-19, 21.2, 0.1, 3); barrier(16, 20.8, 0.1, true); drums(12, 18.5, 3);
+  car(-12, -60.6, Math.PI / 2 + 0.05); barrier(8, -59, 0.2, true); crates(18, -61.5, 0.4, 3); sandbags(-21, -58.6, 3, 4, 0.1); drums(22.5, -58.4, 2);
+  car(13, 60.4, Math.PI / 2 - 0.04); barrier(-8, 59.2, -0.15, true); crates(-18, 61.4, -0.3, 3); sandbags(21, 58.7, 3, 4, -0.1); drums(-22.5, 61.6, 2);
+  rubble(-23, 60.5, 1.3, 0.55); rubble(24, -61, 1.5, 0.6);
+
+  // =========================================== plaza ======================================================================
+  {
+    const st = { color: [1.0, 0.95, 0.86], tile: 2.2 };
+    const basin = [[0, 0.18], [1.75, 0.18], [1.75, 0.58], [1.86, 0.62], [2.12, 0.62], [2.18, 0.5], [2.18, 0.1], [2.3, 0.1], [2.3, 0]].map(([a, b]) => new THREE.Vector2(a, b));
+    B.geom('concrete', new THREE.LatheGeometry(basin, 8), mat4(V(-11.5, 0, 0), Math.PI / 8), { ...st, uvScale: 4 });
+    const col = [[0, 1.5], [0.5, 1.5], [0.62, 1.38], [0.2, 1.2], [0.16, 0.55], [0.3, 0.4], [0.34, 0.18]].map(([a, b]) => new THREE.Vector2(a, b));
+    B.geom('concrete', new THREE.LatheGeometry(col, 12), mat4(V(-11.5, 0, 0)), { ...st, uvScale: 2 });
+    B.collide(-11.5, 0.31, 0, 3.9, 0.62, 3.9, Math.PI / 8, 'concrete'); B.collide(-11.5, 0.75, 0, 0.7, 1.5, 0.7, 0, 'concrete');
+    const leaves = new THREE.CircleGeometry(1.7, 8); leaves.rotateX(-Math.PI / 2);
+    B.geom('rubble', leaves, mat4(V(-11.5, 0.2, 0), Math.PI / 8), { uvScale: 2.5, color: [0.7, 0.62, 0.5] });
+    // broken perimeter wall towards the street
+    for (const [za, zb, h] of [[-16.6, -11.2, 1.05], [-11.2, -9.4, 0.6], [-4.5, 1.0, 1.1], [1.0, 2.3, 0.45], [7.4, 12.6, 1.0]]) {
+      B.box('w_brick', -6.25, h / 2, (za + zb) / 2, 0.42, h, zb - za, { tile: 2.0 }); B.box('concrete', -6.25, h + 0.04, (za + zb) / 2, 0.5, 0.08, zb - za + 0.04, st);
+      B.collide(-6.25, h / 2, (za + zb) / 2, 0.42, h, zb - za, 0, 'brick');
+    }
+    rubble(-6.6, -7.0, 1.3, 0.5); rubble(-6.4, 4.6, 1.5, 0.55);
+    for (const [x, z, h] of [[-14.6, -11.5, 8.2], [-8.6, 9.6, 9.4], [-15.2, 12.6, 7.4]]) {
+      palm(x, z, h); B.box('concrete', x, 0.2, z, 1.5, 0.4, 1.5, st); B.collide(x, 0.2, z, 1.5, 0.4, 1.5);
+      B.quad('rubble', V(x - 0.62, 0.41, z + 0.62), V(x + 0.62, 0.41, z + 0.62), V(x + 0.62, 0.41, z - 0.62), V(x - 0.62, 0.41, z - 0.62), { tile: 1.5, color: [0.55, 0.45, 0.35] });
+    }
+    stall(-9.2, -13.6, Math.PI * 0.5, { goods: 'fruit' }); stall(-12.6, 14.6, Math.PI, { goods: 'pots' });
+    B.propSolid('bench_table', -14.5, 0, 5.2, 0.2, 1, 'wood'); B.prop('chair', -13.2, 0, 6.3, 2.2); B.prop('chair', -15.6, 0, 6.5, 0.7); B.prop('stool', -14.2, 0, 3.9, 0);
+    sandbags(-9.2, -2.9, 2.9, 4, 0.5); crates(-15.6, -1.0, 0.2, 2);
+  }
+  // tall palms behind the skyline
+  palm(-38, 30, 12.5, 1.2); palm(38.5, -22, 13.5, 1.0); palm(-12, 71, 12, 0.9); palm(20, -72, 12.8, 1.1);
+
+  // =========================================== covered market lane =========================================================
+  let lastW = -99;
+  for (const a of stalls.sort((p, q) => p.p.z - q.p.z)) {
+    const z = a.p.z, ph = (((z + 52) % 6.5) + 6.5) % 6.5;
+    if (Math.abs(Math.abs(z) - 20) < 4.8 || Math.abs(z) > 54 || Math.abs(z) < 4.5 || Math.abs(ph - 3.25) > 1.4 || z - lastW < 5.5) continue;
+    stall(a.p.x + 0.95, z, Math.PI / 2, {}); lastW = z;
+  }
+  for (let z = -52; z <= 52; z += 6.5) {
+    if (Math.abs(Math.abs(z) - 20) < 5 || Math.abs(z) < 4) continue;
+    const blocked = anchors.some(a => (a.kind === 'shop' || a.kind === 'door') && a.street === 'market' && a.N.x < 0 && Math.abs(a.p.z - z) < 2.6);
+    if (!blocked) stall(30.05, z + rnd.range(-0.4, 0.4), -Math.PI / 2, {});
+  }
+  for (let z = -54, k = 0; z <= 54; z += rnd.range(6.2, 8.4), k++) {       // shade cloths strung between the buildings
+    if (Math.abs(Math.abs(z) - 20) < 5.2) continue;
+    const len = rnd.range(4.2, 5.6), y0 = rnd.range(4.3, 5.0), y1 = y0 + rnd.range(-0.5, 0.5), key = rnd.pick(['cloth_plain', 'cloth_plain', 'cloth_plain', 'cloth_red', 'cloth_green']), sag = rnd.range(0.35, 0.6);
+    sheet(key, 10, 8, (u, t) => {
+      const e = Math.sin(Math.PI * u) * Math.sin(Math.PI * t), pinch = 1 - 0.12 * Math.sin(Math.PI * u);
+      return { p: V(26.25 + u * 4.5, y0 + (y1 - y0) * u - sag * Math.pow(e, 0.7), z + (t - 0.5) * len * pinch), w: 0.9 * e };
+    }, { color: key === 'cloth_plain' ? rnd.pick(FADED) : [1, 1, 1], us: key === 'cloth_plain' ? 4 : 2, vs: key === 'cloth_plain' ? 4 : 2 });
+    for (const [u, t] of [[0, 0], [0, 1], [1, 0], [1, 1]]) rod(V(26.25 + u * 4.5, y0 + (y1 - y0) * u, z + (t - 0.5) * len), V(u ? 31 : 26, y0 + (y1 - y0) * u + 0.35, z + (t - 0.5) * (len + 1.2)), 0.008, 'cable');
+  }
+  sandbags(27.3, -1.2, 2.2, 4, 0.02); sandbags(29.9, 1.8, 2.0, 4, -0.03); barrier(28.6, 20.4, 0.05, true); barrier(28.2, -19.6, -0.08);
+
+  // =========================================== alley =====================================================================
+  barrier(-29.3, -20.3, 0.06, true); crates(-28.2, -41, 1.2, 2); sandbags(-29, 2.2, 2.2, 4, 0.03); crates(-29.9, 39, 0.4, 3); barrier(-28.6, 20.2, -0.05); rubble(-29.6, -33, 1.1, 0.5); rubble(-28, 49, 1.2, 0.5);
+  for (let z = -52; z <= 54; z += rnd.range(7, 11)) {                   // laundry lines across the alley
+    if (Math.abs(Math.abs(z) - 20) < 4) continue;
+    const hb = Math.min(bAt(-31.5, z)?.H ?? 6, bAt(-26.5, z)?.H ?? 6); if (hb < 5) continue;
+    const y = Math.min(rnd.range(4.6, 7.2), hb - 0.5), a = V(-31, y, z), b = V(-27, y + rnd.range(-0.3, 0.3), z + rnd.range(-0.3, 0.3)), sag = rnd.range(0.12, 0.3);
+    const pts = cable(a, b, sag, 0.006);
+    let u = rnd.range(0.08, 0.2);
+    while (u < 0.86) {
+      const w = rnd.range(0.09, 0.2), len = rnd.range(0.5, 1.1), key = rnd.pick(['cloth_plain', 'cloth_plain', 'cloth_plain', 'cloth_red', 'cloth_green']);
+      const at = t => { const f = clamp01(t) * 10, i = Math.min(9, Math.floor(f)); return pts[i].clone().lerp(pts[i + 1], f - i); };
+      const u0 = u;
+      sheet(key, 3, 5, (s, t) => { const q = at(u0 + s * w); return { p: V(q.x, q.y - t * len, q.z + 0.01 * t), w: t * 1.0 }; }, { color: key === 'cloth_plain' ? rnd.pick(FADED) : [1, 1, 1], us: 1.2, vs: 1.6 });
+      u += w + rnd.range(0.02, 0.1);
+    }
+  }
+
+  // =========================================== overhead cables, bunting, poles ==========================================
+  for (let z = -54; z <= 54; z += rnd.range(5, 9)) {
+    const z2 = z + rnd.range(-3, 3), bw = bAt(-6.5, z), be = bAt(6.5, z2);
+    if (!bw || !be) continue;
+    const ya = bw.H - rnd.range(0.2, 1.4), yb = be.H - rnd.range(0.2, 1.4);
+    cable(V(-6, ya, z), V(6, yb, z2), rnd.range(0.4, 0.9));
+    if (rnd.chance(0.5)) cable(V(-6, ya - 0.3, z + 0.4), V(6, yb - 0.25, z2 + 0.3), rnd.range(0.5, 1.1), 0.009);
+  }
+  for (const sx of [-6.05, 6.05]) for (let z = -56; z < 56; z += rnd.range(9, 15)) { const zb = Math.min(56, z + rnd.range(7, 12)), b1 = bAt(sx * 1.1, z), b2 = bAt(sx * 1.1, zb); if (!b1 || !b2) continue; const y = Math.min(b1.H, b2.H) - rnd.range(0.3, 1.2); cable(V(sx, y, z), V(sx, y + rnd.range(-0.2, 0.2), zb), rnd.range(0.15, 0.4), 0.01); }
+  for (const z of [-41.5, -9, 33.5]) {                                    // faded pennant strings across the street
+    const bw = bAt(-6.5, z), be = bAt(6.5, z + 1.5); if (!bw || !be) continue;
+    const pts = cable(V(-6, bw.H - 0.5, z), V(6, be.H - 0.7, z + 1.5), 0.55, 0.005);
+    for (let i = 1; i < 30; i++) {
+      const f = (i / 30) * 10, k = Math.min(9, Math.floor(f)), q = pts[k].clone().lerp(pts[k + 1], f - k), col = FADED[(i * 3) % FADED.length];
+      sheet('cloth_plain', 1, 2, (s, t) => ({ p: V(q.x + (s - 0.5) * 0.26 * (1 - t * 0.85), q.y - t * 0.36, q.z), w: t * 0.9 }), { color: col, us: 0.6, vs: 0.6 });
+    }
+  }
+  for (const [x, z] of [[-26.6, -19.2], [25.6, 19.4], [-5.2, -58.2], [5.3, 58.3], [-31.4, 21.4]]) {    // utility poles
+    rod(V(x, 0, z), V(x, 8.6, z), 0.11, 'planks', [0.45, 0.4, 0.35]); B.collide(x, 4.3, z, 0.26, 8.6, 0.26, 0, 'wood');
+    B.box('planks', x, 8.0, z, 1.7, 0.1, 0.1, { rot: 0.3, tile: 1, color: [0.45, 0.4, 0.35] }); B.box('metal_white', x + 0.2, 6.6, z, 0.4, 0.6, 0.35, { tile: 1 });
+    for (let i = 0; i < 4; i++) cable(V(x + rnd.range(-0.7, 0.7), 8.05, z), wallNear(x, z, i), rnd.range(0.3, 0.8));
+  }
+
+  // =========================================== scatter: weeds, pebbles, litter ==========================================
+  const edgePoint = out => {
+    for (let tries = 0; tries < 20; tries++) {
+      const b = rnd.pick(buildings), s = rnd.pick([...b.sides]);
+      if (!b.street[s] || b.street[s] === 'none') continue;
+      const t = rnd(), gy = b.street[s] === 'main' ? SIDEWALK : 0;
+      if (s === 'e') return V(b.x1 + out, gy, b.z0 + t * (b.z1 - b.z0)); if (s === 'w') return V(b.x0 - out, gy, b.z0 + t * (b.z1 - b.z0));
+      if (s === 'n') return V(b.x0 + t * (b.x1 - b.x0), gy, b.z1 + out); return V(b.x0 + t * (b.x1 - b.x0), gy, b.z0 - out);
+    }
+    return V(0, 0, 0);
+  };
+  for (let i = 0; i < 34; i++) { const p = edgePoint(rnd.range(0.05, 0.3)); B.prop(rnd.pick(['weed_a', 'weed_b', 'weed_b', 'weed_c', 'weed_c']), p.x, p.y - 0.01, p.z, rnd() * 6.28, rnd.range(1.3, 2.6)); }
+  for (let i = 0; i < 20; i++) { const p = edgePoint(rnd.range(0.15, 0.45)); B.prop(rnd.pick(['bush_a', 'bush_b', 'bush_c']), p.x, p.y - 0.02, p.z, rnd() * 6.28, rnd.range(0.8, 1.5)); }
+  for (const [x, z, s] of [[-17.6, 16.2, 1.0], [-7.2, -16.2, 0.8], [-30.6, -57.6, 1.0], [30.4, 57.4, 0.9], [-26.2, 57.6, 0.8], [5.2, -62.6, 0.7], [-45, 0, 1.2]]) B.prop(rnd.pick(['shrub_a', 'shrub_b', 'shrub_c', 'shrub_d']), x, 0, z, rnd() * 6.28, s);
+  const peb = new THREE.BoxGeometry(1, 1, 1);
+  for (let i = 0; i < 320; i++) {
+    const p = rnd.chance(0.7) ? edgePoint(rnd.range(0.05, 0.9)) : V(rnd.range(-31, 31), 0, rnd.range(-63, 63)), s = rnd.range(0.025, 0.1), g = rnd.range(0.55, 0.95);
+    B.geom(rnd.pick(['concrete', 'concrete', 'w_brick']), peb, mat4(V(p.x, p.y + s * 0.3, p.z), rnd() * 6.28, V(s * rnd.range(0.8, 2), s * rnd.range(0.4, 0.9), s), rnd.range(-0.5, 0.5), rnd.range(-0.5, 0.5)), { uvScale: 0.2, color: [g, g * 0.97, g * 0.92] });
+  }
+  for (let i = 0; i < 70; i++) {
+    const p = rnd.chance(0.6) ? edgePoint(rnd.range(0.2, 1.4)) : V(rnd.range(-30, 30), 0, rnd.range(-62, 62)), a = rnd() * 6.28, w = rnd.range(0.1, 0.16), h = rnd.range(0.14, 0.22), g = rnd.range(0.6, 0.92), y = p.y + 0.006 + i * 0.00004;
+    const c = Math.cos(a), s = Math.sin(a), q = (lx, lz) => V(p.x + lx * c + lz * s, y, p.z - lx * s + lz * c);
+    B.quad('matte', q(-w, h), q(w, h), q(w, -h), q(-w, -h), { color: rnd.chance(0.7) ? [g, g * 0.98, g * 0.9] : [g * 0.75, g * 0.6, g * 0.42] });
+  }
+}
+
+const clamp01 = v => Math.min(0.9999, Math.max(0, v));

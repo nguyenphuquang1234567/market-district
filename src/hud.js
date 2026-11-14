@@ -1,0 +1,97 @@
+// DOM heads-up display and menus. Drawn at native resolution above the 3D canvas, untouched by post-processing.
+const $ = id => document.getElementById(id);
+const TEAM = ['#6fb1ff', '#ff6a55'];
+
+export class HUD {
+  constructor(G) {
+    this.G = G; this.last = {};
+    this.mm = $('minimap').getContext('2d'); this.cp = $('compass').getContext('2d');
+    $('hpbar').innerHTML = '<i></i>'.repeat(10); $('abar').innerHTML = '<i></i>'.repeat(30);
+    this.feed = []; this.hitT = 0; this.dmgT = 0; this.bannerT = 0; this.pings = new Map();
+  }
+  set(id, v) { if (this.last[id] !== v) { this.last[id] = v; $(id).textContent = v; } }
+  cls(id, name, on) { const k = id + '.' + name; if (this.last[k] !== on) { this.last[k] = on; $(id).classList.toggle(name, on); } }
+
+  hitmarker(kind) { const e = $('hit'); e.className = 'on ' + kind; this.hitT = kind === 'kill' ? 0.32 : 0.16; }
+  damageFrom(angle) { const e = $('dmg'); e.style.transform = `translate(-50%,-50%) rotate(${(-angle * 180 / Math.PI).toFixed(1)}deg)`; e.style.opacity = 1; this.dmgT = 1.1; }
+  banner(head) { $('bannerB').textContent = head ? 'HEADSHOT  +150 XP' : '+100 XP'; $('banner').classList.add('on'); this.bannerT = 1.9; }
+  kill(killer, victim, head) {
+    const row = document.createElement('div'); row.className = 'row';
+    const icon = `<svg viewBox="0 0 44 12" class="gun"><path d="M0 4h9l2-2h17v2h14v2H30l-1 2h-6l-2 4h-4l1-4H9L7 6H0z"/></svg>`;
+    row.innerHTML = `<span style="color:${TEAM[killer ? killer.team : 1 - victim.team]}">${killer ? killer.name : '—'}</span>${icon}${head ? '<b class="hs">◎</b>' : ''}<span style="color:${TEAM[victim.team]}">${victim.name}</span>`;
+    const f = $('feed'); f.prepend(row); this.feed.unshift({ row, t: 6 }); while (this.feed.length > 5) this.feed.pop().row.remove();
+  }
+  ping(actor, secs) { this.pings.set(actor, secs); }
+
+  update(dt) {
+    const G = this.G, P = G.player, W = G.weapon;
+    const hp = Math.ceil(P.health);
+    this.set('hp', hp); this.cls('health', 'low', hp < 35);
+    if (this.last.hpSeg !== Math.ceil(hp / 10)) { this.last.hpSeg = Math.ceil(hp / 10); [...$('hpbar').children].forEach((e, i) => e.classList.toggle('on', i < this.last.hpSeg)); }
+    this.set('mag', W.ammo); this.set('res', W.reserve); this.set('fmode', W.mode === 'auto' ? 'AUTO' : 'SEMI'); this.cls('ammo', 'low', W.ammo <= 8); this.cls('ammo', 'reload', W.reloading);
+    if (this.last.ammoSeg !== W.ammo) { this.last.ammoSeg = W.ammo; [...$('abar').children].forEach((e, i) => e.classList.toggle('on', i < W.ammo)); }
+    this.set('s0', G.score[0]); this.set('s1', G.score[1]);
+    const tl = Math.max(0, Math.ceil(G.timeLeft)); this.set('timer', `${Math.floor(tl / 60)}:${String(tl % 60).padStart(2, '0')}`);
+    // crosshair opens with movement and sustained fire, hides in the optic
+    const gap = 5 + P.vel.length() * 1.6 + Math.min(W.shots, 12) * 1.1 + (P.grounded ? 0 : 8);
+    const c = $('cross'); c.style.setProperty('--g', gap.toFixed(1) + 'px'); c.style.opacity = P.alive && !W.reloading ? Math.max(0, 1 - W.ads * 2.2 - W.sprint).toFixed(2) : 0;
+    if (this.hitT > 0) { this.hitT -= dt; if (this.hitT <= 0) $('hit').className = ''; }
+    if (this.dmgT > 0) { this.dmgT -= dt; $('dmg').style.opacity = Math.max(0, this.dmgT).toFixed(2); }
+    if (this.bannerT > 0) { this.bannerT -= dt; if (this.bannerT <= 0) $('banner').classList.remove('on'); }
+    for (const f of this.feed) { f.t -= dt; if (f.t < 1) f.row.style.opacity = Math.max(0, f.t).toFixed(2); }
+    for (const [a, t] of this.pings) { if (t - dt <= 0) this.pings.delete(a); else this.pings.set(a, t - dt); }
+    this.cls('dead', 'on', !P.alive && G.matchLive); if (!P.alive) this.set('respawn', Math.max(0, P.respawnT).toFixed(1));
+    this.minimap(); this.compass();
+  }
+
+  minimap() {
+    const G = this.G, P = G.player, g = this.mm, S = 360, c = S / 2, sc = 3.1;     // 3.1 px per metre → ~58 m radius
+    const fx = Math.sin(P.yaw), fz = Math.cos(P.yaw), rx = -fz, rz = fx;
+    const X = (x, z) => c + ((x - P.pos.x) * rx + (z - P.pos.z) * rz) * sc, Y = (x, z) => c - ((x - P.pos.x) * fx + (z - P.pos.z) * fz) * sc;
+    g.clearRect(0, 0, S, S);
+    g.fillStyle = 'rgba(214,206,190,0.30)'; g.strokeStyle = 'rgba(240,234,220,0.55)'; g.lineWidth = 1.2;
+    for (const b of G.world.buildings) {
+      if (Math.abs((b.x0 + b.x1) / 2 - P.pos.x) > 80 || Math.abs((b.z0 + b.z1) / 2 - P.pos.z) > 80) continue;
+      g.beginPath(); g.moveTo(X(b.x0, b.z0), Y(b.x0, b.z0)); g.lineTo(X(b.x1, b.z0), Y(b.x1, b.z0)); g.lineTo(X(b.x1, b.z1), Y(b.x1, b.z1)); g.lineTo(X(b.x0, b.z1), Y(b.x0, b.z1)); g.closePath(); g.fill(); g.stroke();
+    }
+    // field of view wedge + own arrow
+    const half = (G.R.camera.fov * G.R.camera.aspect * 0.5 * Math.PI) / 180 * 0.62;
+    const grd = g.createRadialGradient(c, c, 0, c, c, 120); grd.addColorStop(0, 'rgba(255,255,255,0.22)'); grd.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = grd; g.beginPath(); g.moveTo(c, c); g.arc(c, c, 120, -Math.PI / 2 - half, -Math.PI / 2 + half); g.closePath(); g.fill();
+    for (const b of G.bots.list) {
+      if (!b.alive) continue;
+      const mine = b.team === P.team; if (!mine && !this.pings.has(b)) continue;
+      const x = X(b.pos.x, b.pos.z), y = Y(b.pos.x, b.pos.z); if (x < 6 || y < 6 || x > S - 6 || y > S - 6) continue;
+      g.fillStyle = TEAM[b.team]; g.globalAlpha = mine ? 1 : Math.min(1, this.pings.get(b) * 1.5);
+      g.beginPath(); if (mine) g.arc(x, y, 5, 0, 6.3); else { g.moveTo(x, y - 7); g.lineTo(x + 7, y); g.lineTo(x, y + 7); g.lineTo(x - 7, y); } g.fill(); g.globalAlpha = 1;
+    }
+    g.fillStyle = '#fff'; g.beginPath(); g.moveTo(c, c - 10); g.lineTo(c + 7, c + 8); g.lineTo(c, c + 4); g.lineTo(c - 7, c + 8); g.closePath(); g.fill();
+  }
+
+  compass() {
+    const g = this.cp, w = 640, h = 44, P = this.G.player, head = ((-P.yaw * 180 / Math.PI) % 360 + 360) % 360, ppd = 3.2;
+    g.clearRect(0, 0, w, h); g.textAlign = 'center'; g.font = '600 17px "Avenir Next Condensed","DIN Condensed","Arial Narrow",sans-serif';
+    for (let d = Math.floor((head - 100) / 5) * 5; d <= head + 100; d += 5) {
+      const x = w / 2 + (d - head) * ppd, a = Math.max(0, 1 - Math.abs(d - head) / 100), m = ((d % 360) + 360) % 360;
+      g.fillStyle = `rgba(255,255,255,${(a * 0.85).toFixed(2)})`;
+      if (m % 45 === 0) { g.fillRect(x - 1, 0, 2, 12); g.fillText({ 0: 'N', 45: 'NE', 90: 'E', 135: 'SE', 180: 'S', 225: 'SW', 270: 'W', 315: 'NW' }[m], x, 32); }
+      else if (m % 15 === 0) { g.fillRect(x - 0.5, 0, 1, 8); g.fillStyle = `rgba(255,255,255,${(a * 0.5).toFixed(2)})`; g.font = '500 12px "Avenir Next Condensed","Arial Narrow",sans-serif'; g.fillText(m, x, 30); g.font = '600 17px "Avenir Next Condensed","DIN Condensed","Arial Narrow",sans-serif'; }
+      else g.fillRect(x - 0.5, 0, 1, 4);
+    }
+    g.fillStyle = '#fff'; g.beginPath(); g.moveTo(w / 2 - 5, h); g.lineTo(w / 2 + 5, h); g.lineTo(w / 2, h - 7); g.fill();
+  }
+
+  // ---- menus -------------------------------------------------------------------------------------------------------------
+  show(screen, data = {}) {
+    for (const id of ['start', 'pause', 'results']) $(id).classList.toggle('on', id === screen);
+    $('menu').classList.toggle('on', !!screen); $('hud').classList.toggle('on', !screen);
+    if (screen === 'results') {
+      const G = this.G, win = data.win;
+      $('resTitle').textContent = win === null ? 'DRAW' : win ? 'VICTORY' : 'DEFEAT'; $('resTitle').className = win ? 'win' : 'lose';
+      $('resScore').innerHTML = `<span style="color:${TEAM[0]}">${G.score[0]}</span> — <span style="color:${TEAM[1]}">${G.score[1]}</span>`;
+      const acc = G.stats.shots ? Math.round((G.stats.hits / G.stats.shots) * 100) : 0;
+      const rows = [G.player, ...G.bots.list].sort((a, b) => b.kills - a.kills).map(a => `<tr class="${a.isPlayer ? 'me' : ''}"><td style="color:${TEAM[a.team]}">${a.name}</td><td>${a.kills}</td><td>${a.deaths}</td></tr>`).join('');
+      $('resStats').innerHTML = `<div class="sum">${data.reason} · Accuracy ${acc}% · ${G.stats.shots} rounds fired</div><table><tr><th>Operator</th><th>K</th><th>D</th></tr>${rows}</table>`;
+    }
+  }
+}

@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Market District</title>
+<style>
+  :root { --ui: "Avenir Next Condensed", "DIN Condensed", "Roboto Condensed", "Arial Narrow", sans-serif; --pad: clamp(18px, 2.6vh, 34px); --ally: #6fb1ff; --foe: #ff6a55; --ink: #f2eee4; }
+  html, body { margin: 0; height: 100%; background: #0b0b0c; overflow: hidden; color: var(--ink); font-family: var(--ui); -webkit-font-smoothing: antialiased; user-select: none; }
+  #view { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  .panel { background: linear-gradient(180deg, rgba(12, 14, 16, .46), rgba(12, 14, 16, .30)); border: 1px solid rgba(255, 255, 255, .16); }
+
+  /* ---------- HUD ---------- */
+  #hud { position: fixed; inset: 0; pointer-events: none; opacity: 0; transition: opacity .18s; text-transform: uppercase; letter-spacing: .08em; text-shadow: 0 1px 3px rgba(0, 0, 0, .55); }
+  #hud.on { opacity: 1; }
+  #minimap { position: absolute; left: var(--pad); top: var(--pad); width: 180px; height: 180px; border: 1px solid rgba(255, 255, 255, .22); background: rgba(10, 12, 14, .38); }
+  #top { position: absolute; top: var(--pad); left: 50%; transform: translateX(-50%); display: grid; justify-items: center; gap: 6px; }
+  #compass { width: 320px; height: 22px; -webkit-mask-image: linear-gradient(90deg, transparent, #000 22%, #000 78%, transparent); mask-image: linear-gradient(90deg, transparent, #000 22%, #000 78%, transparent); }
+  #scorebar { display: flex; align-items: center; gap: 14px; padding: 5px 16px; font-size: 14px; }
+  #scorebar b { font-size: 22px; font-weight: 600; margin: 0 4px; letter-spacing: 0; } #scorebar .t0 { color: var(--ally); } #scorebar .t1 { color: var(--foe); }
+  #mode { font-size: 11px; opacity: .7; letter-spacing: .22em; } #timer { font-size: 20px; font-weight: 600; min-width: 46px; text-align: center; letter-spacing: .02em; }
+  #scorebar .sep { width: 1px; height: 18px; background: rgba(255, 255, 255, .22); }
+  #feed { position: absolute; right: var(--pad); top: var(--pad); display: grid; gap: 4px; justify-items: end; font-size: 14px; }
+  #feed .row { display: flex; align-items: center; gap: 8px; padding: 3px 10px; background: rgba(12, 14, 16, .40); border-right: 2px solid rgba(255, 255, 255, .35); transition: opacity .2s; }
+  #feed .gun { width: 34px; height: 10px; fill: #e9e4d8; opacity: .85; } #feed .hs { color: #ffd27a; font-weight: 400; }
+  #health { position: absolute; left: var(--pad); bottom: var(--pad); padding: 9px 14px 11px; min-width: 190px; }
+  #health .lbl, #ammo .lbl { font-size: 11px; letter-spacing: .26em; opacity: .72; }
+  #hp { font-size: 40px; font-weight: 600; line-height: 1; letter-spacing: 0; margin: 2px 0 6px; transition: color .15s; }
+  #hpbar { display: grid; grid-template-columns: repeat(10, 1fr); gap: 3px; } #hpbar i { height: 5px; background: rgba(255, 255, 255, .18); transition: background .15s; } #hpbar i.on { background: #efeadf; }
+  #health.low #hp { color: var(--foe); } #health.low #hpbar i.on { background: var(--foe); }
+  #ammo { position: absolute; right: var(--pad); bottom: var(--pad); padding: 9px 14px 11px; min-width: 210px; text-align: right; }
+  #ammo .rowtop { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; }
+  #fmode { font-size: 12px; padding: 1px 7px; border: 1px solid rgba(255, 255, 255, .45); letter-spacing: .2em; }
+  #ammo .count { margin: 2px 0 6px; line-height: 1; } #mag { font-size: 40px; font-weight: 600; letter-spacing: 0; transition: color .15s; } #res { font-size: 19px; opacity: .7; font-style: normal; margin-left: 8px; }
+  #res::before { content: "/ "; opacity: .6; }
+  #abar { display: grid; grid-template-columns: repeat(30, 1fr); gap: 2px; } #abar i { height: 9px; background: rgba(255, 255, 255, .15); } #abar i.on { background: #efeadf; }
+  #ammo.low #mag { color: #ffb347; } #ammo.low #abar i.on { background: #ffb347; } #ammo.reload .count::after { content: "RELOADING"; font-size: 11px; letter-spacing: .22em; margin-left: 10px; opacity: .8; }
+  #cross { position: absolute; left: 50%; top: 50%; --g: 6px; transition: opacity .1s; }
+  #cross i { position: absolute; background: rgba(255, 255, 255, .92); box-shadow: 0 0 2px rgba(0, 0, 0, .8); }
+  #cross i:nth-child(1) { width: 2px; height: 7px; left: -1px; top: calc(-7px - var(--g)); } #cross i:nth-child(2) { width: 2px; height: 7px; left: -1px; top: var(--g); }
+  #cross i:nth-child(3) { height: 2px; width: 7px; top: -1px; left: calc(-7px - var(--g)); } #cross i:nth-child(4) { height: 2px; width: 7px; top: -1px; left: var(--g); }
+  #cross i:nth-child(5) { width: 2px; height: 2px; left: -1px; top: -1px; opacity: .8; }
+  #hit { position: absolute; left: 50%; top: 50%; width: 30px; height: 30px; margin: -15px; opacity: 0; transition: opacity .12s; }
+  #hit.on { opacity: 1; transition: none; } #hit::before, #hit::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, #fff 0 32%, transparent 32% 68%, #fff 68%) center / 100% 2px no-repeat; }
+  #hit::before { transform: rotate(45deg); } #hit::after { transform: rotate(-45deg); }
+  #hit.head::before, #hit.head::after { background-image: linear-gradient(90deg, #ffd27a 0 32%, transparent 32% 68%, #ffd27a 68%); } #hit.kill { transform: scale(1.35); }
+  #hit.kill::before, #hit.kill::after { background-image: linear-gradient(90deg, #ff5a45 0 36%, transparent 36% 64%, #ff5a45 64%); background-size: 100% 3px; } #hit.weak { opacity: .55; }
+  #dmg { position: absolute; left: 50%; top: 50%; width: 46vh; height: 46vh; opacity: 0; border-radius: 50%; background: conic-gradient(from -24deg, transparent 0deg, rgba(255, 60, 40, .85) 24deg, transparent 48deg); -webkit-mask: radial-gradient(closest-side, transparent 86%, #000 88%, #000 97%, transparent 100%); mask: radial-gradient(closest-side, transparent 86%, #000 88%, #000 97%, transparent 100%); }
+  #banner { position: absolute; left: 50%; top: 27%; transform: translate(-50%, 6px); text-align: center; opacity: 0; transition: opacity .16s, transform .16s; }
+  #banner.on { opacity: 1; transform: translate(-50%, 0); } #banner .a { font-size: 22px; font-weight: 600; letter-spacing: .3em; padding: 0 26px 5px; border-bottom: 1px solid rgba(255, 255, 255, .5); } #bannerB { font-size: 14px; letter-spacing: .24em; margin-top: 6px; color: #ffd27a; }
+  #dead { position: absolute; left: 50%; top: 42%; transform: translateX(-50%); text-align: center; opacity: 0; transition: opacity .2s; } #dead.on { opacity: 1; }
+  #dead .a { font-size: 26px; letter-spacing: .34em; color: var(--foe); } #dead .b { font-size: 13px; letter-spacing: .22em; opacity: .8; margin-top: 6px; }
+
+  /* ---------- menus ---------- */
+  #menu { position: fixed; inset: 0; display: none; place-items: center; background: radial-gradient(ellipse at 50% 40%, rgba(8, 9, 10, .35), rgba(8, 9, 10, .82)); }
+  #menu.on { display: grid; } #menu section { display: none; width: min(640px, 92vw); } #menu section.on { display: block; }
+  h1 { margin: 0; font-size: clamp(40px, 7vh, 68px); font-weight: 600; letter-spacing: .16em; text-transform: uppercase; line-height: 1; }
+  .sub { font-size: 13px; letter-spacing: .34em; text-transform: uppercase; opacity: .75; margin: 10px 0 26px; }
+  button { font: 600 15px var(--ui); letter-spacing: .26em; text-transform: uppercase; color: #101113; background: #efeadf; border: 0; padding: 13px 34px; cursor: pointer; transition: background .12s, transform .12s; }
+  button:hover { background: #fff; transform: translateY(-1px); } button.ghost { background: transparent; color: var(--ink); border: 1px solid rgba(255, 255, 255, .4); } button.ghost:hover { background: rgba(255, 255, 255, .1); }
+  .btns { display: flex; gap: 12px; margin-bottom: 24px; }
+  #settings { display: grid; grid-template-columns: 1fr 1fr; gap: 9px 26px; padding: 16px 18px; font-size: 13px; letter-spacing: .14em; text-transform: uppercase; }
+  #settings label { display: flex; align-items: center; justify-content: space-between; gap: 10px; } #settings input[type=range] { width: 120px; accent-color: #efeadf; } #settings select { font: 500 13px var(--ui); background: #1a1c1f; color: var(--ink); border: 1px solid rgba(255, 255, 255, .3); padding: 3px 6px; text-transform: uppercase; letter-spacing: .1em; }
+  #settings input[type=checkbox] { accent-color: #efeadf; width: 15px; height: 15px; } #settings .v { opacity: .7; min-width: 30px; text-align: right; }
+  .keys { margin-top: 16px; font-size: 12px; letter-spacing: .16em; text-transform: uppercase; opacity: .72; line-height: 1.9; } .keys b { font-weight: 600; border: 1px solid rgba(255, 255, 255, .4); padding: 1px 6px; margin-right: 5px; }
+  #resTitle { font-size: 64px; } #resTitle.win { color: #ffe2a6; } #resTitle.lose { color: var(--foe); } #resScore { font-size: 44px; font-weight: 600; margin: 4px 0 14px; }
+  #resStats .sum { font-size: 13px; letter-spacing: .2em; text-transform: uppercase; opacity: .8; margin-bottom: 12px; } #resStats table { width: 100%; border-collapse: collapse; font-size: 15px; letter-spacing: .1em; margin-bottom: 22px; }
+  #resStats th { text-align: left; font-weight: 500; font-size: 11px; letter-spacing: .24em; opacity: .6; padding: 4px 8px; border-bottom: 1px solid rgba(255, 255, 255, .25); } #resStats td { padding: 4px 8px; border-bottom: 1px solid rgba(255, 255, 255, .08); } #resStats tr.me td { background: rgba(255, 255, 255, .08); }
+  #perf { position: fixed; right: 12px; top: 50%; padding: 6px 9px; font: 11px/1.5 ui-monospace, Menlo, monospace; color: #dfe8d8; background: rgba(0, 0, 0, .55); white-space: pre; display: none; pointer-events: none; } #perf.on { display: block; }
+  #hint { position: fixed; left: 50%; bottom: 10px; transform: translateX(-50%); font-size: 11px; letter-spacing: .18em; text-transform: uppercase; opacity: 0; pointer-events: none; } #hint.on { opacity: .6; }
+  #boot { position: fixed; inset: 0; display: grid; place-items: center; background: #0b0b0c; } #boot .in { width: min(360px, 70vw); text-align: center; text-transform: uppercase; letter-spacing: .3em; font-size: 12px; }
+  #boot .bar { height: 2px; background: rgba(255, 255, 255, .15); margin-top: 14px; } #boot .bar i { display: block; height: 100%; width: 0; background: #efeadf; transition: width .15s; }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "./node_modules/three/build/three.module.js",
+  "three/addons/": "./node_modules/three/examples/jsm/",
+  "three-mesh-bvh": "./node_modules/three-mesh-bvh/build/index.module.js",
+      "@dimforge/rapier3d-compat": "./node_modules/@dimforge/rapier3d-compat/dist/rapier.mjs",
+  "meshoptimizer": "./node_modules/meshoptimizer/meshopt_simplifier.module.js"
+} }
+</script>
+</head>
+<body>
+<canvas id="view"></canvas>
+
+<div id="hud">
+  <canvas id="minimap" width="360" height="360"></canvas>
+  <div id="top">
+    <canvas id="compass" width="640" height="44"></canvas>
+    <div id="scorebar" class="panel"><span class="t0">Allies<b id="s0">0</b></span><span class="sep"></span><span id="mode">Team Deathmatch</span><span id="timer">10:00</span><span class="sep"></span><span class="t1"><b id="s1">0</b>Hostiles</span></div>
+  </div>
+  <div id="feed"></div>
+  <div id="health" class="panel"><div class="lbl">Health</div><div id="hp">100</div><div id="hpbar"></div></div>
+  <div id="ammo" class="panel"><div class="rowtop"><span id="fmode">AUTO</span><span class="lbl">MK4 Carbine</span></div><div class="count"><span id="mag">30</span><i id="res">120</i></div><div id="abar"></div></div>
+  <div id="cross"><i></i><i></i><i></i><i></i><i></i></div>
+  <div id="hit"></div>
+  <div id="dmg"></div>
+  <div id="banner"><div class="a">Enemy Eliminated</div><div id="bannerB">+100 XP</div></div>
+  <div id="dead"><div class="a">Eliminated</div><div class="b">Redeploying in <span id="respawn">0.0</span></div></div>
+</div>
+
+<div id="menu">
+  <div>
+    <section id="start"><h1>Market District</h1><div class="sub">Team deathmatch · 4 v 4 · first to 30</div><div class="btns"><button id="deploy">Deploy</button></div></section>
+    <section id="pause"><h1>Paused</h1><div class="sub">Match in progress</div><div class="btns"><button id="resume">Resume</button><button id="restart" class="ghost">Restart match</button></div></section>
+    <section id="results"><h1 id="resTitle">Victory</h1><div id="resScore"></div><div id="resStats"></div><div class="btns"><button id="again">Play again</button></div></section>
+    <div id="settings" class="panel">
+      <label>Sensitivity <span><input id="o_sensitivity" type="range" min="0.2" max="3" step="0.05"><span class="v"></span></span></label>
+      <label>Field of view <span><input id="o_fov" type="range" min="50" max="78" step="1"><span class="v"></span></span></label>
+      <label>ADS sensitivity <span><input id="o_adsSens" type="range" min="0.4" max="1.6" step="0.05"><span class="v"></span></span></label>
+      <label>Invert Y <input id="o_invertY" type="checkbox"></label>
+      <label>Quality <select id="o_quality"><option>low</option><option>medium</option><option>high</option><option>ultra</option></select></label>
+      <label>Difficulty <select id="o_difficulty"><option>easy</option><option>normal</option><option>hard</option></select></label>
+      <label>Motion blur <select id="o_blur"><option>off</option><option>low</option><option>high</option></select></label>
+      <label>Camera shake <input id="o_shake" type="checkbox"></label>
+      <label>Vignette <input id="o_vignette" type="checkbox"></label>
+      <label>Film grain <input id="o_grain" type="checkbox"></label>
+      <label>Chromatic fringe <input id="o_chroma" type="checkbox"></label>
+      <label>View bob <input id="o_bob" type="checkbox"></label>
+    </div>
+    <div class="keys"><b>WASD</b>Move <b>Shift</b>Sprint <b>C</b>Crouch <b>Space</b>Jump / mantle <b>LMB</b>Fire <b>RMB</b>Aim <b>R</b>Reload <b>B</b>Fire mode <b>F</b>Inspect <b>Esc</b>Pause <b>F3</b>Frame stats</div>
+  </div>
+</div>
+
+<div id="perf"></div>
+<div id="hint">Mouse capture unavailable in this view — open the game in its own browser tab for locked aiming · Esc pauses</div>
+<div id="boot"><div class="in"><span id="bootText">Loading</span><div class="bar"><i id="bootBar"></i></div></div></div>
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
