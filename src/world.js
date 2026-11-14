@@ -217,6 +217,17 @@ export function buildWorld(R, M) {
     B.quad('interior', P(op.u0, y, d0), P(ra, y, d0), P(ra, h, d0), P(op.u0, h, d0), g2(cF, cF, cF, cF));
     B.quad('interior', P(rb, y, d0), P(op.u1, y, d0), P(op.u1, h, d0), P(rb, h, d0), g2(cF, cF, cF, cF));
     B.quad('interior', P(op.u1, op.v1, d0), P(op.u0, op.v1, d0), P(op.u0, h, d0), P(op.u1, h, d0), g2(cF, cF, cF, cF));
+    // A second, unseen shell a little outside the room, for the shadow maps only. Where a sunward wall meets the ceiling or
+    // a wall that shades it, the shadow lookup sits too close to its caster to resolve, and sunlight shows as a bright line
+    // along the seam; the outer shell puts a caster well clear of every seam.
+    const e = 0.35, o = 0.5, d1 = 0.02, t = h + o;
+    B.quad('interior', P(ra - o, h + e, D + o), P(rb + o, h + e, D + o), P(rb + o, h + e, d1), P(ra - o, h + e, d1), it);
+    B.quad('interior', P(ra - o, 0, D + e), P(rb + o, 0, D + e), P(rb + o, t, D + e), P(ra - o, t, D + e), it);
+    B.quad('interior', P(ra - e, 0, d1), P(ra - e, 0, D + o), P(ra - e, t, D + o), P(ra - e, t, d1), it);
+    B.quad('interior', P(rb + e, 0, D + o), P(rb + e, 0, d1), P(rb + e, t, d1), P(rb + e, t, D + o), it);
+    B.quad('interior', P(op.u0, 0, d1), P(ra - 0.4, 0, d1), P(ra - 0.4, t, d1), P(op.u0, t, d1), it);        // (kept short of the next bay's shutter recess)
+    B.quad('interior', P(rb + 0.4, 0, d1), P(op.u1, 0, d1), P(op.u1, t, d1), P(rb + 0.4, t, d1), it);
+    B.quad('interior', P(op.u1, op.v1, d1), P(op.u0, op.v1, d1), P(op.u0, t, d1), P(op.u1, t, d1), it);
     const a = P(ra, 0, 0), b = P(rb, 0, D);
     bd.carves.push({ x0: Math.min(a.x, b.x), x1: Math.max(a.x, b.x), z0: Math.min(a.z, b.z), z1: Math.max(a.z, b.z) });
     anchors.push({ kind: 'room', P, ra, rb, D, y, h, N: fr.N, T: fr.T, bd });

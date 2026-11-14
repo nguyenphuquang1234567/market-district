@@ -111,6 +111,7 @@ const FinalShader = {
 export const giUniforms = {
   tGiR: { value: null }, tGiG: { value: null }, tGiB: { value: null },
   uGiMin: { value: new THREE.Vector3() }, uGiInv: { value: new THREE.Vector3(1, 1, 1) }, uGiOn: { value: 0 }, uGiSky: { value: 1 }, uGiGain: { value: 1.4 },
+  uGiLift: { value: new THREE.Vector2(0.35, 0.14) },   // shade lift: (exponent, floor). Enclosed spots keep sky^exponent of the open-sky light instead of their true share, and never less than the floor
   tCloud: { value: noise }, uCloud: { value: new THREE.Vector4(0, 0, 1 / 210, 0.3) },
 };
 function globalPatch(shader) {
@@ -122,7 +123,7 @@ function globalPatch(shader) {
     .replace('#include <common>', `#include <common>
       varying vec3 vGiPos;
       uniform highp sampler3D tGiR; uniform highp sampler3D tGiG; uniform highp sampler3D tGiB;
-      uniform vec3 uGiMin; uniform vec3 uGiInv; uniform float uGiOn; uniform float uGiSky; uniform float uGiGain;
+      uniform vec3 uGiMin; uniform vec3 uGiInv; uniform float uGiOn; uniform float uGiSky; uniform float uGiGain; uniform vec2 uGiLift;
       uniform sampler2D tCloud; uniform vec4 uCloud;`)
     .replace('#include <lights_fragment_begin>', `#include <lights_fragment_begin>
       {   // soft cloud shadows sliding across the district
@@ -136,10 +137,16 @@ function globalPatch(shader) {
         vec3 giP = (vGiPos + giN * 0.3 - uGiMin) * uGiInv;
         vec4 gr = texture(tGiR, giP), gg = texture(tGiG, giP), gb = texture(tGiB, giP);
         vec3 amb = vec3(gr.x, gg.x, gb.x);
-        vec3 giE = max(amb + vec3(dot(gr.yzw, giN), dot(gg.yzw, giN), dot(gb.yzw, giN)), amb * 0.25);
-        iblIrradiance = giE * uGiGain;                       // (assigning outright lets the compiler drop the unused sky-irradiance lookup)
-        float so = clamp(dot(amb, vec3(0.3333)) / uGiSky, 0.0, 1.0);
-        radiance *= 0.08 + 0.92 * so;
+        vec3 giE = max(amb + vec3(dot(gr.yzw, giN), dot(gg.yzw, giN), dot(gb.yzw, giN)), amb * 0.25) / uGiSky;
+        // Shade lift. The bake is physically right, which leaves alleys at a tenth of the open-sky light and rooms at a
+        // fiftieth: unreadable next to sunlit ground. The share of sky light a spot receives is range-compressed (one
+        // factor per place, so surfaces keep their shading by direction) and floored so nowhere is black.
+        float open = max(dot(amb, vec3(0.3333)) / uGiSky, 0.0);
+        float lit = open < 1.0 ? uGiLift.y + (1.0 - uGiLift.y) * pow(open, uGiLift.x) : open;
+        giE = (giE + 0.004) * (lit / (open + 0.004));
+        giE = mix(vec3(dot(giE, vec3(0.2126, 0.7152, 0.0722))), giE, 0.4 + 0.6 * smoothstep(0.0, 0.2, open));   // the little light deep indoors is a few noisy bounces: lifted as it is, it shows as coloured blotches
+        iblIrradiance = giE * uGiSky * uGiGain;              // (assigning outright lets the compiler drop the unused sky-irradiance lookup)
+        radiance *= 0.08 + 0.92 * min(lit, 1.0);
       }`);
 }
 

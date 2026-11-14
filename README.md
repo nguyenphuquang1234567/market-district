@@ -58,6 +58,8 @@ Key bindings live in the same saved settings object (`binds`); there is no rebin
 - **Bounce lighting** — a baked irradiance volume (93 × 8 × 161 probes at 1 m spacing, first-order spherical harmonics,
   ray-traced against the real geometry with sky occlusion, sun bounce and two further bounces, light through cloth). Shade,
   alleys, the covered lane and shop interiors are lit by what they can actually see rather than by an unoccluded sky.
+  The physically correct result leaves alleys at a tenth of the open-sky light and rooms at a fiftieth, so the shader
+  range-compresses it (`uGiLift` in `src/render.js`: exponent and floor): shade stays shade, but nowhere is too dark to read.
 - **Exposure and sky** — exposure is metered from the rendered frame (log-average luminance) and adapts quickly into light,
   slowly into dark; the HDRI clouds drift with a flow map, and soft cloud shadows slide across the district.
 - **World** — a ~90 × 160 m district generated from a fixed seed: main street with a long sightline, a narrow alley with laundry
