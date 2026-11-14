@@ -1,5 +1,7 @@
 // Scripted acceptance run through the real game systems. In the browser console: await G.selfTest()
 // Uses fixed time steps and the seeded RNGs, so results are repeatable.
+import { BOT_RELOAD_DURATION } from './weapon.js';
+
 export function selfTest(G) {
   const P = G.player, W = G.weapon, out = [], $ = id => document.getElementById(id);
   const check = (name, pass, detail = '') => out.push({ name, pass: !!pass, detail: String(detail) });
@@ -114,9 +116,66 @@ export function selfTest(G) {
   for (let i = 0; i < 156; i++) { G.step(1, 1 / 60); const h = Math.floor(wk.phase * 2); if (h !== lastHalf) { halves++; lastHalf = h; } const sp = Math.hypot(wk.vel.x, wk.vel.z); maxAcc = Math.max(maxAcc, Math.abs(sp - pv) * 60); pv = sp; }
   const went = wk.pos.z - zs, stepLen = went / Math.max(1, halves);
   check('bot strides match ground speed and it accelerates like a person', halves >= 5 && stepLen > 0.55 && stepLen < 1.4 && maxAcc < 16 && went > 6.5, `${went.toFixed(1)} m in ${halves} steps (${stepLen.toFixed(2)} m each), peak ${maxAcc.toFixed(1)} m/s²`);
-  wk.state = 'combat'; wk.wantYaw = Math.PI / 2; wk.wishDir = { x: 0, z: -1 }; wk.wishSpeed = 2.2; run(1.3);
-  const twist = Math.abs(wrap(wk.bodyYaw, wk.yaw)); wk.wishDir = { x: -1, z: 0 }; run(1.0); const back = wk.back;
-  check('bots hold their aim while moving: torso twists when strafing, they back-pedal when retreating', twist > 0.5 && twist < 1.3 && back, `twist ${(twist * 57.3).toFixed(0)}°, back-pedalling ${back}`);
+  G.goto(-29, -61, 0);
+  dummy(6, -1.5, -53, 0);
+  wk.state = 'combat'; wk.wishDir = { x: 1, z: 0 }; wk.wishSpeed = 2.2;
+  run(0.5);
+  const startX = wk.pos.x;
+  let slide = 0, contactFrames = 0;
+  const feet = [wk.b.lft, wk.b.rft], anchors = [null, null];
+  const heel = new G.THREE.Vector3(), toe = heel.clone();
+  const wrist = heel.clone();
+  const support = heel.clone().fromArray(G.carry.gripL);
+  const trigger = heel.clone().fromArray(G.carry.gripR);
+  const hands = [[wk.b.lh, support, G.carry.leftHand], [wk.b.rh, trigger, G.carry.rightHand]];
+  const gunInverse = new G.THREE.Quaternion(), wristRotation = gunInverse.clone();
+  let handError = 0, gripAngleError = 0;
+  for (let frame = 0; frame < 60; frame++) {
+    G.step();
+    wk.gun.getWorldQuaternion(gunInverse).invert();
+    for (const [hand, target, rotation] of hands) {
+      wk.gun.worldToLocal(hand.getWorldPosition(wrist));
+      handError = Math.max(handError, wrist.distanceTo(target));
+      hand.getWorldQuaternion(wristRotation).premultiply(gunInverse);
+      gripAngleError = Math.max(gripAngleError, wristRotation.angleTo(rotation));
+    }
+    for (let side = 0; side < feet.length; side++) {
+      const plant = wk.plants[side];
+      feet[side].localToWorld(heel.set(0, -2, 13.3));
+      feet[side].localToWorld(toe.set(0, 24, 12.4));
+      const point = heel.y < toe.y ? heel : toe;
+      if (!plant || Math.abs(point.y - wk.floorY) > 0.02) { anchors[side] = null; continue; }
+      const prior = anchors[side];
+      const toeFirst = point === toe;
+      if (prior?.plant === plant && prior.toeFirst === toeFirst) {
+        slide = Math.max(slide, Math.hypot(point.x - prior.x, point.z - prior.z));
+        contactFrames++;
+      } else anchors[side] = { plant, toeFirst, x: point.x, z: point.z };
+    }
+  }
+  const sideWeight = wk.gaitBlend.left + wk.gaitBlend.right;
+  const lateralTravel = wk.pos.x - startX;
+  const aimError = Math.abs(wrap(0, wk.yaw));
+  check('bot strafes on an authored gait, holds aim and plants boots on level ground', sideWeight > 0.70 && lateralTravel > 1.7 && aimError < 0.14 && contactFrames > 15 && slide < 0.10,
+    `side gait ${sideWeight.toFixed(2)}, ${lateralTravel.toFixed(2)} m lateral, sole slip ${(slide * 100).toFixed(1)} cm across ${contactFrames} contact frames`);
+  check('both bot wrists keep their weapon-relative grip during aimed strafe', handError < 0.025 && gripAngleError < 0.087,
+    `wrist error ${(handError * 100).toFixed(2)} cm and ${(gripAngleError * 180 / Math.PI).toFixed(2)}°`);
+  dummy(6, 0, -50, 0);
+  wk.state = 'combat'; wk.wishDir = { x: 0, z: -1 }; wk.wishSpeed = 2.2;
+  run(1.3);
+  check('bot retreats with a backward gait and holds aim', wk.pos.z < -52 && wk.gaitBlend.back > 0.70 && Math.abs(wrap(0, wk.yaw)) < 0.14,
+    `backward gait ${wk.gaitBlend.back.toFixed(2)}, ${(-50 - wk.pos.z).toFixed(2)} m backward`);
+  wk.wishDir = null;
+  wk.wishSpeed = 0;
+  wk.ammo = 0;
+  wk.reloadT = BOT_RELOAD_DURATION;
+  run(0.8);
+  const mag = wk.gun.getObjectByName('botMagazine');
+  const extracted = -mag.position.y;
+  const ammoBeforeInsert = wk.ammo;
+  run(BOT_RELOAD_DURATION - 0.7);
+  check('bot reload extracts and reseats the magazine', extracted > 0.15 && Math.abs(mag.position.y) < 0.001 && ammoBeforeInsert === 0 && wk.ammo === 30,
+    `extracted ${(extracted * 100).toFixed(1)} cm, ammo ${ammoBeforeInsert} → ${wk.ammo}`);
   park();
 
   // --- sound: modelled library, arrival delay, walls muffle, echoes come from the real surroundings

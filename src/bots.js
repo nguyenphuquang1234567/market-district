@@ -2,9 +2,11 @@
 import * as THREE from 'three';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { assets } from './assets.js';
-import { MUZZLE, gunMaterials, worldGunMesh } from './weapon.js';
+import { BOT_MAG_IN, BOT_MAG_OUT, BOT_RELOAD_DURATION, MUZZLE, gunMaterials, worldGunMesh } from './weapon.js';
+import { poseBotRifle, setUpBotRifle } from './bot-rifle.js';
 import { STEP, resolveXZ, groundAt, rayBoxes, losClear } from './physics.js';
 import { rng, clamp, lerp, damp, smooth, angDiff } from './util.js';
+import { CONTACT, STRAFE_STRIDE, BACK_STRIDE, bakeDirectionalGaits, applyDirectionalGait, directionBlend } from './soldier-gait.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 const BODY_RADIUS = 0.39;
@@ -14,16 +16,10 @@ const UP = V(0, 1, 0);
 const HEEL = V(0, -2, 13.3), TOE = V(0, 24, 12.4);
 const footPos = V(), kneePos = V(), legBase = V(), legAxis = V(), heelPos = V(), toePos = V(), soleProbe = V();
 const footQuat = new THREE.Quaternion(), footParent = new THREE.Quaternion();
-const muzzleProbe = V(), barrel = V(), gunEuler = new THREE.Euler(0, 0, 0, 'YXZ');
 const NAMES = [['Idris', 'Tarek', 'Sami', 'Nour'], ['Kader', 'Viper', 'Rook', 'Anvil', 'Dagger']];
 const DIFF = { easy: { react: 0.6, err: 1.7, dmg: 0.8 }, normal: { react: 0.36, err: 1.0, dmg: 1 }, hard: { react: 0.22, err: 0.68, dmg: 1.15 } };
 const HOTSPOTS = [[0, -40], [0, -22], [0, -4], [0, 8], [0, 22], [0, 40], [-12, -2], [-11, 9], [-12, -12], [28.5, -40], [28.5, -20], [28.5, 0], [28.5, 20], [28.5, 40], [-29, -40], [-29, -20], [-29, 0], [-29, 20], [-29, 40], [-16, -20], [16, -20], [-16, 20], [16, 20], [-22, -1]];
-// Rifle carry tuning (metres / radians, relative to the chest and facing). Exposed for live tweaking in dev.
-export const CARRY = {
-  gripR: [0.03, -0.15, 0.115], gripL: [-0.07, -0.1, -0.3],          // wrist targets on the rifle (grip, handguard)
-  aim: { off: [0.10, 0.13, 0.27], rot: [0, 0, 0] }, ready: { off: [0.10, 0.02, 0.2], rot: [-0.72, 0.55, 0.25] },
-  poleR: [-0.7, -0.9, -0.3], poleL: [0.6, -0.9, 0], spinePitch: -0.45, spineTwist: -0.32,
-};
+export { CARRY } from './bot-rifle.js';
 const t1 = V(), t2 = V(), t3 = V(), t4 = V(), q1 = new THREE.Quaternion(), q2 = new THREE.Quaternion(), q3 = new THREE.Quaternion();
 
 // Rotate `bone` (about its own origin) so the direction to `child` points at `target` instead. All in world space.
@@ -118,13 +114,13 @@ class Bot {
     this.b = { hips: bone('Hips'), spine: bone('Spine'), spine1: bone('Spine1'), spine2: bone('Spine2'), head: bone('Head'), neck: bone('Neck'),
       ra: bone('RightArm'), rf: bone('RightForeArm'), rh: bone('RightHand'), la: bone('LeftArm'), lf: bone('LeftForeArm'), lh: bone('LeftHand'),
       rul: bone('RightUpLeg'), rl: bone('RightLeg'), rft: bone('RightFoot'), lul: bone('LeftUpLeg'), ll: bone('LeftLeg'), lft: bone('LeftFoot') };
-    this.fingers = []; model.traverse(o => { if (o.isBone && /Hand(Index|Middle|Ring|Pinky)[123]$/.test(o.name)) this.fingers.push(o); });
+    this.gun = worldGunMesh(shared.gunMats); G.R.scene.add(this.gun);
+    setUpBotRifle(this);
     this.mixer = new THREE.AnimationMixer(model);
     const clip = n => THREE.AnimationClip.findByName(assets.soldier.animations, n);
     this.act = { idle: this.mixer.clipAction(clip('Idle')), walk: this.mixer.clipAction(clip('Walk')), run: this.mixer.clipAction(clip('Run')) };
     for (const a of Object.values(this.act)) { a.play(); a.setEffectiveWeight(0); }
     this.act.idle.setEffectiveWeight(1); this.mixer.update(this.rnd() * 2);
-    this.gun = worldGunMesh(shared.gunMats); G.R.scene.add(this.gun);
     G.R.setupTree(this.root); G.R.setupTree(this.gun);
     for (const a of [this.act.walk, this.act.run]) a.setEffectiveTimeScale(0);       // their time is set from the stride phase
     this.aim = 0; this.speedAnim = 0; this.root.visible = false; this.gun.visible = false;
@@ -137,8 +133,10 @@ class Bot {
     this.bodyYaw = this.yaw; this.yawVel = 0; this.back = false; this.turning = 0; this.phase = this.rnd(); this.leanF = 0; this.leanS = 0; this.pvx = 0; this.pvz = 0;
     this.headYaw = 0; this.lookGoal = 0; this.lookT = 0; this.pathCap = 9; this.holdT = 0;
     this.wantYaw = this.yaw; this.wantPitch = 0; this.wishDir = null; this.wishSpeed = 0;
-    this.speedAnim = 0; this.travelYaw = this.yaw; this.turnRate = 0; this.gunRaise = 0; this.gunBlocked = false;
-    this.plants = [null, null]; this.footGround = [this.pos.y, this.pos.y]; this.floorY = this.pos.y;
+    this.speedAnim = 0; this.travelYaw = this.yaw; this.turnRate = 0; this.gunRaise = 0; this.gunBlocked = false; this.rifleKick = 0;
+    this.plants = [null, null]; this.releasedPlants = [null, null];
+    this.footGround = [this.pos.y, this.pos.y]; this.floorY = this.pos.y;
+    this.gaitBlend = { left: 0, right: 0, back: 0 };
     this.nearby = [];
   }
   resetBrain() {
@@ -244,7 +242,6 @@ class Bot {
     const G = this.G, D = DIFF[G.settings.difficulty] || DIFF.normal, R = this.rnd;
     const vis = this.perceive(dt, actors, cols);
     this.hurtT += dt;
-    if (this.reloadT > 0) { this.reloadT -= dt; if (this.reloadT <= 0) this.ammo = 30; }
     if (vis) {
       if (this.target !== vis) { this.target = vis; this.engageT = 0; }
       if (this.state !== 'combat') { this.state = 'combat'; this.cover = null; this.strafeT = 0; this.burstCool = 0.15 + R() * 0.3; }
@@ -293,8 +290,8 @@ class Bot {
       // fire control: short controlled bursts, longer suppressive ones when the target ducks out of sight
       this.burstCool -= dt; this.fireCool -= dt;
       const aimErr = Math.abs(angDiff(this.yaw, this.wantYaw || 0));
-      const canShoot = this.reloadT <= 0 && !this.gunBlocked && aimErr < 0.14 && (vis || (this.lostT < 1.1 && this.lastKnown && !this.crouching));
-      if (this.ammo <= 0 && this.reloadT <= 0) { this.reloadT = 2.4; this.burst = 0; G.bots.sound(this, 'reload'); }
+      const canShoot = this.ammo > 0 && this.reloadT <= 0 && !this.gunBlocked && aimErr < 0.14 && (vis || (this.lostT < 1.1 && this.lastKnown && !this.crouching));
+      if (this.ammo <= 0 && this.reloadT <= 0) { this.reloadT = BOT_RELOAD_DURATION; this.burst = 0; }
       if (canShoot && this.burst <= 0 && this.burstCool <= 0 && this.engageT > D.react * 0.6) { this.burst = vis ? 2 + (R() * (this.tDist < 15 ? 6 : 3) | 0) : 3 + (R() * 4 | 0); }
       if (this.burst > 0 && this.fireCool <= 0 && canShoot) {
         this.fireCool = 0.088; this.burst--; this.ammo--;
@@ -309,7 +306,7 @@ class Bot {
       if (wish) { this.wantYaw = Math.atan2(wish.x, wish.z); this.wantPitch = 0; }
       if (this.lookYaw != null && (!wish || this.state === 'search')) this.wantYaw = this.lookYaw;
       if (wish) this.lookYaw = null;
-      if (this.ammo < 12 && this.reloadT <= 0) this.reloadT = 2.4;
+      if (this.ammo < 12 && this.reloadT <= 0) this.reloadT = BOT_RELOAD_DURATION;
     }
     this.wishDir = wish; this.wishSpeed = wish ? speed : 0;
   }
@@ -339,6 +336,14 @@ class Bot {
       if (this.fall && this.root.visible) { this.rag = G.rigid.ragdoll(this, this.fall.dir, this.fall.zone); this.dropped = G.rigid.dropGun(this); this.fall = null; }
       if (this.respawnT <= 0 && G.matchLive) { const sp = G.bots.pickSpawn(this.team); if (sp) { this.leaveBody(); this.spawn(sp); } }
       return;
+    }
+    if (this.reloadT > 0) {
+      const before = BOT_RELOAD_DURATION - this.reloadT;
+      this.reloadT = Math.max(0, this.reloadT - dt);
+      const elapsed = BOT_RELOAD_DURATION - this.reloadT;
+      if (before < BOT_MAG_OUT && elapsed >= BOT_MAG_OUT) G.bots.sound(this, 'magout');
+      if (before < BOT_MAG_IN && elapsed >= BOT_MAG_IN) G.bots.sound(this, 'magin');
+      if (this.reloadT === 0) this.ammo = 30;
     }
     this.think -= dt;
     if (this.think <= 0) { const step = 0.1; this.think += step; this.brain(step, actors, cols); }
@@ -402,7 +407,8 @@ class Bot {
     if (moved > 0.55) {
       const mv = this.travelYaw, rel = Math.abs(angDiff(this.yaw, mv));
       this.back = rel > (this.back ? 1.75 : 2.05);                                   // moving away from where the rifle points: back-pedal
-      tgt = this.yaw + clamp(angDiff(this.yaw, this.back ? mv + Math.PI : mv), -1.05, 1.05);
+      const bodyTurn = this.state === 'combat' ? 0.24 : 1.05;
+      tgt = this.yaw + clamp(angDiff(this.yaw, this.back ? mv + Math.PI : mv), -bodyTurn, bodyTurn);
     } else if (this.state !== 'combat' || Math.abs(angDiff(this.bodyYaw, this.yaw)) > 0.57 || this.turning > 0) { this.turning = 0.23; tgt = this.yaw; }
     const priorYaw = this.bodyYaw;
     this.bodyYaw += clamp(angDiff(this.bodyYaw, tgt), -dt * 6.5, dt * 6.5);
@@ -416,7 +422,7 @@ class Bot {
   }
 
   animate(dt, moved, cols) {
-    const G = this.G, b = this.b, gait = G.bots.gait, C = CARRY;
+    const G = this.G, b = this.b, gait = G.bots.gait;
     // lean into acceleration and pace like a runner does; the whole figure pivots at the feet
     const ax = (this.vel.x - this.pvx) / Math.max(dt, 1e-3), az = (this.vel.z - this.pvz) / Math.max(dt, 1e-3); this.pvx = this.vel.x; this.pvz = this.vel.z;
     const by = this.bodyYaw, bfx = Math.sin(by), bfz = Math.cos(by);
@@ -430,8 +436,13 @@ class Bot {
     const pivot = smooth(clamp((0.8 - s) / 0.8, 0, 1)) * clamp(Math.abs(this.turnRate) / 2.6, 0, 1);
     const wMove = clamp(Math.max(s / 0.67, pivot * 0.82), 0, 1);
     const wRun = smooth(clamp((s - Wk.v * 1.15) / Math.max(0.5, Rn.v * 0.88 - Wk.v * 1.15), 0, 1)) * (1 - this.crouch);
-    const reversed = this.back ? -1 : 1;
-    const drift = angDiff(by, this.travelYaw + (this.back ? Math.PI : 0)) * (1 - pivot);
+    const motionAngle = angDiff(by, this.travelYaw);
+    directionBlend(this.gaitBlend, motionAngle, s, dt);
+    const { left, right, back } = this.gaitBlend;
+    const directional = left + right + back;
+    const drift = motionAngle * (1 - pivot) * (1 - directional);
+    const warp = clamp(left * angDiff(Math.PI / 2, motionAngle) + right * angDiff(-Math.PI / 2, motionAngle)
+      + back * angDiff(Math.PI, motionAngle), -0.38, 0.38);
     this.act.idle.setEffectiveWeight(1 - wMove); this.act.walk.setEffectiveWeight(wMove * (1 - wRun)); this.act.run.setEffectiveWeight(wMove * wRun);
     const stepScale = clamp(Math.sqrt(s / Wk.v), 0.30, 1) * (1 - this.crouch * 0.32) * (1 - Math.abs(Math.sin(drift)) * 0.18);
     const clipStride = lerp(Wk.v * Wk.dur, Rn.v * Rn.dur, wRun);
@@ -439,15 +450,15 @@ class Bot {
     const jogLimit = lerp(2.4, clipStride, smooth(clamp((s - 3.1) / 1.65, 0, 1)));
     const stride = Math.min(clipStride, jogLimit) * stepScale;
     const reach = stride / clipStride;
-    const contact = lerp(Wk.contact, Rn.contact, wRun);
+    const contact = lerp(lerp(Wk.contact, Rn.contact, wRun), CONTACT, directional);
+    const cycleLength = stride * (1 - directional) + (left + right) * STRAFE_STRIDE + back * BACK_STRIDE;
     const phaseBefore = this.phase;
-    this.phase += reversed * Math.max(s / Math.max(0.35, stride), pivot * (0.7 + 0.17 * Math.abs(this.turnRate))) * dt;
+    this.phase += Math.max(s / Math.max(0.35, cycleLength), pivot * (0.7 + 0.17 * Math.abs(this.turnRate))) * dt;
     this.phase -= Math.floor(this.phase);
     this.act.walk.time = ((this.phase + Wk.off) % 1) * Wk.dur; this.act.run.time = ((this.phase + Rn.off) % 1) * Rn.dur;
     this.mixer.update(dt);
-    // In reverse, the end of the forward contact interval becomes the landing.
-    const footfallOffset = this.back ? contact : 0;
-    if (wMove > 0.60 && Math.floor((phaseBefore - footfallOffset) * 2) !== Math.floor((this.phase - footfallOffset) * 2)) G.bots.sound(this, 'step', s);
+    applyDirectionalGait(b, gait.directional, this.gaitBlend, this.phase);
+    if (wMove > 0.60 && Math.floor(phaseBefore * 2) !== Math.floor(this.phase * 2)) G.bots.sound(this, 'step', s);
 
     this.nearby.length = 0;
     for (const c of cols) {
@@ -456,79 +467,38 @@ class Bot {
           c.y1 > this.floorY - STEP && c.y0 < this.pos.y + 2) this.nearby.push(c);
     }
     // The Character armature is rotated -90° around X, so hips Z is height in centimetres.
-    b.hips.position.z -= this.crouch * 35;
+    const crouchDrop = this.crouch * lerp(0.35, 0.26, directional);
+    b.hips.position.z -= crouchDrop * 100;
     b.spine.rotation.x += this.crouch * 0.34;
     this.root.updateMatrixWorld(true);
-    this.poseFoot(0, b.lul, b.ll, b.lft, bfx, bfz, drift, wMove, reach, pivot, contact, dt);
-    this.poseFoot(1, b.rul, b.rl, b.rft, bfx, bfz, drift, wMove, reach, pivot, contact, dt);
-    // upper body: the spine twists from the pelvis round to the aim, leans into the sights, breathes, takes hits
-    const tw = angDiff(this.bodyYaw, this.yaw), pitch = this.pitch * this.aim, breath = Math.sin(G.time * 1.7 + this.idx * 1.3) * 0.012;
-    b.spine.rotation.y += tw * 0.3; b.spine1.rotation.y += tw * 0.35; b.spine2.rotation.y += tw * 0.35 + C.spineTwist * this.aim + this.flinch * 0.12;
-    b.spine1.rotation.x += pitch * C.spinePitch + this.flinch * 0.22 + breath; b.spine2.rotation.x += pitch * C.spinePitch;
-    b.spine.updateWorldMatrix(false, true);
-    // rifle: shouldered when engaging, low-ready otherwise
-    const chest = b.spine2.getWorldPosition(V());
-    const yaw = this.yaw, cy = Math.cos(yaw), sy = Math.sin(yaw), a = this.aim, sw = Math.sin(this.phase * 12.566) * 0.014 * Math.min(1, this.speedAnim / 2);
-    const fwd = V(sy, 0, cy), right = V(-cy, 0, sy);
-    const off = V(lerp(C.ready.off[0], C.aim.off[0], a), lerp(C.ready.off[1], C.aim.off[1], a) + sw, lerp(C.ready.off[2], C.aim.off[2], a));
-    this.gun.position.copy(chest).addScaledVector(right, off.x).addScaledVector(fwd, off.z); this.gun.position.y += off.y;
-    gunEuler.set(lerp(C.ready.rot[0], this.pitch + C.aim.rot[0], a), yaw + Math.PI + lerp(C.ready.rot[1], C.aim.rot[1], a), lerp(C.ready.rot[2], C.aim.rot[2], a));
-    this.gun.quaternion.setFromEuler(gunEuler);
-    muzzleProbe.copy(MUZZLE).applyQuaternion(this.gun.quaternion).add(this.gun.position);
-    const gunRoom = clearance(chest, muzzleProbe, this.nearby);
-    this.gunBlocked = gunRoom < 0.88;
-    const raise = clamp((1 - gunRoom) * 2.2, 0, 1);
-    this.gunRaise = damp(this.gunRaise, raise, raise > this.gunRaise ? 26 : 11, dt);
-    gunEuler.x += this.gunRaise * 1.3;
-    this.gun.quaternion.setFromEuler(gunEuler);
-    this.gun.position.addScaledVector(fwd, -this.gunRaise * 0.22);
-    muzzleProbe.copy(MUZZLE).applyQuaternion(this.gun.quaternion).add(this.gun.position);
-    const tuckedRoom = clearance(chest, muzzleProbe, this.nearby);
-    if (tuckedRoom < 0.999) {
-      this.gun.position.addScaledVector(barrel, -(1 - tuckedRoom));
-      this.gunBlocked = true;
-    }
-    this.gun.updateMatrixWorld(true);
-    const gr = this.gun.localToWorld(V(...C.gripR)), gl = this.gun.localToWorld(V(...C.gripL));
-    if (this.reloadT > 0) {            // support hand goes down to the magazine well and back
-      const k = clamp((2.4 - this.reloadT) / 2.4, 0, 1), w = clamp(k / 0.18, 0, 1) * clamp((1 - k) / 0.18, 0, 1);
-      gl.lerp(this.gun.localToWorld(V(0, -0.24 - 0.14 * Math.sin(k * Math.PI), -0.075)), w * w * (3 - 2 * w));
-    }
-    const pole = p => V(0, p[1], 0).addScaledVector(right, p[0]).addScaledVector(fwd, p[2]);
-    ik2(b.ra, b.rf, b.rh, gr, pole(C.poleR)); ik2(b.la, b.lf, b.lh, gl, pole(C.poleL));
-    for (const f of this.fingers) f.rotation.x += 0.9;                      // close the hands around the rifle
+    const legPose = { bfx, bfz, drift, warp, walk: wMove, stride: lerp(reach, 1, directional), pivot, contact, directional, crouchDrop };
+    this.poseFoot(0, b.lul, b.ll, b.lft, legPose, dt);
+    this.poseFoot(1, b.rul, b.rl, b.rft, legPose, dt);
     // head: on the target in a fight, otherwise checking ahead and to the sides
     this.lookT -= dt;
     if (this.lookT <= 0) { this.lookT = 0.8 + this.rnd() * 2.2; this.lookGoal = this.state === 'combat' ? 0 : (this.rnd() - 0.5) * (moved > 1 ? 1.1 : 1.7); }
     this.headYaw = damp(this.headYaw, this.state === 'combat' ? 0 : this.lookGoal, 5, dt);
-    b.neck.rotation.y += this.headYaw * 0.35; b.head.rotation.y += this.headYaw * 0.65; b.head.rotation.x += -pitch * 0.3;
+    b.neck.rotation.y += this.headYaw * 0.35; b.head.rotation.y += this.headYaw * 0.65; b.head.rotation.x -= this.pitch * this.aim * 0.3;
+    poseBotRifle(this, dt);
   }
 
-  poseFoot(i, thigh, knee, foot, fx, fz, drift, walk, stride, pivot, contact, dt) {
+  poseFoot(i, thigh, knee, foot, pose, dt) {
+    const { bfx: fx, bfz: fz, drift, warp, walk, stride, pivot, contact, directional, crouchDrop } = pose;
     foot.getWorldPosition(footPos);
     foot.getWorldQuaternion(footQuat);
     const dx = footPos.x - this.pos.x, dz = footPos.z - this.pos.z;
     const side = (dx * -fz + dz * fx) * (1 - pivot) + (i === 0 ? -0.13 : 0.13) * pivot;
     const along = (dx * fx + dz * fz) * lerp(1, stride, walk) * (1 - pivot * 0.35);
     const swingSide = side + Math.sin(drift) * along;
-    const stanceSide = i === 0 ? Math.min(-0.078, swingSide) : Math.max(0.078, swingSide);
+    const stanceSide = lerp(i === 0 ? Math.min(-0.078, swingSide) : Math.max(0.078, swingSide), swingSide, directional);
     const reach = Math.cos(drift) * along;
-    footPos.x = this.pos.x + reach * fx - stanceSide * fz;
-    footPos.z = this.pos.z + reach * fz + stanceSide * fx;
-    footPos.y += this.crouch * 0.35;
+    const sin = Math.sin(warp), cos = Math.cos(warp);
+    footPos.x = this.pos.x + (reach * fx - stanceSide * fz) * cos + (reach * fz + stanceSide * fx) * sin;
+    footPos.z = this.pos.z + (reach * fz + stanceSide * fx) * cos - (reach * fx - stanceSide * fz) * sin;
+    footPos.y += crouchDrop;
 
-    const phase = (this.phase + i * 0.5) % 1;
-    const elapsed = this.back ? contact - phase : phase;
-    const stance = elapsed >= 0 && elapsed < contact;
-    const plantWeight = walk * smooth(clamp(elapsed / 0.075, 0, 1)) * smooth(clamp((contact - elapsed) / 0.13, 0, 1));
-    if (!stance || walk < 0.25) this.plants[i] = null;
-    else if (!this.plants[i]) this.plants[i] = footPos.clone();
-    const plant = this.plants[i];
-    if (plant) {
-      const x = plant.x - footPos.x, z = plant.z - footPos.z;
-      const w = plantWeight * Math.min(1, 0.21 / Math.max(0.01, Math.hypot(x, z)));
-      footPos.x += x * w; footPos.z += z * w;
-    }
+    const elapsed = (this.phase + i * 0.5) % 1;
+    const stance = elapsed < contact;
     const flat = clamp(Math.abs(Math.sin(drift)) * walk + pivot * 0.55 + this.crouch * 0.4, 0, 1);
     q1.setFromAxisAngle(UP, this.bodyYaw + Math.PI).multiply(this.G.bots.gait.flatFoot[i]);
     footQuat.slerp(q1, flat);
@@ -542,9 +512,34 @@ class Bot {
     const heightAdjust = Math.max(this.footGround[i] - this.pos.y, floor - Math.min(heelPos.y, toePos.y) + 0.009);
     footPos.y += heightAdjust;
 
+    if (!stance || walk < 0.25) {
+      if (this.plants[i]) this.releasedPlants[i] = this.plants[i];
+      this.plants[i] = null;
+    } else if (!this.plants[i]) {
+      this.plants[i] = { position: footPos.clone(), rotation: footQuat.clone() };
+      this.releasedPlants[i] = null;
+    }
+    const plant = this.plants[i];
+    const release = clamp((elapsed - contact) / 0.13, 0, 1);
+    if (release === 1 || walk < 0.25) this.releasedPlants[i] = null;
+    const anchor = plant || this.releasedPlants[i];
+    if (anchor) {
+      // Hold the directional plant through toe-off. Hand back to the authored swing once the boot lifts.
+      const enter = smooth(clamp(elapsed / 0.065, 0, 1));
+      const earlyRelease = smooth(clamp((contact - elapsed) / 0.085, 0, 1));
+      const load = plant ? enter * lerp(earlyRelease, 1, directional) : directional * (1 - smooth(release));
+      const limit = lerp(0.21, 0.46, directional);
+      const w = walk * load * Math.min(1, limit / Math.max(0.01, footPos.distanceTo(anchor.position)));
+      footPos.x = lerp(footPos.x, anchor.position.x, w);
+      footPos.z = lerp(footPos.z, anchor.position.z, w);
+      footQuat.slerp(anchor.rotation, w * directional);
+    }
+
     // Both ends of the boot need horizontal clearance below the body capsule.
+    heelPos.copy(HEEL).multiplyScalar(0.01).applyQuaternion(footQuat).add(footPos);
+    toePos.copy(TOE).multiplyScalar(0.01).applyQuaternion(footQuat).add(footPos);
     for (const sample of [heelPos, toePos]) {
-      soleProbe.set(sample.x, sample.y + heightAdjust, sample.z);
+      soleProbe.copy(sample);
       if (resolveXZ(soleProbe, 0.066, 0.13, cols, 0.02)) {
         const x = soleProbe.x - sample.x, z = soleProbe.z - sample.z;
         footPos.x += x; footPos.z += z; toePos.x += x; toePos.z += z;
@@ -575,14 +570,6 @@ class Bot {
   muzzle(out) { return this.gun.localToWorld(out.copy(MUZZLE)); }
 }
 
-function clearance(from, to, cols) {
-  barrel.subVectors(to, from);
-  const length = barrel.length();
-  const dir = muzzleProbe.copy(barrel).divideScalar(length);
-  const room = rayBoxes(from.x, from.y, from.z, dir.x, dir.y, dir.z, length + 0.06, cols);
-  return clamp((room - 0.06) / length, 0, 1);
-}
-
 export class Bots {
   constructor(G, perTeam = 4) {
     this.G = G; this.rnd = rng(555);
@@ -592,6 +579,7 @@ export class Bots {
     for (let i = 0; i < perTeam; i++) this.list.push(new Bot(G, 1, i, shared));
     this.reports = [[], []];
     this.gait = calibrate(this.list[0]);
+    this.gait.directional = bakeDirectionalGaits(assets.soldier, this.list[0].b, ik2);
   }
   reset() { this.reports = [[], []]; for (const b of this.list) { b.alive = false; b.root.visible = false; b.gun.visible = false; b.respawnT = 0.2 + b.idx * 0.3; b.kills = 0; b.deaths = 0; b.mixer.timeScale = 1; b.rag = null; b.dropped = null; b.fall = null; } }
   coverTaken(ci, who) { return this.list.some(b => b !== who && b.alive && b.cover && b.cover.ci === ci); }
@@ -627,12 +615,13 @@ export class Bots {
   sound(b, kind, speed = 3) {
     const G = this.G, cam = G.R.camera.position, d = cam.distanceTo(b.pos);
     if (kind === 'step') { if (d < 32) G.audio.step(b.surf || 'concrete', clamp(0.35 + speed * 0.14, 0.3, 1.1) * (b.crouching ? 0.5 : 1), { x: b.pos.x, y: b.pos.y + 0.1, z: b.pos.z }); }
-    else if (kind === 'reload' && d < 22) { const p = { x: b.pos.x, y: b.pos.y + 1.2, z: b.pos.z }; G.audio.foleyAt('magout', p); setTimeout(() => { if (b.alive) { G.audio.foleyAt('magin', p); } }, 1300); }
+    else if (d < 22) G.audio.foleyAt(kind, { x: b.pos.x, y: b.pos.y + 1.2, z: b.pos.z });
   }
 
   // Hitscan shot with aim error. Uses the same collision boxes as movement and sight, so nothing is shot through walls.
   fire(b, tg, D) {
     const G = this.G, R = b.rnd, cols = G.world.colliders, m = b.muzzle(V()), eye = b.eye(V());
+    b.rifleKick = 1;
     let aim;
     if (tg) { aim = V(tg.pos.x, tg.pos.y + (tg.eyeY - tg.pos.y) * (0.55 + R() * 0.3), tg.pos.z); const lead = eye.distanceTo(aim) / 420; aim.addScaledVector(tg.vel, lead * (0.6 + R() * 0.5)); }
     else aim = V(b.lastKnown.x + (R() - 0.5) * 1.6, 1.0 + R() * 0.7, b.lastKnown.z + (R() - 0.5) * 1.6);

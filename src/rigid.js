@@ -239,6 +239,8 @@ export class Rigid {
   // The rifle leaves the hands and becomes a body of its own.
   dropGun(bot) {
     const g = bot.gun, q = g.quaternion, R = bot.rnd;
+    const magazine = g.getObjectByName('botMagazine');
+    if (magazine && magazine.position.y < -0.10) magazine.visible = false;
     const body = this.world.createRigidBody(RAPIER.RigidBodyDesc.dynamic().setTranslation(g.position.x, g.position.y, g.position.z).setRotation({ x: q.x, y: q.y, z: q.z, w: q.w }).setLinvel(bot.vel.x + (R() - 0.5), 0.6, bot.vel.z + (R() - 0.5)).setLinearDamping(0.1).setAngularDamping(0.5).setCcdEnabled(true));
     body.setAngvel({ x: (R() - 0.5) * 3, y: (R() - 0.5) * 2, z: (R() - 0.5) * 3 }, true);
     const col = this.world.createCollider(RAPIER.ColliderDesc.cuboid(0.026, 0.1, 0.37).setTranslation(0, -0.135, -0.17).setMass(3.3).setFriction(0.55).setRestitution(0.15).setCollisionGroups(grp(G_PROP, G_STATIC | G_PROP)).setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS), body);

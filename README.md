@@ -72,14 +72,15 @@ Key bindings live in the same saved settings object (`binds`); there is no rebin
   handguard. ADS, semi/auto, recoil pattern, inspect, wall lowering, muzzle flash and light, casings, tracers, per-surface
   impacts and decals, light penetration and ricochets. Reloads bring the rifle up, the hand strips and seats the magazine,
   and an empty reload ends with a thumb on the bolt release.
-- **Bots** — rigged soldiers that shoulder the rifle with two-bone IK, navigate with A* on a 1 m grid, see only inside a field
+- **Bots** — rigged soldiers with separate low-ready and shouldered rifle poses, a support hand that follows the weapon,
+  and a visible magazine extraction and insertion. They navigate with A* on a 1 m grid, see only inside a field
   of view (which follows where the head is turned) with line of sight and a detection delay, react to gunfire and footsteps
   with an uncertain position, share sightings after a delay, use cover and peek, fire in bursts, reload, search after losing
   contact, and respawn out of sight.
-- **How they move** — soldiers slow into turns and steer around nearby bodies before contact. Ground speed drives the
-  walk/run blend, with planted feet on level ground and individual foot heights on kerbs and stairs. The legs follow
-  the direction of travel on strafes and retreats while the upper body keeps aim. When the barrel approaches a wall,
-  the soldier tucks the rifle closer to the chest.
+- **How they move** — soldiers slow into turns and steer around nearby bodies before contact. Local direction and speed blend
+  forward, lateral and backward steps while the upper body can keep its aim. Contact phases keep the supporting boot planted
+  while the other foot swings. Leg IK adjusts foot placement on kerbs and stairs. When the barrel approaches a wall, the
+  soldier tucks the rifle closer to the chest.
 - **Physics** — a rigid-body world (Rapier) built from the district's collision boxes. 160-odd pieces of loose clutter
   (chairs, crates, cans, bins, tyres, pots, baskets, gas bottles, hand trucks…) rest as dressed until disturbed, then can be
   shoved by walking into them and knocked about by bullets, with material-dependent mass, friction and bounce; light
@@ -154,11 +155,10 @@ Profiling switches: `?demo=1` auto-plays the match (for pacing runs), `?live=1` 
 
 In the browser console, with the dev server running:
 
-- `G.selfTest()` — 35 scripted checks through the real systems: movement, kerbs, mantle, fire modes, firing on the run,
+- `G.selfTest()` — scripted checks through the real systems: movement, kerbs, mantle, fire modes, firing on the run,
   reloads, hit zones, scoring, AI perception, damage, death and respawn, match endings, restart, a 90 s bot-only stretch,
   props shoved and shot, a ragdoll falling to rest and the body staying behind, bot stride length and acceleration, torso
-  twist and back-pedalling, sound arrival delay, wall muffling, and echo delays that tighten from street to alley.
-  Last run: 35/35 on High and on Low.
+  direction changes, planted-foot drift in a strafe, the bot magazine reload, sound arrival delay, wall muffling, and echoes.
 - `await G.proof()` — writes fourteen fixed-bookmark screenshots at 1920×1080 to `captures/`; `await G.proof(1754, 864)` does
   the same at 2192×1080 (`*_uw.jpg`).
 - `G.bench()` — the GPU frame-time benchmark above. `G.report()` — the on-screen pacing, audio-level and input snapshot.
@@ -191,7 +191,9 @@ src/dressing.js       cover, stalls, cloth, palms, cables, rooftop clutter, litt
 src/weapon.js         carbine, optic, hands, view-model animation
 src/sdf.js            distance-field modelling + marching cubes (gloves)
 src/player.js         input, movement, camera, health, hitscan
-src/bots.js           soldier rig, IK, perception, decisions, fire
+src/bots.js           soldier movement, perception, decisions, fire
+src/soldier-gait.js   directional gait keyframes and blend
+src/bot-rifle.js      low-ready, aim and hand placement on the bot rifle
 src/physics.js        box collision, rays, navigation grid + A*
 src/rigid.js          rigid-body world: loose props, pushing, bullets, ragdolls, dropped rifles, corpses
 src/fx.js             particles, decals, tracers, casings

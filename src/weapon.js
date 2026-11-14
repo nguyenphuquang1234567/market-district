@@ -326,10 +326,28 @@ function flashTexture() {
 
 // Low-detail world model shared by the bots.
 let worldGun = null;
+export const BOT_RELOAD_DURATION = 2.4;
+export const BOT_MAG_OUT = 0.48;
+export const BOT_MAG_IN = 1.37;
+
+export function botReloadPose(remaining) {
+  const elapsed = BOT_RELOAD_DURATION - remaining;
+  const ease = (start, end) => smooth(clamp((elapsed - start) / (end - start), 0, 1));
+  return {
+    grip: ease(0.10, 0.40) * (1 - ease(1.50, 1.86)),
+    magY: -0.18 * ease(0.42, 0.64) * (1 - ease(1.08, BOT_MAG_IN)),
+  };
+}
+
 export function worldGunMesh(mats) {
-  if (!worldGun) { const g = buildGun(true), m = buildMag(); worldGun = { ...g, polymer: mergeGeometries([g.polymer, m.body]) }; }
+  if (!worldGun) worldGun = { ...buildGun(true), botMagazine: buildMag().body };
   const grp = new THREE.Group();
-  for (const k of Object.keys(worldGun)) { const mesh = new THREE.Mesh(worldGun[k], mats[k]); mesh.castShadow = true; grp.add(mesh); }
+  for (const [part, geometry] of Object.entries(worldGun)) {
+    const mesh = new THREE.Mesh(geometry, mats[part === 'botMagazine' ? 'polymer' : part]);
+    mesh.name = part;
+    mesh.castShadow = true;
+    grp.add(mesh);
+  }
   return grp;
 }
 
