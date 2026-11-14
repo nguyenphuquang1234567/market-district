@@ -25,23 +25,38 @@ const WALK_TO_RUN = 2.3, RUN_TO_WALK = 1.9;
 const HEEL = V(0, -2, 13.3), BALL = V(0, 15.8, 12.7), TOE = V(0, 24, 12.4), TOE_END = V(1.22, 7.97, -0.04), CAP_SOLE = 0.019;
 const TIP_UP = 4, TIP_DOWN = 5;             // rad/s: how fast a planted boot's heel may be raised over its toe, and set down again
 const footPos = V(), kneePos = V(), legBase = V(), legAxis = V(), heelPos = V(), toePos = V(), ballPos = V(), capPos = V(), soleProbe = V();
-const footQuat = new THREE.Quaternion(), footParent = new THREE.Quaternion();
+const footQuat = new THREE.Quaternion(), footParent = new THREE.Quaternion(), hingeWant = V();
+const KNEE_FOLLOWS_BOOT = 0.7;
+// rad: how far a shin may lean over the toes of its boot, and over to either side, before the boot gives; and how far
+// a boot may be turned out of line with its knee
+const DORSI_MAX = 0.8, ROLL_MAX = 0.52, ANKLE_TURN_MAX = 0.4, FOOT_LENGTH = V(0, 1, 0), FOOT_DOWN = V(0, 0, 1), shinUp = V(), ballSole = V();
+// Compass heading of a boot's side-to-side axis: where it is turned to, whatever its pitch.
+function lateralYaw(q) { soleProbe.copy(HINGE).applyQuaternion(q); return Math.atan2(soleProbe.x, soleProbe.z); }
 const NAMES = [['Idris', 'Tarek', 'Sami', 'Nour'], ['Kader', 'Viper', 'Rook', 'Anvil', 'Dagger']];
 const DIFF = { easy: { react: 0.6, err: 1.7, dmg: 0.8 }, normal: { react: 0.36, err: 1.0, dmg: 1 }, hard: { react: 0.22, err: 0.68, dmg: 1.15 } };
 const HOTSPOTS = [[0, -40], [0, -22], [0, -4], [0, 8], [0, 22], [0, 40], [-12, -2], [-11, 9], [-12, -12], [28.5, -40], [28.5, -20], [28.5, 0], [28.5, 20], [28.5, 40], [-29, -40], [-29, -20], [-29, 0], [-29, 20], [-29, 40], [-16, -20], [16, -20], [-16, 20], [16, 20], [-22, -1]];
 export { CARRY } from './bot-rifle.js';
 const t1 = V(), t2 = V(), t3 = V(), t4 = V(), q1 = new THREE.Quaternion(), q2 = new THREE.Quaternion(), q3 = new THREE.Quaternion();
 
-// Rotate `bone` (about its own origin) so the direction to `child` points at `target` instead. All in world space.
-function aimBone(bone, child, target) {
-  bone.getWorldPosition(t1);
-  t2.subVectors(child, t1).normalize(); t3.subVectors(target, t1).normalize();
-  q1.setFromUnitVectors(t2, t3);
-  bone.getWorldQuaternion(q2); bone.parent.getWorldQuaternion(q3);
-  bone.quaternion.copy(q3.invert()).multiply(q1).multiply(q2);
+const pa = V(), pb = V(), pc = V(), elbow = V(), dirv = V(), perp = V();
+// A knee is a hinge: on this rig it turns about the local X axis of thigh and shin alike (and the boot's X lies along
+// the same line). Turn `bone` (about its own origin) so that its length points along `along` and that axis along
+// `hinge`: both in world space, unit length, at right angles.
+const HINGE = V(1, 0, 0), boneLength = V(), boneSide = V(), boneFront = V(), hingeAxis = V(), thighDir = V(), shinDir = V();
+const ownBasis = new THREE.Matrix4(), worldBasis = new THREE.Matrix4();
+function setHinged(bone, child, along, hinge) {
+  boneLength.copy(child.position).normalize();                                         // where the bone's length lies in its own frame
+  boneSide.copy(HINGE).addScaledVector(boneLength, -boneLength.x).normalize();
+  ownBasis.makeBasis(boneSide, boneLength, boneFront.crossVectors(boneSide, boneLength));
+  worldBasis.makeBasis(hinge, along, boneFront.crossVectors(hinge, along));
+  bone.parent.getWorldQuaternion(q3);
+  bone.quaternion.copy(q3.invert()).multiply(q1.setFromRotationMatrix(worldBasis)).multiply(q2.setFromRotationMatrix(ownBasis).invert());
   bone.updateWorldMatrix(false, true);
 }
-const pa = V(), pb = V(), pc = V(), elbow = V(), dirv = V(), perp = V();
+// Two-bone leg. `pole` is the way the knee points. Thigh and shin are both set outright, each with its hinge axis
+// square to the plane the leg bends in, so the knee only ever folds the way a knee does: turning the bones by the
+// shortest way round instead leaves the thigh facing wherever the clip had it, and a knee asked to point anywhere
+// else folds sideways or backwards across its own joint.
 // `soft` is the last fraction of the limb's reach over which it eases to straight instead of locking: without it a
 // knee near full extension snaps through many degrees for a centimetre of extra reach.
 function ik2(a, b, c, target, pole, soft = 0) {
@@ -53,11 +68,12 @@ function ik2(a, b, c, target, pole, soft = 0) {
   dirv.subVectors(target, pa).normalize();
   const cosA = clamp((lab * lab + lat * lat - lcb * lcb) / (2 * lab * lat), -1, 1), sinA = Math.sqrt(1 - cosA * cosA);
   perp.copy(pole).addScaledVector(dirv, -pole.dot(dirv)).normalize();
-  elbow.copy(pa).addScaledVector(dirv, lab * cosA).addScaledVector(perp, lab * sinA);
-  aimBone(a, pb, elbow);
-  c.getWorldPosition(pc);
-  t4.copy(pa).addScaledVector(dirv, lat);
-  aimBone(b, pc, t4);
+  hingeAxis.crossVectors(perp, dirv);
+  thighDir.copy(dirv).multiplyScalar(cosA).addScaledVector(perp, sinA);
+  setHinged(a, b, thighDir, hingeAxis);
+  elbow.copy(pa).addScaledVector(thighDir, lab);
+  shinDir.copy(pa).addScaledVector(dirv, lat).sub(elbow).normalize();
+  setHinged(b, c, shinDir, hingeAxis);
 }
 
 // t for which smooth(t) = y
@@ -136,6 +152,7 @@ class Bot {
     this.footAnim = [{ p: V(), q: new THREE.Quaternion() }, { p: V(), q: new THREE.Quaternion() }];
     this.footGoal = [{ p: V(), q: new THREE.Quaternion(), bend: 0 }, { p: V(), q: new THREE.Quaternion(), bend: 0 }];
     this.footEase = [{ p: V(), q: new THREE.Quaternion(), live: false }, { p: V(), q: new THREE.Quaternion(), live: false }];
+    this.ankle = [{ heel: 0, roll: 0, toe: null, toeWas: new THREE.Quaternion() }, { heel: 0, roll: 0, toe: null, toeWas: new THREE.Quaternion() }];
     this.yaw = 0; this.pitch = 0; this.health = 100; this.alive = false; this.crouch = 0; this.crouching = false;
     this.root = new THREE.Group(); G.R.scene.add(this.root);
     const model = this.model = cloneSkinned(assets.soldier.scene); this.root.add(model);
@@ -180,6 +197,7 @@ class Bot {
     this.speedAnim = 0; this.travelYaw = this.yaw; this.turnRate = 0; this.gunRaise = 0; this.gunBlocked = false; this.rifleKick = 0;
     this.runGait = 0; this.running = false; this.gaitT = 0; this.restT = 0; this.bumps = 0; this.grindT = 0; this.settleT = 0; this.squeezeT = 0; this.dodgeT = 0; this.dodgeSide = 1; this.sideOpen = [0, 0]; this.probeT = this.rnd() * 0.4;
     this.plants = [null, null]; this.releasedPlants = [null, null];
+    for (const a of this.ankle) { a.heel = a.roll = 0; a.toe = null; }
     this.footGround = [this.pos.y, this.pos.y]; this.footAim = [this.pos.y, this.pos.y]; this.floorY = this.pos.y; this.rise = this.pos.y; this.stockY = null; this.hipDrop = 0; this.hipGive = 0; this.low = false; this.upT = 0; this.crouchRate = 0; this.crouchT = 0; this.bodyRate = 0; this.stepRound = false; this.moveW = 0; this.pivotW = 0; this.footEase[0].live = this.footEase[1].live = false; this.cadence = 0; this.drift = 0; this.warp = 0; this.motionAngle = 0; this.wishYaw = null; this.atRest = false; this.leadFoot = this.rnd() < 0.5 ? 0 : 1;
     this.gaitBlend = { left: 0, right: 0, back: 0 };
     this.nearby = [];
@@ -196,6 +214,13 @@ class Bot {
     this.yaw = sp.yaw; this.pitch = 0; this.health = 100; this.alive = true; this.vel.set(0, 0, 0); this.crouch = 0; this.aim = 0; this.crouching = false;
     this.root.visible = true; this.gun.visible = true; this.model.quaternion.identity(); this.model.position.set(0, 0, 0);
     this.resetBrain(); this.resetBody(); this.mixer.timeScale = 1;
+    // The mixer writes a bone only when the clips' answer for it differs from the frame before. On a frame in which
+    // no time passes (this one) it would write nothing, and the soldier would stand at the spawn point for a frame
+    // with his trunk as the last life left it. Restarting the actions makes it lay the whole pose down afresh.
+    const idleAt = this.act.idle.time;
+    for (const a of Object.values(this.act)) a.stop();                              // (all of them first: the bones are let go only when no action holds them)
+    for (const a of Object.values(this.act)) a.play();
+    this.act.idle.time = idleAt;
     this.place(this.pos.x, this.pos.z, this.G.world.colliders);                       // clear of anything beside the spawn point before the first visible frame
     this.prevX = this.pos.x; this.prevZ = this.pos.z; this.moveIntent = 0;
     this.animate(0, 0, this.G.world.colliders);
@@ -790,7 +815,17 @@ class Bot {
     const cycleLength = stride * (1 - directional) + (left + right) * STRAFE_STRIDE + back * BACK_STRIDE;
     // Standing, the stride waits at the instant one boot is about to leave the ground (a different boot each time),
     // so the first step off is a step: lift, swing, plant, and not a jump into the middle of a stride.
-    if (wMove < 0.03) { if (!this.atRest) { this.atRest = true; this.leadFoot = 1 - this.leadFoot; } this.phase = (Wk.contact + 0.02 + this.leadFoot * 0.5) % 1; } else this.atRest = false;
+    if (wMove < 0.03) {
+      if (!this.atRest) { this.atRest = true; this.leadFoot = 1 - this.leadFoot; }
+      // ...and the boot that goes first is the one a person would move first: setting off forwards or backwards, the
+      // one left behind; stepping sideways, the one on the side being stepped to. (The stride begins at toe-off.
+      // Asked of a boot standing out in front, that is a prancing step: heel up, knee hauled high, boot drawn back
+      // under the body before it can go anywhere.)
+      const way = by + this.motionAngle, feet = this.footGoal;
+      const lead = (feet[0].p.x - feet[1].p.x) * Math.sin(way) + (feet[0].p.z - feet[1].p.z) * Math.cos(way);      // how far the left boot stands ahead of the right, that way
+      if (Math.abs(lead) > 0.04) this.leadFoot = (lead > 0) === (Math.abs(Math.sin(this.motionAngle)) > 0.7) ? 0 : 1;
+      this.phase = (Wk.contact + 0.02 + this.leadFoot * 0.5) % 1;
+    } else this.atRest = false;
     const phaseBefore = this.phase;
     // Coming to a halt, the stride runs on to the moment the swinging boot is passing the standing one, so the last
     // step closes the feet together instead of both boots sliding home from wherever the stride stopped.
@@ -804,6 +839,7 @@ class Bot {
     this.phase += this.cadence * dt;
     this.phase -= Math.floor(this.phase);
     this.act.walk.time = ((this.phase + Wk.off) % 1) * Wk.dur; this.act.run.time = ((this.phase + Rn.off) % 1) * Rn.dur;
+    for (const a of this.ankle) if (a.toe) { a.toe.quaternion.copy(a.toeWas); a.toe = null; }      // toes bent by hand last frame, as the clips had them (the mixer may not write them again)
     this.mixer.update(dt);
     applyDirectionalGait(b, gait.directional, this.gaitBlend, this.phase, wMove);
     if (wMove > 0.60 && Math.floor(phaseBefore * 2) !== Math.floor(this.phase * 2)) G.bots.sound(this, 'step', s);
@@ -873,8 +909,8 @@ class Bot {
     this.hipGive = damp(this.hipGive, give, give > this.hipGive ? 24 : 8, dt);
     this.hipDrop = damp(this.hipDrop, this.hipGive, 24, dt);
     if (this.hipDrop > 0.0005) { b.hips.position.z -= this.hipDrop * 100; b.hips.updateWorldMatrix(false, true); }
-    this.solveLeg(0, b.lul, b.ll, b.lft);
-    this.solveLeg(1, b.rul, b.rl, b.rft);
+    this.solveLeg(0, b.lul, b.ll, b.lft, b.ltoe, dt);
+    this.solveLeg(1, b.rul, b.rl, b.rft, b.rtoe, dt);
     // Head: on the target in a fight. Otherwise the eyes go first: into the bend the route is about to take, down a
     // side street as it opens up, and now and then to either side.
     const calm = this.state !== 'combat';
@@ -961,7 +997,12 @@ class Bot {
     // other boot planted, to stand comfortably.
     const easing = this.releasedPlants[i], other = 1 - i;
     const shuffle = walk < 0.05 && this.restT > 0.35 && !!plant && Math.hypot(plant.dx, plant.dz) > 0.2 && !!this.plants[other] && !this.releasedPlants[other];
-    const stance = walk >= 0.25 ? elapsed < contact || (!!plant && directional < 0.5 && elapsed < contact + 0.11 && span < 0.962 && Math.min(ballPos.y, capPos.y - CAP_SOLE) - ground < 0.024)
+    // (Only a boot left behind the hip is pushing off. One still under the body when its turn to swing comes, as on
+    // the first step from a standstill, is simply picked up: held down by its toe there, the heel climbs straight up
+    // and the knee is driven out in front.)
+    const tx = pace > 0.2 ? this.vel.x / pace : fx, tz = pace > 0.2 ? this.vel.z / pace : fz;
+    const trailing = !!plant && (footPos.x + plant.dx - legBase.x) * tx + (footPos.z + plant.dz - legBase.z) * tz < -0.08;
+    const stance = walk >= 0.25 ? elapsed < contact || (trailing && directional < 0.5 && elapsed < contact + 0.11 && span < 0.962 && Math.min(ballPos.y, capPos.y - CAP_SOLE) - ground < 0.024)
       : plant ? !shuffle : down && !(easing && easing.hop > 0 && easing.k > 0.04);
 
     if (!stance && plant) {
@@ -1080,15 +1121,48 @@ class Bot {
     goal.p.copy(footPos); goal.q.copy(footQuat); goal.bend = Math.max(flat, this.crouch) * 0.7;
   }
 
-  solveLeg(i, thigh, knee, foot) {
-    const goal = this.footGoal[i], by = this.bodyYaw;
-    thigh.getWorldPosition(legBase); knee.getWorldPosition(kneePos);
+  solveLeg(i, thigh, knee, foot, toe, dt) {
+    const goal = this.footGoal[i], by = this.bodyYaw, relief = this.ankle[i];
+    const bootYaw = lateralYaw(goal.q);                                                // (before the boot is rolled: what the knee follows must not depend on what the knee does)
+    // What the ankle could not take last frame, the boot gives (see below): the heel raised over the ball of the foot,
+    // which stays where it is, and the boot rolled over with the shin.
+    if (relief.heel > 1e-4) {
+      t1.copy(ballSole.copy(BALL).multiplyScalar(0.01)).applyQuaternion(goal.q).add(goal.p);
+      goal.q.multiply(q1.setFromAxisAngle(HINGE, relief.heel));
+      goal.p.copy(t1).sub(ballSole.applyQuaternion(goal.q));
+    }
+    if (Math.abs(relief.roll) > 1e-4) goal.q.multiply(q1.setFromAxisAngle(FOOT_LENGTH, -relief.roll));
+    thigh.getWorldPosition(legBase);
     legAxis.subVectors(goal.p, legBase).normalize();
-    kneePos.sub(legBase).addScaledVector(legAxis, -kneePos.dot(legAxis)).normalize();
-    kneePos.lerp(soleProbe.set(Math.sin(by), 0.10, Math.cos(by)), goal.bend);
+    // Which way the knee points is said by its hinge axis, not by where the clip happens to have the knee: that
+    // point lies almost on the line from hip to boot whenever the leg is near straight, or the boot is held somewhere
+    // the clip does not have it, and a direction taken from it swings round to the side or the back. The axis is the
+    // clip's own (thigh and shin agree on it but for a little authored twist)...
+    hingeWant.copy(HINGE).applyQuaternion(thigh.getWorldQuaternion(q1)).add(soleProbe.copy(HINGE).applyQuaternion(knee.getWorldQuaternion(q2)));
+    // ...turned with the boot, by most of what the boot is turned from where the clip has it. A planted boot keeps
+    // its direction while the body turns above it, and a leg takes that up in the hip, where it can turn: an ankle
+    // cannot be wrung round, nor a shin twisted against its thigh.
+    const turned = angDiff(lateralYaw(this.footAnim[i].q), bootYaw) * KNEE_FOLLOWS_BOOT;
+    hingeWant.applyAxisAngle(UP, turned).normalize();
+    hingeWant.lerp(soleProbe.set(Math.cos(by), 0, -Math.sin(by)), goal.bend);          // crouched or shuffling round, the knees go straight ahead
+    // ...but never further from the way the boot points than an ankle turns: past that the knee goes with the boot.
+    const wrung = angDiff(Math.atan2(hingeWant.x, hingeWant.z), bootYaw);
+    if (Math.abs(wrung) > ANKLE_TURN_MAX) hingeWant.applyAxisAngle(UP, wrung - Math.sign(wrung) * ANKLE_TURN_MAX);
+    kneePos.crossVectors(legAxis, hingeWant);
     ik2(thigh, knee, foot, goal.p, kneePos, 0.025);
     foot.parent.getWorldQuaternion(footParent);
     foot.quaternion.copy(footParent.invert().multiply(goal.q));
+    if (relief.heel > 1e-4) { relief.toe = toe; relief.toeWas.copy(toe.quaternion); toe.quaternion.premultiply(q1.setFromAxisAngle(HINGE, -relief.heel)); }      // the toes stay flat on the ground
+    // An ankle bends only so far. Where the shin leans further over the toes than that (the rear leg of a soldier
+    // down on one knee, the trailing leg of a long side-step), a person's heel comes up; where it leans further to
+    // one side, the boot rolls onto its edge. How far the shin leans is only known once the leg is solved, so the
+    // boot follows a frame behind, at the pace a heel is raised and set down.
+    knee.getWorldPosition(kneePos); foot.getWorldPosition(footPos);
+    shinUp.subVectors(kneePos, footPos).normalize();
+    const lean = Math.atan2(shinUp.dot(soleProbe.copy(FOOT_LENGTH).applyQuaternion(goal.q)), -shinUp.dot(soleProbe.copy(FOOT_DOWN).applyQuaternion(goal.q)));
+    const over = Math.asin(clamp(shinUp.dot(soleProbe.copy(HINGE).applyQuaternion(goal.q)), -1, 1)) + relief.roll;
+    relief.heel += clamp((Math.max(0, relief.heel + lean - DORSI_MAX) - relief.heel) * 0.6, -TIP_DOWN * dt, TIP_UP * dt);
+    relief.roll += clamp((clamp(over - clamp(over, -ROLL_MAX, ROLL_MAX), -0.5, 0.5) - relief.roll) * 0.6, -3 * dt, 3 * dt);
   }
 
   muzzle(out) { return this.gun.localToWorld(out.copy(MUZZLE)); }

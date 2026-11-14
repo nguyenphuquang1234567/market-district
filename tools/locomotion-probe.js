@@ -475,3 +475,143 @@ export function autopsy(G, secs = 90, { teams = [0, 1], seed = 0, want = 3, size
   });
   return cases.map(c => ({ what: c.what, rows: c.rows }));
 }
+
+// ---- deformation hunting ---------------------------------------------------------------------------------------------
+// A leg looks broken when a joint is turned in a way the skin was never made for: the knee folding sideways or
+// backwards (out of the plane its hinge allows) or the shin wrung round against the thigh, the boot twisted round on
+// the ankle or bent past what an ankle can do, the thigh wrung round in the hip. Every angle here is measured against
+// the rig's own bind pose, joint by joint, so it says what the skin has to put up with.
+const DEG = 180 / Math.PI;
+const rigs = new WeakMap();
+
+function legRig(G, b) {
+  let rig = rigs.get(b);
+  if (rig) return rig;
+  const T = G.THREE, skeletons = [];
+  b.model.traverse(o => { if (o.isSkinnedMesh) skeletons.push(o.skeleton); });
+  const bindInv = bone => {
+    const sk = skeletons.find(s => s.bones.includes(bone)), i = sk.bones.indexOf(bone), p = sk.bones.indexOf(bone.parent);
+    const m = new T.Matrix4().copy(sk.boneInverses[p]).multiply(new T.Matrix4().copy(sk.boneInverses[i]).invert());
+    const q = new T.Quaternion(); m.decompose(new T.Vector3(), q, new T.Vector3());
+    return q.invert();
+  };
+  const leg = (thigh, shin, foot, toe) => ({ thigh, shin, foot, toe, thighInv: bindInv(thigh), shinInv: bindInv(shin), footInv: bindInv(foot),
+    thighAxis: shin.position.clone().normalize(), shinAxis: foot.position.clone().normalize(), hinge: new T.Vector3(1, 0, 0) });
+  rig = { legs: [leg(b.b.lul, b.b.ll, b.b.lft, b.b.ltoe), leg(b.b.rul, b.b.rl, b.b.rft, b.b.rtoe)], clip: null };
+  rigs.set(b, rig);
+  // The knee's hinge, and what the clips themselves ask of each joint, taken from the authored walk, run and idle.
+  const weights = Object.values(b.act).map(a => a.getEffectiveWeight()), times = Object.values(b.act).map(a => a.time);
+  const d = new T.Quaternion(), sum = [new T.Vector3(), new T.Vector3()], pass = [];
+  for (let round = 0; round < 2; round++) {
+    for (const name of ['idle', 'walk', 'run']) {
+      const act = b.act[name], dur = act.getClip().duration;
+      for (const a of Object.values(b.act)) a.setEffectiveWeight(a === act ? 1 : 0);
+      for (let k = 0; k < 60; k++) {
+        act.time = k / 60 * dur; b.mixer.update(0);
+        rig.legs.forEach((L, s) => {
+          if (round === 0) { d.copy(L.shinInv).multiply(L.shin.quaternion); if (d.w < 0) d.set(-d.x, -d.y, -d.z, -d.w); if (2 * Math.acos(Math.min(1, d.w)) > 0.35) sum[s].add(new T.Vector3(d.x, d.y, d.z).normalize()); }
+          else pass.push(shapeOf(G, L));
+        });
+      }
+    }
+    if (round === 0) rig.legs.forEach((L, s) => L.hinge.copy(sum[s]).normalize());
+  }
+  Object.values(b.act).forEach((a, i) => { a.setEffectiveWeight(weights[i]); a.time = times[i]; });
+  b.mixer.update(0);
+  const range = key => [r2(Math.min(...pass.map(p => p[key]))), r2(Math.max(...pass.map(p => p[key])))];
+  rig.clip = Object.fromEntries(['kneeFlex', 'kneeOff', 'ankleYaw', 'ankleBend', 'hipTwist', 'anklePitch', 'ankleRoll'].map(k => [k, range(k)]));
+  return rig;
+}
+
+const sq = { d: null };
+function shapeOf(G, L) {
+  const d = sq.d || (sq.d = new G.THREE.Quaternion());
+  const turn = (q, axis) => { const along = q.x * axis.x + q.y * axis.y + q.z * axis.z; let a = 2 * Math.atan2(along, q.w); if (a > Math.PI) a -= 2 * Math.PI; if (a < -Math.PI) a += 2 * Math.PI; return [a * DEG, 2 * Math.acos(Math.min(1, Math.hypot(along, q.w))) * DEG]; };
+  d.copy(L.shinInv).multiply(L.shin.quaternion);
+  const [kneeFlex, kneeOff] = turn(d, L.hinge);                  // bend about the hinge; everything else the knee is being asked to do
+  d.copy(L.foot.quaternion).multiply(L.footInv);                 // the boot against the shin, in the shin's frame
+  const [ankleYaw, ankleBend] = turn(d, L.shinAxis);             // turned round the shin; tipped up, down or over
+  d.copy(L.thighInv).multiply(L.thigh.quaternion);
+  const [hipTwist] = turn(d, L.thighAxis);                       // the thigh wrung round its own length
+  // The shin as the boot sees it: leaning over the toes (+) or back over the heel (-), and over to one side.
+  const T = G.THREE, v = sq.v || (sq.v = [new T.Vector3(), new T.Vector3(), new T.Vector3(), new T.Quaternion()]);
+  L.shin.getWorldPosition(v[0]); L.foot.getWorldPosition(v[1]); L.foot.getWorldQuaternion(v[3]);
+  v[0].sub(v[1]).normalize();
+  const on = (x, y, z) => v[0].dot(v[2].set(x, y, z).applyQuaternion(v[3]));
+  const anklePitch = Math.atan2(on(0, 1, 0), on(0, 0, -1)) * DEG, ankleRoll = Math.asin(Math.max(-1, Math.min(1, on(1, 0, 0)))) * DEG;
+  return { kneeFlex, kneeOff, ankleYaw, ankleBend, hipTwist, anklePitch, ankleRoll };
+}
+
+// What the legs' joints were asked to do over a scripted move or a match. `limits` are the points past which a joint
+// reads as broken; anything past one is listed with what the soldier was doing.
+// (The authored clips themselves reach 21 degrees off the hinge, 20 of ankle turn, 41 of ankle bend and 18 of hip twist.)
+// (and the shin leans 47 over the toes, 12 back over the heel and 17 to the side)
+const SHAPE_LIMIT = { kneeOff: 30, kneeBack: -8, ankleYaw: 38, ankleBend: 70, hipTwist: 50, ankleUp: 57, ankleDown: -62, ankleRoll: 40 };
+export function shapeWatch(G) {
+  const peak = { kneeOff: 0, kneeBack: 0, ankleYaw: 0, ankleBend: 0, hipTwist: 0, ankleUp: 0, ankleDown: 0, ankleRoll: 0 };
+  return {
+    peak,
+    look(b) {
+      const rig = legRig(G, b), found = [];
+      rig.legs.forEach((L, s) => {
+        const m = shapeOf(G, L), side = s ? 'R' : 'L';
+        const v = { kneeOff: m.kneeOff, kneeBack: Math.min(0, m.kneeFlex), ankleYaw: Math.abs(m.ankleYaw), ankleBend: m.ankleBend, hipTwist: Math.abs(m.hipTwist), ankleUp: Math.max(0, m.anklePitch), ankleDown: Math.min(0, m.anklePitch), ankleRoll: Math.abs(m.ankleRoll) };
+        for (const k of Object.keys(peak)) {
+          if (SHAPE_LIMIT[k] < 0) { peak[k] = Math.min(peak[k], v[k]); if (v[k] < SHAPE_LIMIT[k]) found.push({ what: k, side, size: r2(v[k]) }); }
+          else { peak[k] = Math.max(peak[k], v[k]); if (v[k] > SHAPE_LIMIT[k]) found.push({ what: k, side, size: r2(v[k]) }); }
+        }
+        L.last = m;
+      });
+      return found;
+    },
+  };
+}
+export function clipShape(G, b = G.bots.list[0]) { return legRig(G, b).clip; }
+
+export function shapes(G, script, { secs = 6, x = -11, z = 4, yaw = 0, state = 'advance' } = {}) {
+  const b = drive(G, { speed: 0, x, z, yaw, state, settle: 0.6 }), w = shapeWatch(G), events = [], count = {};
+  legRig(G, b);
+  unrendered(G, () => {
+    for (let k = 0, n = Math.round(secs * 60); k < n; k++) {
+      const t = k / 60;
+      if (script(b, t) === false) break;
+      G.step(1, 1 / 60);
+      for (const f of w.look(b)) { count[f.what] = (count[f.what] || 0) + 1; if (events.length < 6 && count[f.what] % 12 === 1) events.push(`${t.toFixed(2)} ${f.what} ${f.side} ${f.size} | ${context(b)}`); }
+    }
+  });
+  return { frames: count, peak: Object.fromEntries(Object.entries(w.peak).map(([k, v]) => [k, Math.round(v)])), events };
+}
+
+export function shapeBattery(G, names = Object.keys(MOVES)) {
+  const out = {};
+  for (const name of names) {
+    const m = MOVES[name]; G.bots.list[0].leg = 0;
+    const r = shapes(G, m.script, m), p = r.peak;
+    out[name] = `off ${p.kneeOff} back ${p.kneeBack} ankYaw ${p.ankleYaw} up ${p.ankleUp} down ${p.ankleDown} roll ${p.ankleRoll} hipTw ${p.hipTwist} | ${JSON.stringify(r.frames)}` + (r.events.length ? ' | ' + r.events.slice(0, 2).join(' ;; ') : '');
+  }
+  return out;
+}
+
+// The same watch over every soldier in a real match.
+export function matchShapes(G, secs = 120, { teams = [0, 1], seed = 0, keep = 30 } = {}) {
+  begin(G, { teams, seed });
+  for (const b of G.bots.list) legRig(G, b);
+  const w = shapeWatch(G), tally = {}, events = [];
+  let frames = 0;
+  unrendered(G, () => {
+    for (let k = 0, n = Math.round(secs * 60); k < n; k++) {
+      G.step(1, 1 / 60); G.player.health = 100;
+      for (const b of G.bots.list) {
+        if (!b.alive) continue;
+        frames++;
+        for (const f of w.look(b)) {
+          const g = b.gaitBlend, kind = (b.crouch > 0.3 ? 'crouch ' : '') + (g.left + g.right > 0.4 ? 'strafe' : g.back > 0.4 ? 'back' : (b.pivotBlend ?? 0) > 0.3 ? 'turn' : b.runGait > 0.5 ? 'run' : b.speed > 0.3 ? 'walk' : 'stand') + ' ' + f.what;
+          tally[kind] = (tally[kind] || 0) + 1;
+          if (events.length < keep && tally[kind] % 40 === 1) events.push(`${(k / 60).toFixed(2)} ${b.team}.${b.idx} ${f.what} ${f.side} ${f.size} | ${context(b)}`);
+        }
+      }
+    }
+  });
+  return { soldierSeconds: r2(frames / 60), peak: Object.fromEntries(Object.entries(w.peak).map(([k, v]) => [k, Math.round(v)])), framesBy: Object.fromEntries(Object.entries(tally).sort((a, c) => c[1] - a[1])), events };
+}
+export function legShapes(G, b) { return legRig(G, b).legs.map(L => { const m = shapeOf(G, L); return Object.fromEntries(Object.entries(m).map(([k, v]) => [k, Math.round(v)])); }); }

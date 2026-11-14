@@ -201,7 +201,11 @@ In the browser console, with the dev server running:
   acceleration, boot attitude and pelvis acceleration: `probe.battery(G)` puts one soldier through 22 scripted moves
   (walk, run, arcs, about-face, turning on the spot, side-step, back-pedal, crouch in each, kerbs) and lists every
   jolt with what the foot placement was doing at the time; `probe.matchJolts(G, 120)` counts them per soldier-minute in
-  a real match, by kind of movement; `probe.autopsy(G, 60)` returns the frames either side of the worst ones.
+  a real match, by kind of movement; `probe.autopsy(G, 60)` returns the frames either side of the worst ones. For legs
+  that look broken it reads every leg joint against the rig's bind pose: the knee bending off its hinge or backwards,
+  the boot turned, tipped or rolled on the ankle further than an ankle goes, the thigh wrung round in the hip.
+  `probe.shapeBattery(G)` gives the peaks over the same 22 moves, `probe.matchShapes(G, 120)` counts the frames past
+  the limits in a real match and `probe.clipShape(G)` says what the authored clips themselves reach.
 - `await G.proof()` — writes fourteen fixed-bookmark screenshots at 1920×1080 to `captures/`; `await G.proof(1754, 864)` does
   the same at 2192×1080 (`*_uw.jpg`).
 - `G.bench()` — the GPU frame-time benchmark above. `G.report()` — the on-screen pacing, audio-level and input snapshot.
