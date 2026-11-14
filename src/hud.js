@@ -41,8 +41,9 @@ export class HUD {
     if (this.last.ammoSeg !== W.ammo) { this.last.ammoSeg = W.ammo; [...$('abar').children].forEach((e, i) => e.classList.toggle('on', i < W.ammo)); }
     this.set('s0', G.score[0]); this.set('s1', G.score[1]);
     const tl = Math.max(0, Math.ceil(G.timeLeft)); this.set('timer', `${Math.floor(tl / 60)}:${String(tl % 60).padStart(2, '0')}`);
-    // crosshair opens with movement and sustained fire, hides in the optic
-    const gap = 5 + P.vel.length() * 1.6 + Math.min(W.shots, 12) * 1.1 + (P.grounded ? 0 : 8);
+    // Project the next shot's spread to CSS pixels. Keep the center legible at low spread.
+    const pixelsPerSlope = G.R.renderer.domElement.clientHeight * 0.5 * G.R.camera.projectionMatrix.elements[5];
+    const gap = Math.max(5, W.nextShotSpread * pixelsPerSlope);
     const c = $('cross'); c.style.setProperty('--g', gap.toFixed(1) + 'px'); c.style.opacity = P.alive && !W.reloading ? Math.max(0, 1 - W.ads * 2.2).toFixed(2) : 0;
     if (this.hitT > 0) { this.hitT -= dt; if (this.hitT <= 0) $('hit').className = ''; }
     if (this.dmgT > 0) { this.dmgT -= dt; $('dmg').style.opacity = Math.max(0, this.dmgT).toFixed(2); }

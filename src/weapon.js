@@ -416,7 +416,7 @@ export class Weapon {
     this.rnd = rng(4242);
     this.mode = 'auto'; this.magSize = 30; this.ammo = 30; this.reserve = 120;
     this.cool = 0; this.shots = 0; this.sinceShot = 9; this.heat = 0; this.triggerHeld = false;
-    this.ads = 0; this.sprint = 0; this.reloadT = -1; this.reloadLen = 0; this.reloadEmpty = false; this.reloaded = false; this.inspectT = -1;
+    this.ads = 0; this.sprint = 0; this.nextShotSpread = 0; this.reloadT = -1; this.reloadLen = 0; this.reloadEmpty = false; this.reloaded = false; this.inspectT = -1;
     this.kick = 0; this.kickV = 0; this.kickRot = V(0, 0, 0); this.sway = V(0, 0, 0); this.bobT = 0; this.land = 0; this.wall = 0; this.flashT = 0; this.boltT = 1; this.time = 0;
     this.stage = 0;
   }
@@ -430,6 +430,16 @@ export class Weapon {
     this.reloadLen = 2.0;
   }
   inspect() { if (!this.reloading && this.inspectT < 0) this.inspectT = 0; }
+
+  shotSpread(inp) {
+    const shots = Math.floor(this.shots);
+    const move = inp.moving * (inp.grounded ? 1 : 1.6);
+    let spread = lerp(0.006, 0.0009, this.ads) + move * lerp(0.007, 0.006, this.ads) + Math.min(shots, 14) * lerp(0.0008, 0.0007, this.ads);
+    if (inp.crouch) spread *= 0.72;
+    if (inp.sprinting) spread = spread * 1.2 + 0.003;
+    if (shots === 0 && move < 0.2) spread *= 0.35;
+    return spread;
+  }
 
   // input: { fire, ads, sprinting, moving (0..1), speed, crouch, grounded, lookDX, lookDY, wallDist }
   update(dt, inp) {
@@ -450,11 +460,7 @@ export class Weapon {
       if (this.inspectT >= 0) this.inspectT = -1;
       this.ammo--; this.cool = 0.079; this.sinceShot = 0;
       const n = Math.floor(this.shots), R = this.rnd;
-      const move = inp.moving * (inp.grounded ? 1 : 1.6);
-      let spread = lerp(0.009, 0.0009, this.ads) + move * lerp(0.011, 0.006, this.ads) + Math.min(n, 14) * lerp(0.0014, 0.0007, this.ads);
-      if (inp.crouch) spread *= 0.72;
-      if (inp.sprinting) spread = spread * 1.3 + 0.006;
-      if (n === 0 && move < 0.2) spread *= 0.35;
+      const spread = this.shotSpread(inp);
       const pat = [0, 0.1, -0.12, 0.18, 0.26, 0.08, -0.2, -0.32, -0.12, 0.2, 0.34, 0.1, -0.22, -0.3, 0.05][n % 15];
       const scale = lerp(1, 0.62, this.ads) * (inp.crouch ? 0.82 : 1);
       this.cb.fire(spread, (pat * 0.011 + (R() - 0.5) * 0.0035) * scale);
@@ -509,6 +515,7 @@ export class Weapon {
       if (this.inspectT >= 2.6) this.inspectT = -1;
     }
     this.root.position.copy(p); this.root.rotation.set(r.x, r.y, r.z, 'YXZ');
+    this.nextShotSpread = this.shotSpread(inp);
     this.reticle.uniforms.uBright.value = damp(this.reticle.uniforms.uBright.value, inp.inSun ? 1.5 : 0.9, 3, dt);
   }
 
