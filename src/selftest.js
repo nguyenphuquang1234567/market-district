@@ -237,14 +237,14 @@ export function selfTest(G) {
   const sideWeight = wk.gaitBlend.left + wk.gaitBlend.right;
   const lateralTravel = wk.pos.x - startX;
   const aimError = Math.abs(wrap(0, wk.yaw));
-  check('bot strafes on an authored gait, holds aim and plants boots on level ground', sideWeight > 0.70 && lateralTravel > 1.7 && aimError < 0.14 && contactFrames > 15 && slide < 0.10,
+  check('bot strafes on an authored gait, holds aim and plants boots on level ground', sideWeight > 0.70 && lateralTravel > 1.6 && lateralTravel < 2.05 && aimError < 0.14 && contactFrames > 15 && slide < 0.05,
     `side gait ${sideWeight.toFixed(2)}, ${lateralTravel.toFixed(2)} m lateral, sole slip ${(slide * 100).toFixed(1)} cm across ${contactFrames} contact frames`);
   check('both bot wrists keep their weapon-relative grip during aimed strafe', handError < 0.025 && gripAngleError < 0.087,
     `wrist error ${(handError * 100).toFixed(2)} cm and ${(gripAngleError * 180 / Math.PI).toFixed(2)}°`);
   dummy(6, 0, -50, 0);
   wk.state = 'combat'; wk.wishDir = { x: 0, z: -1 }; wk.wishSpeed = 2.2;
   run(1.3);
-  check('bot retreats with a backward gait and holds aim', wk.pos.z < -52 && wk.gaitBlend.back > 0.70 && Math.abs(wrap(0, wk.yaw)) < 0.14,
+  check('bot retreats with a backward gait and holds aim', wk.pos.z < -51.7 && wk.pos.z > -52.4 && wk.gaitBlend.back > 0.70 && Math.abs(wrap(0, wk.yaw)) < 0.14,
     `backward gait ${wk.gaitBlend.back.toFixed(2)}, ${(-50 - wk.pos.z).toFixed(2)} m backward`);
   wk.wishDir = null;
   wk.wishSpeed = 0;

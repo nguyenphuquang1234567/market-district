@@ -96,7 +96,17 @@ Key bindings live in the same saved settings object (`binds`); there is no rebin
   starts at toe-off. The part of the sole carrying the weight (heel, then ball of the foot, then toe) stays where it
   landed, except that the toe is let creep the last centimetres before it lifts so the knee can bend for the swing
   instead of trailing straight and whipping forward. With the rifle up they side-step and back away on separate gaits,
-  no faster than 2.5 and 2 m/s; running for cover they turn and run.
+  no faster than 1.9 and 1.75 m/s; running for cover they turn and run.
+- **Changing what the legs are doing** — nothing about a leg is switched from one frame to the next. Starting,
+  stopping, turning on the spot, going from walking forward to side-stepping or backing away, and changing between
+  walk and run are each eased over a fraction of a second, and a gait once chosen is kept for most of a second so a
+  soldier near the walk/run boundary does not flicker between the two. Standing, a boot stays where the last step
+  left it while the body sways, turns or crouches above it; a boot left well out of place by a halt in mid-stride is
+  moved with one small settling step, the other planted. When the shoulders have turned as far as is comfortable the
+  feet step round after them, and keep stepping until the turn is finished. Crouching and standing up ease in and out
+  (a soldier does not bob up for a moment between two reasons to stay low). A planted boot's heel is raised over its
+  toe and set down again at a limited rate, a boot the body has outrun is drawn after it, and a boot pressed against a
+  wall is moved off it by no more than its own length: none of these is ever applied in a single frame.
 - **Kerbs and steps** — a soldier walks up a kerb or a stair (up to 24 cm) and round anything taller. A planted boot
   keeps the footing it landed on; a swinging boot takes the ground where the stride will set it down, so it starts to
   rise at toe-off when the next step is up and holds its height until clear of the edge when the next step is down. The
@@ -187,7 +197,11 @@ In the browser console, with the dev server running:
   `probe.patrol(G, 150)` reports acceleration, turn rates, sole drift, wall clearance, stops and wall contacts;
   `probe.posture(G)` how far pelvis, shoulders, head and rifle swing over a stride; `probe.steps(G)` how hard the legs
   are thrown about crossing a kerb; `probe.map`, `probe.sheet` and `probe.film` save a route plot, a contact sheet
-  and film frames to `captures/`.
+  and film frames to `captures/`. For jerks in the legs it looks at frame-to-frame changes in knee bend rate, ankle
+  acceleration, boot attitude and pelvis acceleration: `probe.battery(G)` puts one soldier through 22 scripted moves
+  (walk, run, arcs, about-face, turning on the spot, side-step, back-pedal, crouch in each, kerbs) and lists every
+  jolt with what the foot placement was doing at the time; `probe.matchJolts(G, 120)` counts them per soldier-minute in
+  a real match, by kind of movement; `probe.autopsy(G, 60)` returns the frames either side of the worst ones.
 - `await G.proof()` — writes fourteen fixed-bookmark screenshots at 1920×1080 to `captures/`; `await G.proof(1754, 864)` does
   the same at 2192×1080 (`*_uw.jpg`).
 - `G.bench()` — the GPU frame-time benchmark above. `G.report()` — the on-screen pacing, audio-level and input snapshot.

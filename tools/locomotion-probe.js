@@ -323,3 +323,155 @@ export function steps(G, { speed = 1.6, from = [2.4, -52], legs = [[5.0, -47.5],
   if (trace) out.rows = rows;
   return out;
 }
+
+// ---- jolt hunting ----------------------------------------------------------------------------------------------------
+// A jolt is a joint changing its motion abruptly between one frame and the next: the knee's bending rate jumping, an
+// ankle thrown about, a boot's attitude snapping, the pelvis kicked. Smooth motion, however fast, does not count.
+const JOLT = { knee: 9, ankle: 330, boot: 9, pelvis: 70 };       // °/frame², m/s², °/frame², m/s²
+
+export function legWatch(G) {
+  const T = G.THREE, hipj = new T.Vector3(), kneej = new T.Vector3(), q = new T.Quaternion();
+  const mem = new Map();
+  return (b, note) => {
+    let m = mem.get(b);
+    if (!m) mem.set(b, m = { leg: [{}, {}], hips: [] });
+    const found = [];
+    [[b.b.lul, b.b.ll, b.b.lft], [b.b.rul, b.b.rl, b.b.rft]].forEach(([thigh, shin, foot], s) => {
+      const L = m.leg[s], ank = new T.Vector3();
+      thigh.getWorldPosition(hipj); shin.getWorldPosition(kneej); foot.getWorldPosition(ank); foot.getWorldQuaternion(q);
+      const bend = kneej.clone().sub(hipj).angleTo(ank.clone().sub(kneej)) * 180 / Math.PI;
+      const rate = L.bend != null ? bend - L.bend : null, spin = L.q ? L.q.angleTo(q) * 180 / Math.PI : null;
+      const kneeJ = rate != null && L.rate != null ? Math.abs(rate - L.rate) : 0;
+      const ankleA = L.p1 && L.p2 ? ank.clone().addScaledVector(L.p1, -2).add(L.p2).length() * 3600 : 0;
+      const bootJ = spin != null && L.spin != null ? Math.abs(spin - L.spin) : 0;
+      if (kneeJ > JOLT.knee) found.push({ what: 'knee', size: r2(kneeJ), side: s ? 'R' : 'L' });
+      if (ankleA > JOLT.ankle) found.push({ what: 'ankle', size: Math.round(ankleA), side: s ? 'R' : 'L' });
+      if (bootJ > JOLT.boot) found.push({ what: 'boot', size: r2(bootJ), side: s ? 'R' : 'L' });
+      L.rate = rate; L.bend = bend; L.spin = spin; L.q = (L.q || new T.Quaternion()).copy(q); L.p2 = L.p1; L.p1 = ank;
+      L.kneeJ = kneeJ; L.ankleA = ankleA; L.bootJ = bootJ;
+    });
+    const h = b.b.hips.getWorldPosition(new T.Vector3()), H = m.hips;
+    const pelvisA = H.length === 2 ? h.clone().addScaledVector(H[1], -2).add(H[0]).length() * 3600 : 0;
+    if (pelvisA > JOLT.pelvis) found.push({ what: 'pelvis', size: Math.round(pelvisA), side: '-' });
+    H.push(h); if (H.length > 2) H.shift();
+    m.last = { knee: Math.max(m.leg[0].kneeJ, m.leg[1].kneeJ), ankle: Math.max(m.leg[0].ankleA, m.leg[1].ankleA), boot: Math.max(m.leg[0].bootJ, m.leg[1].bootJ), pelvis: pelvisA, bend: [m.leg[0].bend, m.leg[1].bend] };
+    return { found, last: m.last, forget: () => mem.delete(b) };
+  };
+}
+
+const context = b => {
+  const g = b.gaitBlend, plant = s => (b.plants[s] ? 'P' + b.plants[s].part : b.releasedPlants[s] ? 'r' : '-');
+  return `ph ${b.phase.toFixed(2)} sp ${b.speed.toFixed(2)} move ${(b.moveBlend ?? 0).toFixed(2)} run ${b.runGait.toFixed(2)} piv ${(b.pivotBlend ?? 0).toFixed(2)} dir ${(g.left + g.right).toFixed(2)}/${g.back.toFixed(2)} cr ${b.crouch.toFixed(2)} feet ${plant(0)}${plant(1)} y ${b.pos.y.toFixed(2)} ${b.state}${b.dash ? 'D' : ''}`;
+};
+
+// One soldier put through a scripted move. `script(bot, t)` sets its orders each frame; returns false to end.
+export function jolts(G, script, { secs = 6, x = -11, z = 4, yaw = 0, state = 'advance', trace = null } = {}) {
+  const b = drive(G, { speed: 0, x, z, yaw, state, settle: 0.6 }), watchLegs = legWatch(G);
+  const events = [], peak = { knee: 0, ankle: 0, boot: 0, pelvis: 0 }, rows = [];
+  unrendered(G, () => {
+    for (let k = 0, n = Math.round(secs * 60); k < n; k++) {
+      const t = k / 60;
+      if (script(b, t) === false) break;
+      G.step(1, 1 / 60);
+      const w = watchLegs(b);
+      if (k < 3) continue;
+      for (const key of Object.keys(peak)) peak[key] = Math.max(peak[key], w.last[key]);
+      for (const f of w.found) events.push(`${t.toFixed(2)} ${f.what} ${f.side} ${f.size} | ${context(b)}`);
+      if (trace && t >= trace[0] && t <= trace[1]) rows.push(`${t.toFixed(2)} knee ${w.last.bend.map(v => v.toFixed(0)).join('/')} J ${w.last.knee.toFixed(1)} ank ${Math.round(w.last.ankle)} boot ${w.last.boot.toFixed(1)} pel ${Math.round(w.last.pelvis)} | ${context(b)}`);
+    }
+  });
+  return { jolts: events.length, peak: { knee: r2(peak.knee), ankle: Math.round(peak.ankle), boot: r2(peak.boot), pelvis: Math.round(peak.pelvis) }, events: events.slice(0, 14), rows: rows.length ? rows : undefined };
+}
+
+// The standard battery: every way a soldier moves and every change from one to another.
+export const MOVES = {
+  walk: { script: (b, t) => { b.wishDir = { x: 0, z: 1 }; b.wishSpeed = t < 4.2 ? 1.6 : 0; }, secs: 6, x: 28.5, z: -58 },
+  fastWalk: { script: (b, t) => { b.wishDir = { x: 0, z: 1 }; b.wishSpeed = t < 4 ? 2.05 : 0; }, secs: 5.5, x: 28.5, z: -58 },
+  run: { script: (b, t) => { b.wishDir = { x: 0, z: 1 }; b.wishSpeed = t < 3.4 ? 4.6 : 0; }, secs: 6, x: 28.5, z: -58 },
+  walkRunWalk: { script: (b, t) => { b.wishDir = { x: 0, z: 1 }; b.wishSpeed = t < 1.8 ? 1.6 : t < 3.6 ? 4.4 : 1.6; }, secs: 6.5, x: 28.5, z: -58 },
+  arcWalk: { script: (b, t) => { const a = t * 0.9; b.wishDir = { x: Math.sin(a), z: Math.cos(a) }; b.wishSpeed = 1.6; }, secs: 7 },
+  arcRun: { script: (b, t) => { const a = t * 0.55; b.wishDir = { x: Math.sin(a), z: Math.cos(a) }; b.wishSpeed = 3.8; }, secs: 6, x: -11, z: -2 },
+  aboutFace: { script: (b, t) => { b.wishDir = { x: 0, z: t < 2.2 ? 1 : -1 }; b.wishSpeed = 1.6; }, secs: 6, x: 28.5, z: -52 },
+  turnOnSpot: { script: (b, t) => { b.wishDir = null; b.wishSpeed = 0; b.wantYaw = t < 0.5 ? 0 : t < 2.4 ? 1.6 : t < 4.4 ? -1.3 : 3.0; }, secs: 6.5 },
+  aimTurn: { state: 'combat', script: (b, t) => { b.wishDir = null; b.wishSpeed = 0; b.wantYaw = t < 0.5 ? 0 : t < 2.2 ? 1.5 : t < 4 ? -1.6 : 2.9; }, secs: 6 },
+  strafe: { state: 'combat', script: (b, t) => { b.wantYaw = 0; const d = t < 0.4 ? 0 : t < 2.2 ? 1 : t < 2.9 ? 0 : t < 4.6 ? -1 : t < 6 ? 1 : 0; b.wishDir = d ? { x: d, z: 0 } : null; b.wishSpeed = d ? 2.1 : 0; }, secs: 7 },
+  backpedal: { state: 'combat', script: (b, t) => { b.wantYaw = 0; const on = t > 0.4 && t < 3; b.wishDir = on ? { x: 0, z: -1 } : null; b.wishSpeed = on ? 2 : 0; }, secs: 4.5, z: 10 },
+  crouchBack: { state: 'combat', script: (b, t) => { b.wantYaw = 0; b.crouching = t > 0.3; const on = t > 0.9 && t < 3.4; b.wishDir = on ? { x: 0, z: -1 } : null; b.wishSpeed = on ? 2 : 0; }, secs: 5, z: 10 },
+  boxStep: { state: 'combat', script: (b, t) => { b.wantYaw = 0; const k = Math.floor(t / 1.3) % 4, d = [[0, 1], [1, 0], [0, -1], [-1, 0]][k]; b.wishDir = { x: d[0], z: d[1] }; b.wishSpeed = 2; }, secs: 8 },
+  strafeAndTurn: { state: 'combat', script: (b, t) => { b.wantYaw = Math.sin(t * 0.9) * 1.2; b.wishDir = { x: Math.floor(t / 1.6) % 2 ? -1 : 1, z: 0 }; b.wishSpeed = 2; }, secs: 7 },
+  crouch: { state: 'combat', script: (b, t) => { b.wantYaw = 0; b.wishDir = null; b.wishSpeed = 0; b.crouching = (t > 0.8 && t < 2.6) || (t > 3.6 && t < 5); }, secs: 6 },
+  crouchTurn: { state: 'combat', script: (b, t) => { b.crouching = t > 0.4; b.wishDir = null; b.wishSpeed = 0; b.wantYaw = t < 1.4 ? 0 : t < 3 ? 1.4 : t < 4.6 ? -1.2 : 2.6; }, secs: 6.5 },
+  crouchStrafe: { state: 'combat', script: (b, t) => { b.wantYaw = 0; b.crouching = t > 0.3; const d = t < 0.9 ? 0 : t < 2.6 ? 1 : t < 3.2 ? 0 : t < 4.9 ? -1 : 0; b.wishDir = d ? { x: d, z: 0 } : null; b.wishSpeed = d ? 2 : 0; }, secs: 6 },
+  crouchWalk: { state: 'combat', script: (b, t) => { b.wantYaw = 0; b.crouching = t > 0.3; const on = t > 0.9 && t < 4; b.wishDir = on ? { x: 0, z: 1 } : null; b.wishSpeed = on ? 2 : 0; }, secs: 5.5 },
+  crouchMidStride: { state: 'combat', script: (b, t) => { b.wantYaw = 0; b.wishDir = { x: 1, z: 0 }; b.wishSpeed = 2; b.crouching = (t > 1.2 && t < 2.6) || (t > 3.8 && t < 5); }, secs: 6 },
+  walkToAim: { script: (b, t) => { const fight = t > 2 && t < 4.2; b.state = fight ? 'combat' : 'advance'; b.wantYaw = fight ? 1.3 : null; b.wishDir = { x: 0, z: 1 }; b.wishSpeed = fight ? 2 : 1.6; }, secs: 6.5, x: 28.5, z: -58 },
+  kerb: { script: (b, t) => { const legs = [[5.0, -47.5], [5.0, -44], [2.4, -39.5]]; b.leg = b.leg || 0; while (b.leg < 3 && Math.hypot(legs[b.leg][0] - b.pos.x, legs[b.leg][1] - b.pos.z) < 0.35) b.leg++; if (b.leg >= 3) return false; const dx = legs[b.leg][0] - b.pos.x, dz = legs[b.leg][1] - b.pos.z, d = Math.hypot(dx, dz); b.wishDir = { x: dx / d, z: dz / d }; b.wishSpeed = 1.6; }, secs: 12, x: 2.4, z: -52, yaw: 0.52 },
+  kerbRun: { script: (b, t) => { const legs = [[5.0, -47.5], [5.0, -44], [2.4, -39.5]]; b.leg = b.leg || 0; while (b.leg < 3 && Math.hypot(legs[b.leg][0] - b.pos.x, legs[b.leg][1] - b.pos.z) < 0.35) b.leg++; if (b.leg >= 3) return false; const dx = legs[b.leg][0] - b.pos.x, dz = legs[b.leg][1] - b.pos.z, d = Math.hypot(dx, dz); b.wishDir = { x: dx / d, z: dz / d }; b.wishSpeed = 3.6; }, secs: 8, x: 2.4, z: -52, yaw: 0.52 },
+};
+
+export function battery(G, names = Object.keys(MOVES)) {
+  const out = {};
+  for (const name of names) {
+    const m = MOVES[name]; G.bots.list[0].leg = 0;
+    const r = jolts(G, m.script, m);
+    out[name] = `${r.jolts} jolts | knee ${r.peak.knee} ankle ${r.peak.ankle} boot ${r.peak.boot} pelvis ${r.peak.pelvis}` + (r.events.length ? ' | first: ' + r.events.slice(0, 2).join(' ;; ') : '');
+  }
+  return out;
+}
+
+// The same watch over every soldier in a real match: how many jolts per soldier-minute and what they were doing.
+export function matchJolts(G, secs = 120, { teams = [0, 1], seed = 0 } = {}) {
+  begin(G, { teams, seed });
+  const watchLegs = legWatch(G), tally = {}, events = [], fresh = new Map();
+  let frames = 0, hard = 0;
+  unrendered(G, () => {
+    for (let k = 0, n = Math.round(secs * 60); k < n; k++) {
+      G.step(1, 1 / 60); G.player.health = 100;
+      for (const b of G.bots.list) {
+        if (!b.alive) { if (fresh.has(b)) { watchLegs(b).forget(); fresh.delete(b); } continue; }
+        const w = watchLegs(b), age = (fresh.get(b) || 0) + 1; fresh.set(b, age);
+        if (age < 4) continue;
+        frames++;
+        for (const f of w.found) {
+          if (f.size > JOLT[f.what] * 1.6) hard++;
+          const g = b.gaitBlend, kind = (b.crouch > 0.3 ? 'crouch ' : '') + (g.left + g.right > 0.4 ? 'strafe' : g.back > 0.4 ? 'back' : (b.pivotBlend ?? 0) > 0.3 ? 'turn' : b.runGait > 0.5 ? 'run' : b.speed > 0.3 ? 'walk' : 'stand') + ' ' + f.what;
+          tally[kind] = (tally[kind] || 0) + 1;
+          if (events.length < 24 && (tally[kind] <= 3)) events.push(`${(k / 60).toFixed(2)} ${b.team}.${b.idx} ${f.what} ${f.side} ${f.size} | ${context(b)}`);
+        }
+      }
+    }
+  });
+  const minutes = frames / 3600, total = Object.values(tally).reduce((a, c) => a + c, 0);
+  return { perSoldierMinute: r2(total / Math.max(0.01, minutes)), hardPerSoldierMinute: r2(hard / Math.max(0.01, minutes)), by: Object.fromEntries(Object.entries(tally).sort((a, c) => c[1] - a[1])), events };
+}
+
+// For chasing one down: plays a match and returns the few frames either side of the worst jolts, with everything the
+// foot placement knew at the time.
+export function autopsy(G, secs = 90, { teams = [0, 1], seed = 0, want = 3, size = { knee: 12, ankle: 600, boot: 14, pelvis: 110 } } = {}) {
+  begin(G, { teams, seed });
+  const T = G.THREE, watchLegs = legWatch(G), tape = new Map(), cases = [], open = [], a = new T.Vector3(), age = new Map();
+  const line = (b, t, w) => [0, 1].map(s => {
+    const pl = b.plants[s], rl = b.releasedPlants[s], g = b.footGoal[s], an = b.footAnim[s];
+    (s ? b.b.rft : b.b.lft).getWorldPosition(a);
+    return `${s ? 'R' : 'L'} ank ${a.x.toFixed(2)},${a.y.toFixed(3)},${a.z.toFixed(2)} goal ${g.p.x.toFixed(2)},${g.p.y.toFixed(3)},${g.p.z.toFixed(2)} anim ${an.p.x.toFixed(2)},${an.p.y.toFixed(3)},${an.p.z.toFixed(2)} ` +
+      (pl ? `P${pl.part} off ${Math.hypot(pl.dx, pl.dz).toFixed(3)} tip ${(pl.tip || 0).toFixed(2)} gnd ${pl.ground.toFixed(2)}` : rl ? `rel k ${(rl.k ?? 1).toFixed(2)}/${rl.over.toFixed(2)} off ${Math.hypot(rl.dx, rl.dz).toFixed(3)} tip ${(rl.tip || 0).toFixed(2)}` : 'free') +
+      ` fg ${b.footGround[s].toFixed(3)}/${b.footAim[s].toFixed(3)} knee ${w.last.bend[s].toFixed(0)}`;
+  }).join(' || ') + ` || t ${t.toFixed(2)} ${context(b)} floor ${b.floorY.toFixed(2)} rise ${b.rise.toFixed(3)} give ${(b.hipDrop * 100).toFixed(1)} body ${b.bodyYaw.toFixed(2)} yaw ${b.yaw.toFixed(2)} J ${w.last.knee.toFixed(1)}/${Math.round(w.last.ankle)}/${w.last.boot.toFixed(1)}/${Math.round(w.last.pelvis)}`;
+  unrendered(G, () => {
+    for (let k = 0, n = Math.round(secs * 60); k < n && (cases.length < want || open.length); k++) {
+      G.step(1, 1 / 60); G.player.health = 100;
+      for (const b of G.bots.list) {
+        if (!b.alive) { if (age.has(b)) { watchLegs(b).forget(); age.delete(b); tape.delete(b); } continue; }
+        const w = watchLegs(b), n2 = (age.get(b) || 0) + 1; age.set(b, n2);
+        const rows = tape.get(b) || tape.set(b, []).get(b);
+        rows.push(line(b, k / 60, w)); if (rows.length > 7) rows.shift();
+        for (const c of open) if (c.bot === b && c.more-- > 0) c.rows.push(rows[rows.length - 1]);
+        if (n2 < 6 || cases.length >= want || open.some(c => c.bot === b)) continue;
+        const hit = w.found.find(f => f.size > size[f.what]);
+        if (hit) { const c = { bot: b, what: `${hit.what} ${hit.side} ${hit.size}`, rows: rows.slice(), more: 3 }; cases.push(c); open.push(c); }
+      }
+      for (let i = open.length - 1; i >= 0; i--) if (open[i].more <= 0) open.splice(i, 1);
+    }
+  });
+  return cases.map(c => ({ what: c.what, rows: c.rows }));
+}

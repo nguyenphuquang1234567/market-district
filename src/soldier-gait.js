@@ -45,19 +45,34 @@ const SWING = [
   [1, 1, 0, 0],
 ];
 
-function sampleKeys(keys, t) {
-  const i = keys.findIndex(key => key[0] >= t);
-  if (i <= 0) return keys[0].slice(1);
-  const a = keys[i - 1], b = keys[i];
-  const w = smooth((t - a[0]) / (b[0] - a[0]));
-  return a.slice(1).map((v, j) => lerp(v, b[j + 1], w));
+// A smooth curve through the keys (cubic Hermite with Catmull-Rom tangents). Easing each span separately would bring
+// the boot to rest at every key and start it again: a swing made of several little pushes. `loop` joins the last key
+// to the first (pelvis cycles); otherwise `ends` gives the slope of each column at the first and last key.
+function sampleKeys(keys, t, { loop = false, ends = null } = {}) {
+  let i = keys.findIndex(key => key[0] >= t);
+  if (i <= 0) i = t <= keys[0][0] ? 1 : keys.length - 1;
+  const a = keys[i - 1], b = keys[i], span = b[0] - a[0], u = clamp((t - a[0]) / span, 0, 1);
+  const last = keys.length - 1;
+  const slope = (k, j) => {
+    if (k > 0 && k < last) return (keys[k + 1][j] - keys[k - 1][j]) / (keys[k + 1][0] - keys[k - 1][0]);
+    if (loop) return (keys[1][j] - keys[last - 1][j]) / (keys[1][0] - keys[0][0] + keys[last][0] - keys[last - 1][0]);
+    if (ends) return ends[k === 0 ? 0 : 1][j - 1];
+    return k === 0 ? (keys[1][j] - keys[0][j]) / (keys[1][0] - keys[0][0]) : (keys[last][j] - keys[last - 1][j]) / (keys[last][0] - keys[last - 1][0]);
+  };
+  const u2 = u * u, u3 = u2 * u, h00 = 2 * u3 - 3 * u2 + 1, h10 = u3 - 2 * u2 + u, h01 = -2 * u3 + 3 * u2, h11 = u3 - u2;
+  return a.slice(1).map((v, j) => h00 * v + h10 * span * slope(i - 1, j + 1) + h01 * b[j + 1] + h11 * span * slope(i, j + 1));
 }
+
+// Slopes of the swing curve where it meets the stance on either side. On the ground the boot travels rearward under
+// the hips at a steady rate; leaving and landing at that same rate, it neither kicks off nor skids in.
+const GROUND_RATE = -(1 - CONTACT) / CONTACT;
+const SWING_ENDS = [[GROUND_RATE, 0, 0], [GROUND_RATE, -0.12, 0]];
 
 function footKey(phase, foot, side) {
   const back = side === 0, lead = side > 0 ? 1 : 0;
   const p = (phase + (foot === lead ? 0 : 0.5)) % 1;
   const stance = p <= CONTACT;
-  const [advance, lift, pitch] = stance ? [0, 0, 0] : sampleKeys(SWING, (p - CONTACT) / (1 - CONTACT));
+  const [advance, lift, pitch] = stance ? [0, 0, 0] : sampleKeys(SWING, (p - CONTACT) / (1 - CONTACT), { ends: SWING_ENDS });
   const stride = back ? BACK_STRIDE : STRAFE_STRIDE;
   const offset = stance ? -p * stride : (advance - 1) * CONTACT * stride;
   const x = foot === 0 ? -1 : 1;
@@ -80,7 +95,7 @@ export function bakeDirectionalGaits(asset, bindBones, solveLeg) {
   const bind = mixer.clipAction(THREE.AnimationClip.findByName(asset.animations, 'TPose')).play();
   const worldQ = new THREE.Quaternion(), parentQ = new THREE.Quaternion(), rotation = new THREE.Quaternion();
   const euler = new THREE.Euler(0, 0, 0, 'YXZ');
-  const times = Array.from({ length: 33 }, (_, i) => i / 32);
+  const times = Array.from({ length: 81 }, (_, i) => i / 80);
   const clips = {};
   bind.paused = true;
   mixer.update(0);
@@ -95,7 +110,7 @@ export function bakeDirectionalGaits(asset, bindBones, solveLeg) {
         bone.position.copy(position);
         bone.quaternion.copy(rotation);
       }
-      const [sway, height, rear, tilt] = sampleKeys(side === 0 ? BACK_HIPS : SIDE_HIPS, phase);
+      const [sway, height, rear, tilt] = sampleKeys(side === 0 ? BACK_HIPS : SIDE_HIPS, phase, { loop: true });
       bones.hips.parent.updateWorldMatrix(true, false);
       bones.hips.position.copy(bones.hips.parent.worldToLocal(vec(sway * (side || 1), height, rear)));
       euler.set(-0.065, side * sway * 0.9, tilt * (side || 1));
@@ -125,11 +140,11 @@ export function bakeDirectionalGaits(asset, bindBones, solveLeg) {
 }
 
 const q = new THREE.Quaternion(), p = new THREE.Vector3();
-export function applyDirectionalGait(bones, clips, blend, phase) {
+export function applyDirectionalGait(bones, clips, blend, phase, amount = 1) {
   // Normalize the incremental blend so weights are relative to the same base pose.
-  let remaining = 1 - blend.left - blend.right - blend.back;
+  let remaining = 1 - (blend.left + blend.right + blend.back) * amount;
   for (const name of ['left', 'right', 'back']) {
-    const weight = blend[name];
+    const weight = blend[name] * amount;
     if (weight < 0.0001) continue;
     const alpha = weight / (remaining + weight);
     const t = (phase + (name === 'right' ? 0.5 : 0)) % 1;
@@ -142,13 +157,16 @@ export function applyDirectionalGait(bones, clips, blend, phase) {
   }
 }
 
-export function directionBlend(out, angle, speed, dt) {
+// Which way the feet are going relative to the hips, as shares of the sideways and backward gaits. It follows the
+// direction of travel only (how much the soldier is stepping at all is a separate, slower blend), keeps its last
+// answer when too slow to tell, and is taken at once (`fresh`) when starting from a standstill.
+export function directionBlend(out, angle, speed, dt, fresh = false) {
+  if (speed < 0.12 && !fresh) return;
   const side = Math.sin(angle), forward = Math.cos(angle);
   const lateral = Math.abs(side), retreat = Math.max(0, -forward);
-  const amount = smooth(clamp((speed - 0.21) / 0.85, 0, 1));
-  const sideWeight = amount * smooth(clamp((lateral - 0.23) / 0.62, 0, 1));
-  const backWeight = amount * smooth(clamp((retreat - 0.20) / 0.68, 0, 1)) * (1 - sideWeight);
-  const k = 1 - Math.exp(-11 * dt);
+  const sideWeight = smooth(clamp((lateral - 0.23) / 0.62, 0, 1));
+  const backWeight = smooth(clamp((retreat - 0.20) / 0.68, 0, 1)) * (1 - sideWeight);
+  const k = fresh ? 1 : 1 - Math.exp(-7 * dt);
   // Positive angle corresponds to model left once root's half-turn is applied.
   out.left = lerp(out.left, side > 0 ? sideWeight : 0, k);
   out.right = lerp(out.right, side < 0 ? sideWeight : 0, k);

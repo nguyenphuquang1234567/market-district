@@ -17,12 +17,13 @@ const START = 3.3, START_FAST = 1.5;        // pushing off from rest, tapering a
 const BRAKE = 2.8, BRAKE_MAX = 4.6;         // planned slowing into a corner or a halt; the hardest stop when surprised
 const GRIP = 3.8;                           // sideways acceleration held through a bend
 const PIVOT = 3.1;                          // turning on the spot
-const SIDE_MAX = 2.5, BACK_MAX = 2.05;      // sidestep and back-pedal pace with the rifle up
+const SIDE_MAX = 1.9, BACK_MAX = 1.75;      // sidestep and back-pedal pace with the rifle up
 const SHUFFLE = 5.2, SHUFFLE_STOP = 6.4;    // quick changes of direction over a pace or two while fighting
 const WALK_TO_RUN = 2.3, RUN_TO_WALK = 1.9;
 // Sole points measured on the Vanguard rig, in the foot bone's local centimetres: under the heel, under the ball of
 // the foot (the toe joint), and the toe cap. The cap bends with the toe joint, so its height comes from that bone.
 const HEEL = V(0, -2, 13.3), BALL = V(0, 15.8, 12.7), TOE = V(0, 24, 12.4), TOE_END = V(1.22, 7.97, -0.04), CAP_SOLE = 0.019;
+const TIP_UP = 4, TIP_DOWN = 5;             // rad/s: how fast a planted boot's heel may be raised over its toe, and set down again
 const footPos = V(), kneePos = V(), legBase = V(), legAxis = V(), heelPos = V(), toePos = V(), ballPos = V(), capPos = V(), soleProbe = V();
 const footQuat = new THREE.Quaternion(), footParent = new THREE.Quaternion();
 const NAMES = [['Idris', 'Tarek', 'Sami', 'Nour'], ['Kader', 'Viper', 'Rook', 'Anvil', 'Dagger']];
@@ -58,6 +59,9 @@ function ik2(a, b, c, target, pole, soft = 0) {
   t4.copy(pa).addScaledVector(dirv, lat);
   aimBone(b, pc, t4);
 }
+
+// t for which smooth(t) = y
+function inverseSmooth(y) { return 0.5 - Math.sin(Math.asin(1 - 2 * clamp(y, 0, 1)) / 3); }
 
 function segmentDistance(px, pz, a, b) {
   const dx = b.x - a.x, dz = b.z - a.z, l2 = dx * dx + dz * dz;
@@ -131,6 +135,7 @@ class Bot {
     this.pos = V(0, 0, 0); this.vel = V(); this.wishVec = V(); this.hipSway = V();
     this.footAnim = [{ p: V(), q: new THREE.Quaternion() }, { p: V(), q: new THREE.Quaternion() }];
     this.footGoal = [{ p: V(), q: new THREE.Quaternion(), bend: 0 }, { p: V(), q: new THREE.Quaternion(), bend: 0 }];
+    this.footEase = [{ p: V(), q: new THREE.Quaternion(), live: false }, { p: V(), q: new THREE.Quaternion(), live: false }];
     this.yaw = 0; this.pitch = 0; this.health = 100; this.alive = false; this.crouch = 0; this.crouching = false;
     this.root = new THREE.Group(); G.R.scene.add(this.root);
     const model = this.model = cloneSkinned(assets.soldier.scene); this.root.add(model);
@@ -173,9 +178,9 @@ class Bot {
     this.wantYaw = this.yaw; this.wantPitch = 0; this.wishDir = null; this.wishSpeed = 0;
     this.heading = this.yaw; this.headingRate = 0; this.speed = 0; this.push = 0; this.dash = false; this.pathLeft = 0; this.leadYaw = this.yaw; this.farYaw = this.yaw; this.steerErr = 0;
     this.speedAnim = 0; this.travelYaw = this.yaw; this.turnRate = 0; this.gunRaise = 0; this.gunBlocked = false; this.rifleKick = 0;
-    this.runGait = 0; this.running = false; this.bumps = 0; this.grindT = 0; this.settleT = 0; this.squeezeT = 0; this.dodgeT = 0; this.dodgeSide = 1; this.sideOpen = [0, 0]; this.probeT = this.rnd() * 0.4;
+    this.runGait = 0; this.running = false; this.gaitT = 0; this.restT = 0; this.bumps = 0; this.grindT = 0; this.settleT = 0; this.squeezeT = 0; this.dodgeT = 0; this.dodgeSide = 1; this.sideOpen = [0, 0]; this.probeT = this.rnd() * 0.4;
     this.plants = [null, null]; this.releasedPlants = [null, null];
-    this.footGround = [this.pos.y, this.pos.y]; this.footAim = [this.pos.y, this.pos.y]; this.floorY = this.pos.y; this.rise = this.pos.y; this.stockY = null; this.hipDrop = 0; this.atRest = false; this.leadFoot = this.rnd() < 0.5 ? 0 : 1;
+    this.footGround = [this.pos.y, this.pos.y]; this.footAim = [this.pos.y, this.pos.y]; this.floorY = this.pos.y; this.rise = this.pos.y; this.stockY = null; this.hipDrop = 0; this.hipGive = 0; this.low = false; this.upT = 0; this.crouchRate = 0; this.crouchT = 0; this.bodyRate = 0; this.stepRound = false; this.moveW = 0; this.pivotW = 0; this.footEase[0].live = this.footEase[1].live = false; this.cadence = 0; this.drift = 0; this.warp = 0; this.motionAngle = 0; this.wishYaw = null; this.atRest = false; this.leadFoot = this.rnd() < 0.5 ? 0 : 1;
     this.gaitBlend = { left: 0, right: 0, back: 0 };
     this.nearby = [];
   }
@@ -392,7 +397,7 @@ class Bot {
       // with care, walk when anything could be round the next corner.
       const left = this.pathLeft || 99, pace = this.pace;
       if (this.state === 'search') speed = this.runTo && left > 16 ? pace.jog : pace.walk * 0.88;
-      else if (this.runTo) speed = left > 17 ? pace.run : left > 8 ? pace.jog : pace.walk * 1.12;
+      else if (this.runTo) speed = left > 17 ? pace.run : left > 8 ? pace.jog : pace.walk;
       else speed = this.inRear() && left > 8 ? pace.jog : pace.walk;
       this.wantPitch = 0;
       const looking = this.lookYaw != null && (!onPath || this.state === 'search');
@@ -456,7 +461,7 @@ class Bot {
     // Nobody runs through a gap or along a wall at arm's length: within a step of something solid, a walk.
     for (let d = 0; d <= 3; d++) {
       this.ahead(d, t2);
-      if (nav.clear[nav.idx(t2.x, t2.z)] <= 1) { cap = Math.min(cap, Math.sqrt(1.9 * 1.9 + 2 * BRAKE * Math.max(0, d - 0.4))); break; }
+      if (nav.clear[nav.idx(t2.x, t2.z)] <= 1) { cap = Math.min(cap, Math.sqrt(1.75 * 1.75 + 2 * BRAKE * Math.max(0, d - 0.4))); break; }
     }
     this.pathCap = cap;
     t1.x -= px; t1.z -= pz; t1.y = 0;
@@ -506,7 +511,7 @@ class Bot {
     const travel = !combat || this.dash;
     cruise *= (this.crouching ? 0.5 : 1) * (1 - this.flinch * 0.6);                    // a hit checks the stride
     this.squeezeT -= dt;
-    if (travel && this.squeezeT > 0) cruise = Math.min(cruise, 1.9);                    // something close ahead: nobody threads a gap or rounds a post at a run
+    if (travel && this.squeezeT > 0) cruise = Math.min(cruise, 1.75);                   // something close ahead: nobody threads a gap or rounds a post at a run
     if (travel) cruise *= 1 + 0.035 * Math.sin(G.time * 0.63 + this.pace.sway);        // nobody holds a perfectly even pace
     this.moveIntent = cruise;
     let wx = want ? want.x * cruise : 0, wz = want ? want.z * cruise : 0;
@@ -548,6 +553,7 @@ class Bot {
       if (along < 0) { wx -= want.x * along; wz -= want.z * along; }
     }
     let wishSpeed = Math.hypot(wx, wz);
+    this.wishYaw = wishSpeed > 0.15 ? Math.atan2(wx, wz) : null;
     const limit = Math.max(cruise, 1.2);
     if (wishSpeed > limit) { wx *= limit / wishSpeed; wz *= limit / wishSpeed; wishSpeed = limit; }
     this.dodgeT -= dt;
@@ -613,7 +619,8 @@ class Bot {
       const currentSpeed = Math.hypot(this.vel.x, this.vel.z);
       if (wishSpeed > 0.05) {
         const rel = Math.abs(angDiff(this.yaw, Math.atan2(wx, wz)));
-        const cap = lerp(lerp(9, SIDE_MAX, smooth(clamp((rel - 0.45) / 0.8, 0, 1))), BACK_MAX, smooth(clamp((rel - 1.7) / 0.9, 0, 1)));
+        const ahead = this.wishSpeed > 3 ? 9 : 1.8;                                    // advancing with the rifle up is done at a walk
+        const cap = lerp(lerp(ahead, SIDE_MAX, smooth(clamp((rel - 0.45) / 0.8, 0, 1))), BACK_MAX, smooth(clamp((rel - 1.7) / 0.9, 0, 1)));
         if (wishSpeed > cap) { wx *= cap / wishSpeed; wz *= cap / wishSpeed; wishSpeed = cap; }
       }
       const dvx = wx - this.vel.x, dvz = wz - this.vel.z, dl = Math.hypot(dvx, dvz);
@@ -654,16 +661,24 @@ class Bot {
     this.floorY = g.y; this.surf = g.surf;
     // The body goes up a kerb the way a person does: on its legs. It sits a little above the lower boot's footing and
     // rises as the trailing boot comes up, eased at both ends (no lurch when the centre of the body crosses the edge).
-    const low = Math.min(this.footGround[0], this.footGround[1]), high = Math.max(this.footGround[0], this.footGround[1]);
-    this.rise = damp(this.rise, low + (high - low) * 0.35, 16, dt);
-    this.pos.y = damp(this.pos.y, this.rise, 16, dt);
+    // (Stepping down it sinks a little sooner than it rises stepping up: the standing knee has to give before the
+    // other boot can reach the lower ground.)
+    const low = Math.min(this.footAim[0], this.footAim[1]), high = Math.max(this.footAim[0], this.footAim[1]), level = low + (high - low) * 0.35;
+    const rate = level < this.rise ? 24 : 16;
+    this.rise = damp(this.rise, level, rate, dt);
+    this.pos.y = damp(this.pos.y, this.rise, rate, dt);
     const mx = this.pos.x - this.prevX, mz = this.pos.z - this.prevZ;
     const moved = Math.min(Math.hypot(mx, mz) / dt, Math.hypot(this.vel.x, this.vel.z) + 0.45);
     // held up while facing the way and trying to go (turning round on the spot does not count)
     if (this.moveIntent > 1 && moved < 0.4 && Math.abs(this.steerErr) < 0.9) { this.stuckT += dt; if (this.stuckT > 0.9) { this.stuckT = 0; this.path = null; this.cover = null; this.strafeGoal = null; if (this.goal) this.setGoal(this.goal.x, this.goal.z, this.runTo); } } else this.stuckT = 0;
     const combat = this.state === 'combat', travel = !combat || this.dash, priorYaw = this.bodyYaw;
     this.turning = Math.max(0, this.turning - dt);
-    if (moved > 0.25) this.travelYaw += angDiff(this.travelYaw, Math.atan2(mx, mz)) * (1 - Math.exp(-13 * dt));
+    if (moved > 0.25) {
+      // the way the body is going; a reversal (left to right, forward to back) is taken as such, not swung round
+      // through the directions in between
+      const going = Math.atan2(mx, mz), swing = angDiff(this.travelYaw, going);
+      if (Math.abs(swing) > 1.9) this.travelYaw = going; else this.travelYaw += swing * (1 - Math.exp(-13 * dt));
+    }
     if (travel) {
       // Hips follow the feet. Shoulders and rifle turn a little further: into the bend ahead, or towards whatever has
       // the soldier's attention, as far as the spine allows at that pace.
@@ -675,22 +690,40 @@ class Bot {
       const maxRate = combat ? 6.5 : 3.4;
       this.yawVel = damp(this.yawVel, clamp(angDiff(this.yaw, chest) * 8, -maxRate, maxRate), 12, dt); this.yaw += this.yawVel * dt;
       this.back = false;
-      this.bodyYaw += clamp(angDiff(this.bodyYaw, this.heading), -dt * 5.5, dt * 5.5);
+      // (eased, so that coming out of a fight with the hips turned away from the route does not whip them round)
+      this.bodyRate = damp(this.bodyRate, clamp(angDiff(this.bodyYaw, this.heading) * 14, -4.6, 4.6), 14, dt);
+      this.bodyYaw += this.bodyRate * dt;
     } else {
-      // Rifle up: the aim eases round to the target; the pelvis follows the feet and the spine makes up the difference.
+      // Rifle up: the aim swings to the target on the spine; the feet come round after it at the pace a person can
+      // shuffle, eased in and out, and once the spine is wound up the aim waits for them.
       if (this.wantYaw != null) { this.yawVel = damp(this.yawVel, clamp(angDiff(this.yaw, this.wantYaw) * 10, -7.5, 7.5), 16, dt); this.yaw += this.yawVel * dt; }
       let tgt = this.bodyYaw;
       if (moved > 0.55) {
         const mv = this.travelYaw, rel = Math.abs(angDiff(this.yaw, mv));
         this.back = rel > (this.back ? 1.75 : 2.05);                                   // moving away from where the rifle points: back-pedal
         tgt = this.yaw + clamp(angDiff(this.yaw, this.back ? mv + Math.PI : mv), -0.24, 0.24);
-      } else if (Math.abs(angDiff(this.bodyYaw, this.yaw)) > 0.57 || this.turning > 0) { this.turning = 0.23; tgt = this.yaw; }
-      this.bodyYaw += clamp(angDiff(this.bodyYaw, tgt), -dt * 6.5, dt * 6.5);
+        this.stepRound = false;
+      } else {
+        const twist = Math.abs(angDiff(this.bodyYaw, this.yaw));
+        if (twist > 0.6) this.stepRound = true; else if (twist < 0.05) this.stepRound = false;
+        if (this.stepRound) tgt = this.yaw;
+      }
+      this.bodyRate = damp(this.bodyRate, clamp(angDiff(this.bodyYaw, tgt) * 7, -PIVOT - 0.4, PIVOT + 0.4), 11, dt);
+      this.bodyYaw += this.bodyRate * dt;
     }
-    const tw = angDiff(this.bodyYaw, this.yaw); if (Math.abs(tw) > 1.25) this.bodyYaw = this.yaw - Math.sign(tw) * 1.25;
-    this.turnRate = damp(this.turnRate, angDiff(priorYaw, this.bodyYaw) / dt, 12, dt);
+    const tw = angDiff(this.bodyYaw, this.yaw);
+    if (Math.abs(tw) > 1.2) { this.yaw = this.bodyYaw + Math.sign(tw) * 1.2; this.yawVel *= 0.6; }      // the spine turns only so far
+    this.turnRate = damp(this.turnRate, angDiff(priorYaw, this.bodyYaw) / Math.max(dt, 1e-3), 12, dt);
     this.pitch = damp(this.pitch, this.state === 'combat' ? (this.wantPitch || 0) : 0, 8, dt);
-    this.crouch = damp(this.crouch, this.crouching ? 1 : 0, 7, dt);
+    // Going down and coming up take a moment and start and end gently, as bending the knees does.
+    // A soldier who has taken a knee does not bob up the instant the target ducks out of sight and down again when
+    // it reappears: he stays down until standing has been wanted for a moment, or there is somewhere to go.
+    if (this.crouching) { this.low = true; this.upT = 0; }
+    else if (this.low && ((this.upT += dt) > 0.7 || this.moveIntent > 1.2)) this.low = false;
+    this.crouchRate = damp(this.crouchRate, (this.low ? 1 : -1) / 0.45, 11, dt);          // a change of mind half-way is eased as well
+    this.crouchT = clamp(this.crouchT + this.crouchRate * dt, 0, 1);
+    if ((this.crouchT === 0 && this.crouchRate < 0) || (this.crouchT === 1 && this.crouchRate > 0)) this.crouchRate = 0;
+    this.crouch = smooth(this.crouchT);
     this.aim = damp(this.aim, this.state === 'combat' && this.reloadT <= 0 ? 1 : 0, 9, dt);
     this.flinch = damp(this.flinch, 0, 5, dt);
     this.animate(dt, moved, cols);
@@ -709,20 +742,43 @@ class Bot {
     // Keep both clips on the same stride. Turning on the spot advances it with shorter steps.
     this.speedAnim = damp(this.speedAnim, moved, 14, dt);
     const s = this.speedAnim, Wk = gait.walk, Rn = gait.run;
-    const pivot = smooth(clamp((0.8 - s) / 0.8, 0, 1)) * clamp(Math.abs(this.turnRate) / 2.6, 0, 1);
-    const wMove = clamp(Math.max(s / 0.67, pivot * 0.82), 0, 1);
+    // How much of the pose is stepping (as against standing) and how much of that is turning on the spot. Both ease
+    // in and out over a fraction of a second: legs cannot change what they are doing between one frame and the next.
+    this.pivotW += clamp(smooth(clamp((0.8 - s) / 0.8, 0, 1)) * clamp(Math.abs(this.turnRate) / 2.6, 0, 1) - this.pivotW, -4 * dt, 5 * dt);
+    const pivot = this.pivotW, moveAim = clamp(Math.max(s / 0.67, pivot * 0.82), 0, 1), settling = moveAim < this.moveW - 0.01 && pivot < 0.1;
+    this.moveW += clamp(moveAim - this.moveW, -3.6 * dt, 6 * dt);
+    const wMove = smooth(this.moveW);
+    this.moveBlend = wMove; this.pivotBlend = pivot;                                // (read by the locomotion probe)
+    this.restT = wMove < 0.05 ? this.restT + dt : 0;
     // A person either walks or runs and changes from one to the other within a step or two; nobody cruises half-way.
-    this.running = this.crouch < 0.5 && s > (this.running ? RUN_TO_WALK : WALK_TO_RUN);
+    // (Someone setting off to run runs from the first strides; he does not walk faster and faster first.)
+    const wantRun = this.crouch < 0.5 && (s > (this.running ? RUN_TO_WALK : WALK_TO_RUN) || (this.moveIntent > 2.7 && s > 1.15 && this.gaitBlend.left + this.gaitBlend.right + this.gaitBlend.back < 0.3));
+    this.gaitT -= dt;
+    if (wantRun !== this.running && (this.gaitT <= 0 || s < 0.6)) { this.running = wantRun; this.gaitT = 0.7; }       // not back and forth between the two every other stride
     this.runGait = damp(this.runGait, this.running ? 1 : 0, 7.5, dt);
     const wRun = smooth(this.runGait) * (1 - this.crouch);
-    const motionAngle = angDiff(by, this.travelYaw);
-    directionBlend(this.gaitBlend, motionAngle, s, dt);
+    // Which way the feet are going relative to the hips: the way the body is actually moving once it is moving, the
+    // way it means to go while it is still getting under way, straight ahead when it is only turning on the spot.
+    if (s > 0.2) this.motionAngle = angDiff(by, this.travelYaw);
+    else if (this.moveW < 0.06) this.motionAngle = this.wishYaw != null && this.state === 'combat' && !this.dash ? angDiff(by, this.wishYaw) : 0;
+    const motionAngle = this.motionAngle;
+    directionBlend(this.gaitBlend, motionAngle, Math.max(s, this.wishYaw != null ? 0.2 : 0), dt, this.moveW < 0.06);
     const { left, right, back } = this.gaitBlend;
     const directional = left + right + back;
-    const drift = motionAngle * (1 - pivot) * (1 - directional);
-    const warp = clamp(left * angDiff(Math.PI / 2, motionAngle) + right * angDiff(-Math.PI / 2, motionAngle)
-      + back * angDiff(Math.PI, motionAngle), -0.38, 0.38);
-    this.act.idle.setEffectiveWeight(1 - wMove); this.act.walk.setEffectiveWeight(wMove * (1 - wRun)); this.act.run.setEffectiveWeight(wMove * wRun);
+    // The forward gait follows a course a little off the way the hips face. It is never turned far: past a quarter
+    // turn the sideways and backward gaits are taking over, and straight back it is not turned at all (turning it
+    // right round would swap the boots front to back for the frame or two before they do).
+    const drift = this.drift = damp(this.drift, Math.sin(motionAngle) * 0.75 * (1 - pivot) * (1 - directional), 10, dt);     // (eased: the course can change in a frame, the legs cannot)
+    // Each of those gaits can be turned a little off its own line. The correction fades out again as the direction
+    // nears a quarter turn off (and is nil for a full reversal, left to right): by then another gait is taking over,
+    // and this one must not be swung right round on its way out.
+    const off = axis => Math.sin(2 * angDiff(axis, motionAngle)) / 2;
+    const warp = this.warp = damp(this.warp, clamp(left * off(Math.PI / 2) + right * off(-Math.PI / 2) + back * off(Math.PI), -0.38, 0.38), 9, dt);
+    // The walk and run clips carry only the forward share of the stepping. The sideways and backward gaits replace
+    // the legs outright, over the standing clip, so starting or stopping a side-step never passes through a
+    // half-blended forward stride (and the trunk above an aimed side-step is the quiet standing one).
+    const ahead = wMove * (1 - directional);
+    this.act.idle.setEffectiveWeight(1 - ahead); this.act.walk.setEffectiveWeight(ahead * (1 - wRun)); this.act.run.setEffectiveWeight(ahead * wRun);
     // Walking faster means longer and quicker steps in equal measure (both grow with the root of the speed).
     // Running holds nearly the same cadence from a jog to a sprint and covers the difference in stride.
     const walkStride = Wk.v * Wk.dur * clamp(Math.sqrt(s / Wk.v), 0.30, 1.06) * (1 - this.crouch * 0.32) * (1 - Math.abs(Math.sin(drift)) * 0.18);       // the legs are only so long: past the clip's own stride a walk quickens instead
@@ -736,11 +792,20 @@ class Bot {
     // so the first step off is a step: lift, swing, plant, and not a jump into the middle of a stride.
     if (wMove < 0.03) { if (!this.atRest) { this.atRest = true; this.leadFoot = 1 - this.leadFoot; } this.phase = (Wk.contact + 0.02 + this.leadFoot * 0.5) % 1; } else this.atRest = false;
     const phaseBefore = this.phase;
-    this.phase += Math.max(s / Math.max(0.35, cycleLength), pivot * (0.7 + 0.17 * Math.abs(this.turnRate))) * dt;
+    // Coming to a halt, the stride runs on to the moment the swinging boot is passing the standing one, so the last
+    // step closes the feet together instead of both boots sliding home from wherever the stride stopped.
+    let closing = 0;
+    if (settling && wMove > 0.03) {
+      const passing = contact + (1 - contact) / 2, togo = Math.min((passing - this.phase + 1) % 1, (passing + 0.5 - this.phase + 1) % 1);
+      if (togo > 0.015 && togo < 0.6) closing = clamp(togo / 0.2, 0.4, 1.5);
+    }
+    // cadence changes over a few frames, never in one
+    this.cadence = damp(this.cadence, Math.max(s / Math.max(0.35, cycleLength), pivot * (0.9 + 0.3 * Math.abs(this.turnRate)), closing), 18, dt);
+    this.phase += this.cadence * dt;
     this.phase -= Math.floor(this.phase);
     this.act.walk.time = ((this.phase + Wk.off) % 1) * Wk.dur; this.act.run.time = ((this.phase + Rn.off) % 1) * Rn.dur;
     this.mixer.update(dt);
-    applyDirectionalGait(b, gait.directional, this.gaitBlend, this.phase);
+    applyDirectionalGait(b, gait.directional, this.gaitBlend, this.phase, wMove);
     if (wMove > 0.60 && Math.floor(phaseBefore * 2) !== Math.floor(this.phase * 2)) G.bots.sound(this, 'step', s);
 
     this.nearby.length = 0;
@@ -753,6 +818,18 @@ class Bot {
     this.root.updateMatrixWorld(true);
     b.lft.getWorldPosition(this.footAnim[0].p); b.lft.getWorldQuaternion(this.footAnim[0].q);
     b.rft.getWorldPosition(this.footAnim[1].p); b.rft.getWorldQuaternion(this.footAnim[1].q);
+    // The clips themselves have a few hard frames (the run slaps its left boot down within one of them). Each boot's
+    // authored place and attitude are followed through a very short lag, taken in the body's own frame so that the
+    // body's travel adds none: enough to round a one-frame snap, too short to see as delay.
+    q3.setFromAxisAngle(UP, -by);
+    for (let i = 0; i < 2; i++) {
+      const anim = this.footAnim[i], ease = this.footEase[i];
+      t1.copy(anim.p).sub(this.pos).applyQuaternion(q3); q1.copy(q3).multiply(anim.q);
+      if (!ease.live || dt <= 0) { ease.p.copy(t1); ease.q.copy(q1); ease.live = true; }
+      else { const k = 1 - Math.exp(-58 * dt); ease.p.lerp(t1, k); ease.q.slerp(q1, k); }
+      q2.copy(q3).invert();
+      anim.p.copy(ease.p).applyQuaternion(q2).add(this.pos); anim.q.copy(q2).multiply(ease.q);
+    }
     // Steady the trunk. The clips were made for swinging arms: the pelvis bounces and sways and the shoulders rock
     // with every stride. Someone carrying a rifle in both hands keeps the weapon and the head quiet, so the pelvis
     // keeps part of its bounce and the chest is held near its average attitude while the legs do the work.
@@ -772,7 +849,7 @@ class Bot {
       b.spine.quaternion.copy(q3.copy(b.hips.quaternion).invert()).multiply(q1).multiply(q2.invert());
     }
     // The Character armature is rotated -90° around X, so hips Z is height in centimetres.
-    const crouchDrop = this.crouch * lerp(0.35, 0.26, directional);
+    const crouchDrop = this.crouch * lerp(0.35, 0.26, directional * wMove);
     b.hips.position.z -= crouchDrop * 100;
     // The walk clip carries the chest behind the hips. With a rifle held out in front, a walking soldier settles the
     // other way: shoulders a little forward over the weapon.
@@ -788,11 +865,13 @@ class Bot {
     let give = 0;
     for (let i = 0; i < 2; i++) {
       (i ? b.rul : b.lul).getWorldPosition(legBase);
-      const goal = this.footGoal[i].p, d = legBase.distanceTo(goal), over = d - this.legLength * 0.998;      // a straight leg is fine; an impossible one is not
+      // a straight leg is fine, an impossible one is not; and a boot reaching down to lower ground is met part-way
+      const goal = this.footGoal[i].p, d = legBase.distanceTo(goal), over = d - this.legLength * (this.footGround[i] < this.pos.y - 0.025 ? 0.97 : 0.998);
       if (over > 0) give = Math.max(give, over * d / Math.max(0.3, legBase.y - goal.y) * (this.plants[i] ? 1 : 0.6));
     }
     give = Math.min(give, 0.07);
-    this.hipDrop = damp(this.hipDrop, give, give > this.hipDrop ? 28 : 8, dt);
+    this.hipGive = damp(this.hipGive, give, give > this.hipGive ? 24 : 8, dt);
+    this.hipDrop = damp(this.hipDrop, this.hipGive, 24, dt);
     if (this.hipDrop > 0.0005) { b.hips.position.z -= this.hipDrop * 100; b.hips.updateWorldMatrix(false, true); }
     this.solveLeg(0, b.lul, b.ll, b.lft);
     this.solveLeg(1, b.rul, b.rl, b.rft);
@@ -825,13 +904,14 @@ class Bot {
     footPos.copy(this.footAnim[i].p); footQuat.copy(this.footAnim[i].q);
     const dx = footPos.x - this.pos.x, dz = footPos.z - this.pos.z;
     const side = (dx * -fz + dz * fx) * (1 - pivot) + (i === 0 ? -0.13 : 0.13) * pivot;
-    const along = (dx * fx + dz * fz) * lerp(1, stride, walk) * (1 - pivot * 0.35);
+    const along = (dx * fx + dz * fz) * lerp(1, stride, walk) * (1 - pivot * 0.8);
     const swingSide = side + Math.sin(drift) * along;
     const stanceSide = lerp(i === 0 ? Math.min(-0.078, swingSide) : Math.max(0.078, swingSide), swingSide, directional);
     const reach = Math.cos(drift) * along;
     const sin = Math.sin(warp), cos = Math.cos(warp);
     footPos.x = this.pos.x + (reach * fx - stanceSide * fz) * cos + (reach * fz + stanceSide * fx) * sin;
     footPos.z = this.pos.z + (reach * fz + stanceSide * fx) * cos - (reach * fx - stanceSide * fz) * sin;
+    footPos.y -= Math.max(0, footPos.y - this.pos.y - 0.15) * 0.6 * pivot;              // turning on the spot the boots are shuffled round, not marched
 
     const elapsed = (this.phase + i * 0.5) % 1;
     const flat = clamp(Math.abs(Math.sin(drift)) * walk + pivot * 0.55 + this.crouch * 0.4, 0, 1);
@@ -874,15 +954,56 @@ class Bot {
     thigh.getWorldPosition(legBase);
     const span = plant ? Math.hypot(footPos.x + plant.dx - legBase.x, footPos.y - legBase.y, footPos.z + plant.dz - legBase.z) / this.legLength : 0;
     // ...and leaves it when the trailing leg is used up: by then the knee has begun to bend for the swing.
-    const stance = walk >= 0.25 && (elapsed < contact || (!!plant && elapsed < contact + 0.11 && span < 0.962 && Math.min(ballPos.y, capPos.y - CAP_SOLE) - ground < 0.024));
+    // Standing (or only just getting under way) there is no stride to say: a boot on the ground simply stays put,
+    // wherever the last step left it, while the body settles, sways, crouches or shifts above it.
+    const down = Math.min(heelPos.y, ballPos.y, capPos.y - CAP_SOLE) - ground < 0.022;
+    // Left standing with a boot well out of place (a halt in mid-stride), a person shifts it: one small step, the
+    // other boot planted, to stand comfortably.
+    const easing = this.releasedPlants[i], other = 1 - i;
+    const shuffle = walk < 0.05 && this.restT > 0.35 && !!plant && Math.hypot(plant.dx, plant.dz) > 0.2 && !!this.plants[other] && !this.releasedPlants[other];
+    const stance = walk >= 0.25 ? elapsed < contact || (!!plant && directional < 0.5 && elapsed < contact + 0.11 && span < 0.962 && Math.min(ballPos.y, capPos.y - CAP_SOLE) - ground < 0.024)
+      : plant ? !shuffle : down && !(easing && easing.hop > 0 && easing.k > 0.04);
+
+    if (!stance && plant) {
+      plant.t = 0; plant.over = shuffle ? 0.36 : clamp(Math.hypot(plant.dx, plant.dz) / 1.3, 0.14, 0.3);      // a boot far from where the stride wants it is brought across, not snapped across
+      plant.hop = shuffle ? 0.05 : 0; plant.k = 1;
+      this.releasedPlants[i] = plant; this.plants[i] = plant = null;
+    }
+    // A boot recently lifted is still being handed back from where it was held to where the stride has it. This comes
+    // first, so that a boot set down again in the middle of that (a halt, a change of mind) is planted where it
+    // actually is.
+    const released = this.releasedPlants[i];
+    if (released) {
+      released.t += dt;
+      let k = 1 - smooth(clamp(released.t / released.over, 0, 1));
+      // ...and no slower than the leg can spare: a boot left behind by a body already on the move is not held back
+      // until the knee locks.
+      thigh.getWorldPosition(legBase);
+      const spare = c => Math.hypot(footPos.x + released.dx * c - legBase.x, footPos.y - legBase.y, footPos.z + released.dz * c - legBase.z) / this.legLength;
+      if (spare(k) > 0.95) {
+        let lo = 0, hi = k;
+        if (spare(0) < 0.95) for (let n = 0; n < 5; n++) { const mid = (lo + hi) / 2; if (spare(mid) > 0.95) hi = mid; else lo = mid; }
+        k = Math.max(lo, k - 5 * dt);
+        released.t = Math.max(released.t, released.over * inverseSmooth(1 - k));          // and carries on from there
+      }
+      released.k = k;
+      if (released.hop > 0) footPos.y += released.hop * Math.sin(Math.PI * clamp(released.t / released.over, 0, 1));
+      if (k <= 0) this.releasedPlants[i] = null;
+      else {
+        footPos.x += released.dx * k; footPos.z += released.dz * k;
+        footQuat.premultiply(q1.setFromAxisAngle(UP, clamp(angDiff(this.bodyYaw, released.yaw), -0.75, 0.75) * k));
+        if (released.tip > 0) {                                                         // the raised heel comes back to the authored swing with the rest
+          footPos.x += released.tipX * k; footPos.y += released.tipY * k; footPos.z += released.tipZ * k;
+          footQuat.premultiply(q1.setFromAxisAngle(soleProbe.set(Math.cos(released.tipYaw), 0, -Math.sin(released.tipYaw)), released.tip * k));
+        }
+        sole();
+      }
+    }
 
     // Stance: the part of the sole carrying the weight stays where it landed. That is the heel first, then the ball
     // of the foot as the heel peels up, then the toe as the boot rolls off, so it turns over the spot instead of
     // skating across it. A boot that has landed also keeps its direction while the body turns above it.
-    if (!stance) {
-      if (plant) { plant.t = 0; this.releasedPlants[i] = plant; }
-      this.plants[i] = plant = null;
-    } else {
+    if (stance) {
       if (plant) { footQuat.premultiply(q1.setFromAxisAngle(UP, clamp(angDiff(this.bodyYaw, plant.yaw), -0.75, 0.75))); sole(); }
       let part = plant ? plant.part : 0, lowPoint = plant ? (part === 0 ? heelPos.y : part === 1 ? ballPos.y : capPos.y - CAP_SOLE) - 0.012 : 9;      // the current pivot keeps the job until another point is clearly lower
       if (heelPos.y < lowPoint) { lowPoint = heelPos.y; part = 0; }
@@ -890,45 +1011,69 @@ class Bot {
       if (capPos.y - CAP_SOLE < lowPoint) part = 2;
       const point = part === 0 ? heelPos : part === 1 ? ballPos : capPos;
       if (!plant) {
-        plant = this.plants[i] = { part, x: point.x, z: point.z, yaw: this.bodyYaw, dx: 0, dz: 0, t: 0, ground: standing };
+        const carry = this.releasedPlants[i];                                           // set down again while still being handed back: it keeps the turn it had
+        plant = this.plants[i] = { part, x: point.x, z: point.z, yaw: this.bodyYaw + (carry ? clamp(angDiff(this.bodyYaw, carry.yaw), -0.75, 0.75) * carry.k : 0), dx: 0, dz: 0, t: 0, ground: standing, tip: 0, over: 0.14 };
         this.releasedPlants[i] = null;
       } else if (plant.part !== part) { plant.part = part; plant.x = point.x + plant.dx; plant.z = point.z + plant.dz; }      // weight rolls on: the new pivot is wherever the held boot has it
       let dx = plant.x - point.x, dz = plant.z - point.z;
-      const far = Math.hypot(dx, dz), limit = lerp(0.24, 0.46, directional);
-      if (far > limit) { dx *= limit / far; dz *= limit / far; plant.x = point.x + dx; plant.z = point.z + dz; }               // the body has outrun the leg: drag the boot rather than tear the knee straight
-      // Nor may holding the boot still straighten the knee much beyond what the stride itself asks for. Before the toe
-      // leaves the ground the knee is already bending for the swing; a boot pinned too firmly would keep the leg
-      // trailing straight and then whip it forward. So the toe is let creep the last few centimetres instead.
+      const tipWas = plant.tip || 0;
+      plant.tip = 0;
+      const far = Math.hypot(dx, dz), limit = walk < 0.25 ? 0.46 : lerp(0.24, 0.46, directional);
+      if (far > limit) {                                                                // the body has outrun the leg: the boot is drawn after it (drawn, not snapped)
+        const keep = Math.max(limit, far - 1.6 * dt) / far;
+        dx *= keep; dz *= keep; plant.x = point.x + dx; plant.z = point.z + dz;
+      }
+      // Holding the boot still must not straighten the knee much beyond what the stride itself asks for: before the
+      // toe leaves the ground the knee is already bending for the swing. A person gets that bend by letting the heel
+      // rise over the planted toe, so the boot is tipped up about its toe first; only what that cannot give is made
+      // up by letting the toe creep.
       const reachOf = k => Math.hypot(footPos.x + dx * k - legBase.x, footPos.y - legBase.y, footPos.z + dz * k - legBase.z) / this.legLength;
-      const allowed = Math.max(reachOf(0) + 0.022, 0.9);
-      if (far > 0.004 && reachOf(1) > allowed) {
-        let lo = 0, hi = 1;
-        for (let n = 0; n < 5; n++) { const mid = (lo + hi) / 2; if (reachOf(mid) > allowed) hi = mid; else lo = mid; }
-        dx *= lo; dz *= lo; plant.x = point.x + dx; plant.z = point.z + dz;
+      // (Standing, a boot may be anywhere the leg reaches: the rule fades in as the stride takes over.)
+      const bend = 2 * Math.acos(Math.min(1, reachOf(0)));                               // the stride's own knee angle (thigh and shin are near enough equal)
+      const allowed = lerp(0.985, Math.max(Math.cos(Math.max(0, bend - 0.07) / 2), 0.9), smooth(clamp((walk - 0.25) / 0.5, 0, 1)));
+      // The stop is soft: giving way begins part-way between the stride's own reach and the limit and tightens
+      // towards the limit, so the knee slows into it. It never begins inside the stride's own reach, or a boot that is
+      // exactly where the stride has it would be made to creep.
+      const own = reachOf(0), begin = own + Math.max(0, allowed - own) * 0.4;
+      const stretched = reachOf(1) > begin, lift = stretched && part > 0 && directional < 0.5 && pivot < 0.3 && walk >= 0.25 && elapsed > contact - 0.2;
+      if (lift || tipWas > 0) {
+        // the ankle swung up and forward about the pivot, in the plane of travel
+        const px = point.x + dx, pz = point.z + dz, ax = footPos.x - point.x, ay = footPos.y - point.y, az = footPos.z - point.z;
+        const back = -(ax * fx + az * fz), across = ax * fz - az * fx;
+        const ankle = (a, out) => { const c = Math.cos(a), sn = Math.sin(a), b2 = back * c - ay * sn; return out.set(px - fx * b2 + fz * across, point.y + ay * c + back * sn, pz - fz * b2 - fx * across); };
+        const spanAt = a => ankle(a, soleProbe).distanceTo(legBase) / this.legLength;
+        let lo = 0, hi = lift && spanAt(0) > allowed ? 0.5 : 0;
+        if (hi > 0) { if (spanAt(hi) > allowed) lo = hi; else for (let n = 0; n < 6; n++) { const mid = (lo + hi) / 2; if (spanAt(mid) > allowed) lo = mid; else hi = mid; } }
+        hi = clamp(hi, tipWas - TIP_DOWN * dt, tipWas + TIP_UP * dt);                     // a heel is raised and set down; it is never flicked
+        if (hi > 0.002) {
+          ankle(hi, soleProbe);
+          plant.tip = hi; plant.tipX = soleProbe.x - (footPos.x + dx); plant.tipY = soleProbe.y - footPos.y; plant.tipZ = soleProbe.z - (footPos.z + dz); plant.tipYaw = this.bodyYaw;
+          footPos.x = soleProbe.x - dx; footPos.y = soleProbe.y; footPos.z = soleProbe.z - dz;
+          footQuat.premultiply(q1.setFromAxisAngle(soleProbe.set(fz, 0, -fx), hi));
+        }
+      }
+      if (stretched) {
+        const asked = reachOf(1), room = Math.max(allowed - begin, 0.002);
+        if (far > 0.004 && asked > begin) {
+          const granted = begin + room * (1 - Math.exp(-(asked - begin) / room));
+          let lo = 0, hi = 1;
+          for (let n = 0; n < 6; n++) { const mid = (lo + hi) / 2; if (reachOf(mid) > granted) hi = mid; else lo = mid; }
+          lo = Math.max(lo, 1 - 2.2 * dt / far);                                          // crept, not jumped
+          dx *= lo; dz *= lo; plant.x = point.x + dx; plant.z = point.z + dz;
+        }
       }
       plant.dx = dx; plant.dz = dz;
       footPos.x += dx; footPos.z += dz;
     }
-    const released = this.releasedPlants[i];
-    if (released) {
-      // Lifting off: hand the boot back to the authored swing over a few frames.
-      released.t += dt;
-      const k = 1 - smooth(clamp(released.t / 0.11, 0, 1));
-      if (k <= 0) this.releasedPlants[i] = null;
-      else {
-        footPos.x += released.dx * k; footPos.z += released.dz * k;
-        footQuat.premultiply(q1.setFromAxisAngle(UP, clamp(angDiff(this.bodyYaw, released.yaw), -0.75, 0.75) * k));
-      }
-    }
-
     // Keep the boot out of walls and furniture: anything the body itself could not walk up. A kerb or a stair is
     // footing, handled above, and never shoves a boot sideways.
     sole();
     for (const sample of [heelPos, capPos]) {
       soleProbe.set(sample.x, this.floorY, sample.z);
       if (!resolveXZ(soleProbe, 0.066, 0.6, cols, STRIDE_STEP)) continue;
-      const x = soleProbe.x - sample.x, z = soleProbe.z - sample.z;
-      if (Math.hypot(x, z) > 0.2) continue;
+      let x = soleProbe.x - sample.x, z = soleProbe.z - sample.z;
+      const deep = Math.hypot(x, z);
+      if (deep > 0.2) { x *= 0.2 / deep; z *= 0.2 / deep; }                              // never more than a boot's length, and never all or nothing
       footPos.x += x; footPos.z += z; capPos.x += x; capPos.z += z;
     }
     const goal = this.footGoal[i];
