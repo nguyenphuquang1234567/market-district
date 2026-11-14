@@ -43,7 +43,7 @@ export class HUD {
     const tl = Math.max(0, Math.ceil(G.timeLeft)); this.set('timer', `${Math.floor(tl / 60)}:${String(tl % 60).padStart(2, '0')}`);
     // crosshair opens with movement and sustained fire, hides in the optic
     const gap = 5 + P.vel.length() * 1.6 + Math.min(W.shots, 12) * 1.1 + (P.grounded ? 0 : 8);
-    const c = $('cross'); c.style.setProperty('--g', gap.toFixed(1) + 'px'); c.style.opacity = P.alive && !W.reloading ? Math.max(0, 1 - W.ads * 2.2 - W.sprint).toFixed(2) : 0;
+    const c = $('cross'); c.style.setProperty('--g', gap.toFixed(1) + 'px'); c.style.opacity = P.alive && !W.reloading ? Math.max(0, 1 - W.ads * 2.2).toFixed(2) : 0;
     if (this.hitT > 0) { this.hitT -= dt; if (this.hitT <= 0) $('hit').className = ''; }
     if (this.dmgT > 0) { this.dmgT -= dt; $('dmg').style.opacity = Math.max(0, this.dmgT).toFixed(2); }
     if (this.bannerT > 0) { this.bannerT -= dt; if (this.bannerT <= 0) $('banner').classList.remove('on'); }
