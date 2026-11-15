@@ -272,8 +272,10 @@ export function buildQuarter({ B, M, buildings, anchors, ghosts, gates, architec
     const R0 = 3.6, Hp = 0.76, oct = (r, y, h, key, o) => B.geom(key, new THREE.CylinderGeometry(r, r, h, 8), mat4(V(cx, y, cz), Math.PI / 8), o);
     oct(R0, Hp / 2, Hp, 'cantera', { ...stone, uvScale: 2 }); oct(R0 + 0.12, Hp + 0.03, 0.06, 'cantera', { ...stone, uvScale: 2 });
     B.quad('terracotta', V(cx - 2.4, Hp + 0.065, cz + 2.4), V(cx + 2.4, Hp + 0.065, cz + 2.4), V(cx + 2.4, Hp + 0.065, cz - 2.4), V(cx - 2.4, Hp + 0.065, cz - 2.4), { tile: 1.2 });
-    const ri = R0 * Math.cos(Math.PI / 8);                                       // across the flats
-    for (let k = 0; k < 2; k++) B.collide(cx, Hp / 2, cz, ri * 2, Hp + 0.06, ri * 2, k * Math.PI / 4, 'concrete');
+    const ri = R0 * Math.cos(Math.PI / 8), side = 2 * ri * Math.tan(Math.PI / 8);  // across the flats; one side
+    // four bands, one per pair of opposite sides, are the octagon exactly (two squares would make an eight-pointed star
+    // reaching 1.4 m past the drawn edge); the top is the drawn slab's, 0.82 m
+    for (let k = 0; k < 4; k++) B.collide(cx, (Hp + 0.06) / 2, cz, ri * 2, Hp + 0.06, side, k * Math.PI / 4, 'concrete');
     for (const s of [-1, 1]) for (let i = 0; i < 4; i++) {                       // steps, 19 cm each (soldiers walk up them)
       const h = Hp * (i + 1) / 4, x = cx + s * (ri + 0.16 + (3 - i) * 0.32);
       B.box('cantera', x, h / 2, cz, 0.32, h, 1.8, stone); B.collide(x, h / 2, cz, 0.32, h, 1.8, 0, 'concrete');
@@ -282,9 +284,15 @@ export function buildQuarter({ B, M, buildings, anchors, ghosts, gates, architec
     for (let k = 0; k < 8; k++) {
       const a = Math.PI / 8 + k * Math.PI / 4, px = cx + Math.cos(a) * (R0 - 0.3), pz = cz + Math.sin(a) * (R0 - 0.3);
       B.geom('metal_green', new THREE.CylinderGeometry(0.07, 0.09, Hc, 10), mat4(V(px, top + Hc / 2, pz)), { color: [0.55, 0.72, 0.6], uvScale: 0.5, uvScaleY: Hc });
+      B.rail(px, top + Hc / 2, pz, 0.18, Hc, 0.18, a);                          // (a slim post: no cover either)
       const a2 = a + Math.PI / 4, qx = cx + Math.cos(a2) * (R0 - 0.3), qz = cz + Math.sin(a2) * (R0 - 0.3);
       const stair = Math.abs(Math.cos((a + a2) / 2)) > 0.9;                       // the two sides with steps are left open
-      if (!stair) { rod(V(px, top + 0.95, pz), V(qx, top + 0.95, qz), 0.025, 'iron'); rod(V(px, top + 0.1, pz), V(qx, top + 0.1, qz), 0.02, 'iron'); for (let t = 0.1; t < 0.95; t += 0.12) { const bx = px + (qx - px) * t, bz = pz + (qz - pz) * t; rod(V(bx, top + 0.1, bz), V(bx, top + 0.95, bz), 0.01, 'iron'); } }
+      if (!stair) {
+        rod(V(px, top + 0.95, pz), V(qx, top + 0.95, qz), 0.025, 'iron'); rod(V(px, top + 0.1, pz), V(qx, top + 0.1, qz), 0.02, 'iron'); for (let t = 0.1; t < 0.95; t += 0.12) { const bx = px + (qx - px) * t, bz = pz + (qz - pz) * t; rod(V(bx, top + 0.1, bz), V(bx, top + 0.95, bz), 0.01, 'iron'); }
+        // the railing stops a soldier walking or climbing through it (it was drawn only); still no cover and no wall to sight
+        const ux = qx - px, uz = qz - pz, len = Math.hypot(ux, uz);
+        B.rail((px + qx) / 2, top + 0.5, (pz + qz) / 2, len + 0.1, 1.0, 0.12, Math.atan2(-uz / len, ux / len));
+      }
       rod(V(px, top + Hc - 0.35, pz), V(qx, top + Hc - 0.35, qz), 0.03, 'metal_green', [0.55, 0.72, 0.6]);
     }
     const roof = new THREE.ConeGeometry(R0 + 0.6, 1.9, 8, 1, true), under = roof.clone();                    // painted sheet metal, and its underside

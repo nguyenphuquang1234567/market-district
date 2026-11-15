@@ -92,7 +92,8 @@ export class Player {
       const top = out.b.y1, rise = top - this.pos.y;
       if (rise > 0.55 && rise < 1.45) {
         const tx = this.pos.x + fx * (d + 0.45), tz = this.pos.z + fz * (d + 0.45);
-        if (ceilingAt(tx, tz, top + 0.2, 0.3, cols) > top + 1.3) { this.mantle = { t: 0, from: this.pos.clone(), to: V(tx, top, tz) }; G.audio.cloth(1.6); return; }
+        const railed = G.world.rails?.length && rayBoxes(this.pos.x, top + 0.4, this.pos.z, fx, 0, fz, d + 0.8, G.world.rails, null) < d + 0.8;   // a railing along the ledge: no climbing through it
+        if (!railed && ceilingAt(tx, tz, top + 0.2, 0.3, cols) > top + 1.3) { this.mantle = { t: 0, from: this.pos.clone(), to: V(tx, top, tz) }; G.audio.cloth(1.6); return; }
       }
     }
     this.vel.y = 6.3; this.grounded = false; G.audio.jump();
@@ -147,7 +148,7 @@ export class Player {
   }
 
   update(dt) {
-    const G = this.G, cam = G.R.camera, S = G.settings, cols = G.world.colliders, W = G.weapon, B = S.binds;
+    const G = this.G, cam = G.R.camera, S = G.settings, cols = G.world.colliders, rails = G.world.rails || [], W = G.weapon, B = S.binds;
     const sim = this.sim, key = c => this.keys.has(c);
     const input = this.active ? (sim || { f: (key(B.forward) ? 1 : 0) - (key(B.back) ? 1 : 0), s: (key(B.right) ? 1 : 0) - (key(B.left) ? 1 : 0), sprint: key(B.sprint), crouch: key(B.crouch) || key('ControlLeft'), fire: this.mouse.l, ads: this.mouse.r }) : { f: 0, s: 0 };
     // ---- death camera / respawn
@@ -186,6 +187,7 @@ export class Player {
         if (dl <= st) { this.vel.x = tx; this.vel.z = tz; } else { this.vel.x += (dvx / dl) * st; this.vel.z += (dvz / dl) * st; }
         this.vel.y -= 21 * h;
         this.pos.x += this.vel.x * h; this.pos.z += this.vel.z * h; this.pos.y += this.vel.y * h;
+        resolveXZ(this.pos, 0.34, this.height, rails, 0);   // railings stop the body outright (no stepping over the top rail) and are no floor
         resolveXZ(this.pos, 0.34, this.height, cols);
         const g = groundAt(this.pos.x, this.pos.z, this.pos.y, 0.34, cols);
         if (this.pos.y <= g.y) { if (!this.grounded && this.vel.y < -3) landed = Math.max(landed, -this.vel.y); this.pos.y = g.y; this.vel.y = 0; this.grounded = true; this.surf = g.surf || G.world.surfaceAt(this.pos.x, this.pos.z); }

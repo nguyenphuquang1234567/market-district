@@ -200,6 +200,13 @@ export class Builder {
     return hi.y - lo.y;
   }
 
+  // A barrier only a soldier's movement collides with (a see-through railing): it is not cover, does not block sight,
+  // bullets or sound, and is not in the navigation grid. Same box convention as collide().
+  rail(cx, cy, cz, sx, sy, sz, rot = 0) {
+    if (this.mute) return;
+    (this.rails ||= []).push({ x: cx, z: cz, hx: sx / 2, hz: sz / 2, y0: cy - sy / 2, y1: cy + sy / 2, c: Math.cos(rot), s: Math.sin(rot), surf: 'metal', flags: 0 });
+  }
+
   // A lit bulb, for the light bake: warm (2700 K-ish) unless c says otherwise, strength 1 = the standard market bulb.
   lamp(x, y, z, c = [1, 0.72, 0.43]) { if (!this.mute) this.lamps.push({ x, y, z, c }); }
 

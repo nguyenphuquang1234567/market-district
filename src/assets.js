@@ -130,6 +130,9 @@ function bake(scene, re, name) {
 // nothing is decoded or mipmapped on the main thread. ?tex=jpg loads the original JPEGs instead (for comparisons).
 // Each texture remembers its JPEG (userData.src) for the light bake, which averages colours from the image.
 export const useKTX2 = new URLSearchParams(location.search).get('tex') !== 'jpg';
+// Asset revision, appended to the URLs: a browser that cached files under the old dev server's day-long lifetime fetches
+// them again after this changes (the server now revalidates, so a plain reload picks up later edits by itself).
+const REV = '?r=2';
 
 export async function loadAssets(renderer, onProgress) {
   const manager = new THREE.LoadingManager();
@@ -142,7 +145,7 @@ export async function loadAssets(renderer, onProgress) {
     kl = new KTX2Loader(manager).setTranscoderPath(base).detectSupport(renderer);
     gl.setKTX2Loader(kl);
   }
-  const tex = (stem, srgb) => (kl ? kl.loadAsync(stem + '.ktx2') : tl.loadAsync(stem + '.jpg')).then(t => {
+  const tex = (stem, srgb) => (kl ? kl.loadAsync(stem + '.ktx2' + REV) : tl.loadAsync(stem + '.jpg' + REV)).then(t => {
     t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = aniso;
     if (srgb) t.colorSpace = THREE.SRGBColorSpace;          // (a KTX2 file says so itself; the JPEGs need telling)
     t.userData.src = stem + '.jpg';
@@ -157,7 +160,7 @@ export async function loadAssets(renderer, onProgress) {
   }
   for (const [id, defs] of Object.entries(MODELS)) {
     const dir = `assets/models/${id}/`;
-    jobs.push(gl.loadAsync(dir + id + (kl ? '.basis.gltf' : '.gltf')).then(g => {
+    jobs.push(gl.loadAsync(dir + id + (kl ? '.basis.gltf' : '.gltf') + REV).then(g => {
       const json = g.parser.json;
       g.scene.traverse(o => {
         if (!o.isMesh) return;
@@ -171,7 +174,7 @@ export async function loadAssets(renderer, onProgress) {
     }));
   }
   // the architectural kit (tools/blender/kit.py): piece name -> [{ geometry, slot }], one part per material slot
-  jobs.push(gl.loadAsync('assets/kit/kit.glb').then(g => {
+  jobs.push(gl.loadAsync('assets/kit/kit.glb' + REV).then(g => {
     const kit = {};
     g.scene.updateMatrixWorld(true);
     g.scene.traverse(o => {

@@ -340,6 +340,7 @@ async function start() {
   G.hud.show('start');
   G.los = (a, b) => losClear(a, b, world.colliders) && !G.throw.smoked(a, b);
   if (params.get('bench')) runBench(G, params.get('bench'));        // dev: timings and captures with no console at hand (the native window)
+  if (params.get('selftest')) setTimeout(() => fetch('/__capture/selftest.json', { method: 'POST', body: JSON.stringify(G.selfTest(), null, 1) }), 300);   // dev: the acceptance run, saved to captures/
   if (params.get('auto') || params.get('demo')) G.autoStart();
   if (params.get('demo')) { G.demo = demoDriver(G); G.frozen = false; G.audio.start(); }
   requestAnimationFrame(frame);

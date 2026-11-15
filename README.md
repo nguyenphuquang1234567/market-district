@@ -98,7 +98,9 @@ Key bindings live in the same saved settings object (`binds`, including `frag` a
   early-1900s mercados: a raised nave with an open clerestory and skylights, lean-to aisles on slim green columns, a
   brick and stone portal facing Calle del Mercado and five more ways in through low brick walls that leave it open
   above waist height, a terracotta floor, islands of stalls with their goods, painted signs and bulbs on flex, and a
-  canopy of papel picado. A *plazuela* with a raised kiosk, a laurel in a planter, café tables and umbrellas, and a
+  canopy of papel picado. A *plazuela* with a raised kiosk (its railing and posts stop a soldier walking, jumping or
+  climbing through them, so the two flights of steps are the way up, but as open ironwork they are no cover and do not
+  stop bullets, sight or sound), a laurel in a planter, café tables and umbrellas, and a
   parish chapel with a pink-stone doorway, a bell gable (espadaña) with three bells, a tiled dome and a walled atrium. The architecture is a Mexican colonial-market vernacular rather than
   any particular place: lime plaster in ochre, terracotta, pink, cobalt and lime green over a darker base band, cantera
   door and window surrounds, rebar left standing on flat roofs, roller shutters, talavera tile panels, hand-painted
@@ -351,6 +353,7 @@ In the browser console, with the dev server running:
   into the market hall and back, clutter left by 90 s of fighting not inside any wall, no loose prop starting inside
   anything solid, and a chair shoved into walls at four places staying out of them. (One check fails and did before the
   throwables were added, on `main` as well: the empty-magazine reload is sampled 0.13 s before the reload finishes.)
+  `?selftest=1` in the URL runs it by itself once loaded and saves the results to `captures/selftest.json`.
 - `src/clipcheck.js` (also `tools/clip-probe.js`) — how far each loose prop sits inside the collision boxes and behind
   the drawn surfaces: `clip.scan(G)` for all of them, `clip.prop(G, item)` for one, `clip.shove(G, { z })` walks a
   soldier's pusher into a chair against a wall.

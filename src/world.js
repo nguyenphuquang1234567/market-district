@@ -603,5 +603,5 @@ export function buildWorld(R, M) {
   // leave out the side the camera cannot see (its lowest roofline, and the passages it can see through).
   const ringRoof = Math.min(...buildings.filter(b => b.x0 === 31 && b.x1 === 46).map(b => b.H + (b.roofAccess ? 0 : PARAPET)));
   const zones = { x0: 31, x1: 46, split0: 22, split1: 46, roof: ringRoof, gates: quarter.passages };
-  return { group, colliders: B.colliders, details: B.details, rayMeshes, clothMeshes, buildings, nav, spawns, anchors, surfaceAt, dynamic: B.dynamic, emitters: B.emitters, lamps: B.lamps, quarterHotspots: QUARTER_HOTSPOTS, zones };
+  return { group, colliders: B.colliders, details: B.details, rayMeshes, clothMeshes, buildings, nav, spawns, anchors, surfaceAt, dynamic: B.dynamic, emitters: B.emitters, lamps: B.lamps, rails: B.rails || [], quarterHotspots: QUARTER_HOTSPOTS, zones };
 }
