@@ -2,6 +2,9 @@
 import { clamp, rng } from './util.js';
 
 export const STEP = 0.42;
+// Collider flag: something hanging off a facade (a balcony). A floor for whoever is on it and a roof for whoever is
+// under it, but not the ceiling of a room (the listener's surroundings skip it: see main.js).
+export const OVERHANG = 1;
 // What a soldier walks up without breaking stride: a kerb or a stair. Anything taller (a crate, a tyre, a stack of
 // bricks) is walked round. The player keeps the full step height.
 export const STRIDE_STEP = 0.24;
@@ -11,13 +14,14 @@ const LANE = [0, 0.9, 0.12, 0, 0.1, 0.22];
 
 // Push a vertical cylinder (feet at p.y, given radius/height) out of every box it overlaps. Mutates p.
 export function resolveXZ(p, r, height, cols, step = STEP) {
-  const y0 = p.y + step, y1 = p.y + height;
+  const y0 = p.y + step, y1 = p.y + height, mid = p.y + height / 2;
   let hit = false;
   for (let it = 0; it < 3; it++) {
     let moved = false;
     for (let i = 0; i < cols.length; i++) {
       const b = cols[i];
       if (y1 <= b.y0 || y0 >= b.y1) continue;
+      if ((b.flags & OVERHANG) && b.y0 > mid) continue;      // a balcony over the head is a ceiling (ceilingAt stops the rise), not a wall to be shoved off
       const dx = p.x - b.x, dz = p.z - b.z;
       if (Math.abs(dx) > b.hx + b.hz + r || Math.abs(dz) > b.hx + b.hz + r) continue;
       const lx = dx * b.c - dz * b.s, lz = dx * b.s + dz * b.c;
@@ -52,11 +56,11 @@ export function groundAt(x, z, feetY, r, cols, step = STEP) {
   return { y: g, surf };
 }
 
-export function ceilingAt(x, z, headY, r, cols) {
+export function ceilingAt(x, z, headY, r, cols, skip = 0) {
   let c = Infinity;
   for (let i = 0; i < cols.length; i++) {
     const b = cols[i];
-    if (b.y0 < headY - 0.3 || b.y0 >= c) continue;
+    if (b.y0 < headY - 0.3 || b.y0 >= c || (b.flags & skip)) continue;
     const dx = x - b.x, dz = z - b.z;
     const lx = dx * b.c - dz * b.s, lz = dx * b.s + dz * b.c;
     if (Math.abs(lx) <= b.hx + r * 0.5 && Math.abs(lz) <= b.hz + r * 0.5) c = b.y0;
@@ -64,11 +68,12 @@ export function ceilingAt(x, z, headY, r, cols) {
   return c;
 }
 
-// Ray vs all boxes. Returns distance (or maxT) and fills `out` {b, nx, ny, nz} when given.
-export function rayBoxes(ox, oy, oz, dx, dy, dz, maxT, cols, out) {
+// Ray vs all boxes. Returns distance (or maxT) and fills `out` {b, nx, ny, nz} when given. Boxes with a `skip` flag are passed by.
+export function rayBoxes(ox, oy, oz, dx, dy, dz, maxT, cols, out, skip = 0) {
   let best = maxT, hitB = null, bn = 0;
   for (let i = 0; i < cols.length; i++) {
     const b = cols[i];
+    if (skip && (b.flags & skip)) continue;
     const px = ox - b.x, pz = oz - b.z;
     const lx = px * b.c - pz * b.s, lz = px * b.s + pz * b.c;
     const ldx = dx * b.c - dz * b.s, ldz = dx * b.s + dz * b.c;

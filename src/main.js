@@ -14,7 +14,7 @@ import { HUD } from './hud.js';
 import { Throwables } from './throwables.js';
 import { clamp, damp } from './util.js';
 import { selfTest, proof, proofThrow, demoDriver } from './selftest.js';
-import { losClear, rayBoxes } from './physics.js';
+import { losClear, rayBoxes, ceilingAt, OVERHANG } from './physics.js';
 import { setupGI } from './gi.js';
 
 const params = new URLSearchParams(location.search);
@@ -50,7 +50,7 @@ async function start() {
   performance.mark('boot:gi');
   const G = window.G = { R, M, world, settings, THREE, gi, time: 0, playing: false, matchLive: false, score: [0, 0], timeLeft: MATCH.time, stats: { shots: 0, hits: 0 } };
   G.audio = new Audio();
-  G.audio.cast = (ox, oy, oz, dx, dy, dz, max) => rayBoxes(ox, oy, oz, dx, dy, dz, max, world.colliders, null);       // echoes and occlusion use the real walls
+  G.audio.cast = (ox, oy, oz, dx, dy, dz, max) => rayBoxes(ox, oy, oz, dx, dy, dz, max, world.colliders, null, dy > 0.5 ? OVERHANG : 0);       // echoes and occlusion use the real walls (looking up, balconies are not a ceiling)
   G.audio.blocked = (a, b) => !losClear(a, b, world.colliders);
   G.audio.emitters = world.emitters;
   G.fx = new FX(R);
@@ -211,7 +211,7 @@ async function start() {
     G.fx.update(dt, R.camera, (p, v) => G.audio.casing({ x: p.x, y: p.y, z: p.z }, v));
     G.hud.update(dt);
     const P = G.player, low = P.health < 35 ? (35 - P.health) / 35 : 0;
-    G.audio.setListener(R.camera, dt, P.alive ? P.health : 100, P.interior);
+    G.audio.setListener(R.camera, dt, P.alive ? P.health : 100, P.interior && ceilingAt(P.pos.x, P.pos.z, P.eyeY, 0.2, world.colliders, OVERHANG) < P.eyeY + 3.2 ? 1 : 0);   // (a balcony overhead is no room)
     const f = R.final;
     f.uDamage.value = clamp((P.flash || 0) * 0.8 + low * 0.6 + (P.alive ? 0 : 0.5), 0, 1); f.uDesat.value = damp(f.uDesat.value, low * 0.55 + (P.alive ? 0 : 0.7), 6, dt);
     // restrained motion blur: only fast turns, along the turn direction

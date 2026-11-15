@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { computeBoundsTree, disposeBoundsTree, acceleratedRaycast } from 'three-mesh-bvh';
 import { Builder } from './builder.js';
-import { NavGrid } from './physics.js';
+import { NavGrid, OVERHANG } from './physics.js';
 import { dress } from './dressing.js';
 import { buildQuarter, HALL, PLAZUELA, ATRIUM, QUARTER_SPAWNS, QUARTER_HOTSPOTS } from './quarter.js';
 import { rng, clamp } from './util.js';
@@ -78,6 +78,12 @@ export function architecture(B, rnd, buildings, anchors, rs = null, style = { ba
     const FB = (key, u0, v0, u1, v1, d0, d1, o = {}) => {
       const c = P((u0 + u1) / 2, (v0 + v1) / 2, (d0 + d1) / 2), du = u1 - u0, dd = Math.abs(d1 - d0), ax = Math.abs(T.x) > 0.5;
       B.box(key, c.x, c.y, c.z, ax ? du : dd, v1 - v0, ax ? dd : du, o);
+    };
+    // collision over the same span as FB: a solid box hanging off the facade, or (rail) a railing only bodies meet
+    const FC = (u0, v0, u1, v1, d0, d1, surf, rail = false) => {
+      const c = P((u0 + u1) / 2, (v0 + v1) / 2, (d0 + d1) / 2), du = u1 - u0, dd = Math.abs(d1 - d0), ax = Math.abs(T.x) > 0.5;
+      if (rail) B.rail(c.x, c.y, c.z, ax ? du : dd, v1 - v0, ax ? dd : du);
+      else B.collideLater(c.x, c.y, c.z, ax ? du : dd, v1 - v0, ax ? dd : du, 0, surf, OVERHANG);
     };
     const hole = (u0, v0, u1, v1, d, o = wo) => {
       B.quad(wall, P(u0, v0, 0), P(u0, v0, d), P(u0, v1, d), P(u0, v1, 0), o);
@@ -253,13 +259,16 @@ export function architecture(B, rnd, buildings, anchors, rs = null, style = { ba
             }
             const a = cu0 + 0.22, b = cu1 - 0.22, dep = 1.05;
             FB('concrete', a, v0 - 0.16, b, v0, -dep, 0, { color: bd.trim });
+            FC(a, v0 - 0.16, b, v0, -dep, 0, 'concrete');                       // the slab is a floor to stand on and a roof over the street
             for (const u of [a + 0.14, b - 0.14]) B.kit('corbel', KM(u, v0 - 0.16, 0, T, UP, N), kTrim, { ...oTrim, lod: 'near' });     // brackets under the slab
             if (bd.balcSolid) {
               FB(wall, a, v0, b, v0 + 0.95, -dep, -dep + 0.11, wo); FB(wall, a, v0, a + 0.11, v0 + 0.95, -dep + 0.11, 0, wo); FB(wall, b - 0.11, v0, b, v0 + 0.95, -dep + 0.11, 0, wo);
+              FC(a, v0, b, v0 + 0.95, -dep, -dep + 0.11, 'plaster'); FC(a, v0, a + 0.11, v0 + 0.95, -dep + 0.11, 0, 'plaster'); FC(b - 0.11, v0, b, v0 + 0.95, -dep + 0.11, 0, 'plaster');   // a parapet: cover
             } else {
               for (const y of [v0 + 0.06, v0 + 0.98]) { FB('iron', a, y, b, y + 0.035, -dep, -dep + 0.035); FB('iron', a, y, a + 0.035, y + 0.035, -dep, 0); FB('iron', b - 0.035, y, b, y + 0.035, -dep, 0); }
               for (let u = a + 0.05; u < b - 0.02; u += 0.125) FB('iron', u, v0, u + 0.014, v0 + 1.0, -dep + 0.01, -dep + 0.024);
               for (let d = 0.12; d < dep - 0.05; d += 0.125) { FB('iron', a + 0.01, v0, a + 0.024, v0 + 1.0, -d - 0.014, -d); FB('iron', b - 0.024, v0, b - 0.01, v0 + 1.0, -d - 0.014, -d); }
+              FC(a, v0, b, v0 + 1.02, -dep, -dep + 0.04, 'metal', true); FC(a, v0, a + 0.04, v0 + 1.02, -dep, 0, 'metal', true); FC(b - 0.04, v0, b, v0 + 1.02, -dep, 0, 'metal', true);   // open ironwork: no cover
             }
             anchors.push({ kind: 'balcony', p: P(uc, v0, -dep), N, T, w: b - a, bd, street, solid: bd.balcSolid });
           } else if (rnd.chance(0.06)) cell(cu0, v0, cu1, v1, null);

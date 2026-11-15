@@ -211,6 +211,13 @@ export class Builder {
   lamp(x, y, z, c = [1, 0.72, 0.43]) { if (!this.mute) this.lamps.push({ x, y, z, c }); }
 
   // Yawed box collider. surf is what bots' bullets and footsteps report.
+  // The same, joining the others only after the loose clutter has been sorted (build()): balconies, so that the pots
+  // standing on them stay set dressing and nothing dressed before is shoved about or left out.
+  collideLater(cx, cy, cz, sx, sy, sz, rot = 0, surf = 'concrete', flags = 0) {
+    if (this.mute) return;
+    (this.later ||= []).push({ x: cx, z: cz, hx: sx / 2, hz: sz / 2, y0: cy - sy / 2, y1: cy + sy / 2, c: Math.cos(rot), s: Math.sin(rot), surf, flags });
+  }
+
   collide(cx, cy, cz, sx, sy, sz, rot = 0, surf = 'concrete', flags = 0) {
     if (this.mute) return;
     this.colliders.push({ x: cx, z: cz, hx: sx / 2, hz: sz / 2, y0: cy - sy / 2, y1: cy + sy / 2, c: Math.cos(rot), s: Math.sin(rot), surf, flags });
@@ -319,6 +326,7 @@ export class Builder {
 
   build(M) {
     this._classify();
+    if (this.later) { this.colliders.push(...this.later); this.later = null; }
     const meshes = [];
     for (const k of this.buckets.values()) {
       const key = k.key;

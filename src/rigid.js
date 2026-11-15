@@ -65,8 +65,8 @@ export class Rigid {
     this.events = new RAPIER.EventQueue(true);
     const fixed = w.createRigidBody(RAPIER.RigidBodyDesc.fixed()), sg = grp(G_STATIC, G_PROP | G_RAG);
     this.ground = w.createCollider(RAPIER.ColliderDesc.cuboid(100, 2, 100).setTranslation(30, -2, 0).setCollisionGroups(sg).setFriction(0.9), fixed).handle;
-    // the movement boxes, plus the drawn details only clutter, bodies and thrown things meet (plinths, sills, stall posts…) and railings
-    for (const b of [...G.world.colliders, ...(G.world.details || []), ...(G.world.rails || [])]) {
+    // the movement boxes, plus the drawn details only clutter, bodies and thrown things meet (plinths, sills, stall posts…)
+    for (const b of [...G.world.colliders, ...(G.world.details || [])]) {
       const hy = (b.y1 - b.y0) / 2; if (hy < 0.005 || b.hx < 0.005 || b.hz < 0.005) continue;
       const a = Math.atan2(b.s, b.c) / 2;
       const col = w.createCollider(RAPIER.ColliderDesc.cuboid(b.hx, hy, b.hz).setTranslation(b.x, b.y0 + hy, b.z).setRotation({ x: 0, y: Math.sin(a), z: 0, w: Math.cos(a) }).setCollisionGroups(sg).setFriction(0.85), fixed);

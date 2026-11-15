@@ -75,7 +75,9 @@ Key bindings live in the same saved settings object (`binds`, including `frag` a
 - **World** — a ~90 × 160 m district generated from a fixed seed: main street with a long sightline, a narrow alley with laundry
   lines, a covered market lane with stalls and translucent shade cloths, a plaza with a fountain, palms and a monumental arch,
   walk-in shops, an exterior stair to a low rooftop. Buildings have real window and door depth, shutters, bars, balconies,
-  parapets, pipes, cables and rooftop clutter. Surfaces are scanned PBR texture sets with world-space weathering on top;
+  parapets, pipes, cables and rooftop clutter. Every balcony is solid: its slab is a floor to stand on and a roof that
+  stops sight and fire from the street, a plaster parapet is cover, and an iron railing stops a soldier (who can still
+  jump it) but not sight, bullets or sound. Surfaces are scanned PBR texture sets with world-space weathering on top;
   props are scanned models simplified at load.
 - **Architectural kit** — mouldings and details modelled in Blender from a script (`tools/blender/kit.py`, swept profiles,
   bevels and boolean cuts; `assets/kit/kit.glb`) and fitted to every house in both districts by `world.js`: moulded
@@ -98,9 +100,9 @@ Key bindings live in the same saved settings object (`binds`, including `frag` a
   early-1900s mercados: a raised nave with an open clerestory and skylights, lean-to aisles on slim green columns, a
   brick and stone portal facing Calle del Mercado and five more ways in through low brick walls that leave it open
   above waist height, a terracotta floor, islands of stalls with their goods, painted signs and bulbs on flex, and a
-  canopy of papel picado. A *plazuela* with a raised kiosk (its railing and posts stop a soldier walking, jumping or
-  climbing through them, so the two flights of steps are the way up, but as open ironwork they are no cover and do not
-  stop bullets, sight or sound), a laurel in a planter, café tables and umbrellas, and a
+  canopy of papel picado. A *plazuela* with a raised kiosk (two flights of steps lead up, and the player can run and
+  jump over the railing from the platform. The open ironwork lets bullets, sight and sound through),
+  a laurel in a planter, café tables and umbrellas, and a
   parish chapel with a pink-stone doorway, a bell gable (espadaña) with three bells, a tiled dome and a walled atrium. The architecture is a Mexican colonial-market vernacular rather than
   any particular place: lime plaster in ochre, terracotta, pink, cobalt and lime green over a darker base band, cantera
   door and window surrounds, rebar left standing on flat roofs, roller shutters, talavera tile panels, hand-painted
@@ -167,10 +169,10 @@ Key bindings live in the same saved settings object (`binds`, including `frag` a
   In flight each is a rigid body with continuous collision (a ball or a can with the fuze standing proud, so it kicks
   off line, wobbles and stops on its side): it comes back off walls, cover, clutter and soldiers, skips along the road,
   is braked by rolling and comes to rest, with a knock at every contact that depends on what it struck.
-  The collision boxes only cover house blocks, kerbs, steps and cover, so a thrown object also feels ahead along its
-  path and beneath itself through the triangles that are actually drawn (the same trees the bullets use, plus the
-  cloth a bullet passes through): it comes back off a balcony front, can land on a balcony and lie there, slides down
-  an awning and drops off its edge, and gets between railing bars only as often as a 6 cm ball would (about half the
+  The collision boxes cover house blocks, kerbs, steps, cover and balcony floors and parapets (so it comes back off a
+  balcony front and can land on a balcony and lie there); a thrown object also feels ahead along its path and beneath
+  itself through the triangles that are actually drawn (the same trees the bullets use, plus the cloth a bullet passes
+  through), so it slides down an awning and drops off its edge, and gets between railing bars only as often as a 6 cm ball would (about half the
   time). What it is lying on counts as its floor for the scorch mark, the dust and the smoke.
 - **The grenade** — a two-frame flash that lights walls and smoke, a fireball that is soot within a tenth of a second,
   sparks, a dust skirt scoured off the ground, a dark column that climbs and drifts with the wind, earth and chips
@@ -351,7 +353,9 @@ In the browser console, with the dev server running:
   dropped at death, and restart. For the map: every hotspot in the market quarter routed from five places in the old
   district and every spawn to every enemy spawn (225 routes), a soldier walking from the market lane through a passage
   into the market hall and back, clutter left by 90 s of fighting not inside any wall, no loose prop starting inside
-  anything solid, and a chair shoved into walls at four places staying out of them. (One check fails and did before the
+  anything solid, a chair shoved into walls at four places staying out of them, a soldier dropped onto a balcony with
+  a railing and onto one with a parapet standing on it and being stopped at its front and side, and the balcony floor
+  and parapet stopping sight while the open railing does not. (One check fails and did before the
   throwables were added, on `main` as well: the empty-magazine reload is sampled 0.13 s before the reload finishes.)
   `?selftest=1` in the URL runs it by itself once loaded and saves the results to `captures/selftest.json`.
 - `src/clipcheck.js` (also `tools/clip-probe.js`) — how far each loose prop sits inside the collision boxes and behind

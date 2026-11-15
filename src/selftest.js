@@ -179,6 +179,24 @@ export function selfTest(G) {
     check('a grenade thrown at a balcony comes back off it, and one dropped onto it stays lying there', deepest < 0.06 && knocked >= 1 && backOff < -0.5 && lying > 0.01 && lying < 0.06 && asleep,
       `got ${(deepest * 100).toFixed(0)} cm past its face at most, came back ${(-backOff).toFixed(1)} m; dropped one lies ${(lying * 100).toFixed(1)} cm above the floor, at rest ${asleep}`);
   }
+  // a balcony is a floor to stand on, its railing or parapet stops a soldier, and only the floor and the parapet hide one
+  park(); P.health = 100;
+  const bIron = G.world.anchors.find(q => q.kind === 'balcony' && !q.solid && q.street === 'main');
+  for (const [q, name, wall] of [[bIron, 'railing', 0.04], [balc, 'parapet', 0.11]]) {
+    if (!q) continue;
+    const s0 = { x: q.p.x - q.N.x * 0.5, z: q.p.z - q.N.z * 0.5 }, edge = () => (P.pos.x - q.p.x) * q.N.x + (P.pos.z - q.p.z) * q.N.z, side = () => Math.abs((P.pos.x - q.p.x) * q.T.x + (P.pos.z - q.p.z) * q.T.z);
+    G.goto(s0.x, s0.z, Math.atan2(q.N.x, q.N.z) * 180 / Math.PI); P.pos.y = q.p.y + 0.6; run(0.6);
+    const landed = P.grounded && Math.abs(P.pos.y - q.p.y) < 0.02;
+    P.sim.f = 1; run(1.2); P.sim.f = 0; const front = edge(), y1 = P.pos.y - q.p.y;
+    P.sim.s = 1; run(1.5); P.sim.s = 0; const across = side(), y2 = P.pos.y - q.p.y;
+    check(`a soldier dropped onto a balcony stands on it and its ${name} stops him`, landed && Math.abs(y1) < 0.02 && Math.abs(y2) < 0.02 && front < -(wall + 0.32) && across < q.w / 2 - wall - 0.32,
+      `landed ${landed}, ${(-front).toFixed(2)} m in from the front, ${(q.w / 2 - across).toFixed(2)} m in from the side, ${y2.toFixed(2)} m off the floor`);
+  }
+  if (bIron && balc) {
+    const at = (q, n, dy) => new V3(q.p.x - q.N.x * n, q.p.y + dy, q.p.z - q.N.z * n);
+    const floor = !G.los(at(bIron, 0.5, -0.6), at(bIron, 0.5, 0.6)), rail = G.los(at(bIron, 0.5, 0.5), at(bIron, -1.5, 0.5)), parapet = !G.los(at(balc, 0.5, 0.5), at(balc, -1.5, 0.5));
+    check('a balcony floor and parapet stop sight and fire, its open railing does not', floor && rail && parapet, `floor ${floor ? 'blocks' : 'open'}, railing ${rail ? 'see-through' : 'blocks'}, parapet ${parapet ? 'blocks' : 'open'}`);
+  }
   park(); G.goto(0.6, -58, 0, 0); P.health = 100;
   const close = dummy(3, 0.5, -37), far8 = dummy(4, 0.5, -32), behind = dummy(5, -29, -40), sc0 = G.score[0], k0 = P.kills;
   const g1 = T.spawn('frag', new V3(0.5, 0.2, -40), still, still, new Q4(), P); g1.fuse = 0.3; run(0.6);

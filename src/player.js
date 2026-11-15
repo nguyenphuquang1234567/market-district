@@ -87,16 +87,26 @@ export class Player {
     if (!this.grounded || this.mantle) return;
     const G = this.G, cols = G.world.colliders, fx = Math.sin(this.yaw), fz = Math.cos(this.yaw);
     // short mantle: a ledge between knee and chest height straight ahead, with room on top
-    const out = {}, d = rayBoxes(this.pos.x, this.pos.y + 0.5, this.pos.z, fx, 0, fz, 0.95, cols, out);
+    const rails = G.world.rails || [], out = {};
+    const d = rayBoxes(this.pos.x, this.pos.y + 0.5, this.pos.z, fx, 0, fz, 0.95, cols, out);
     if (out.b && d < 0.95) {
       const top = out.b.y1, rise = top - this.pos.y;
       if (rise > 0.55 && rise < 1.45) {
         const tx = this.pos.x + fx * (d + 0.45), tz = this.pos.z + fz * (d + 0.45);
-        const railed = G.world.rails?.length && rayBoxes(this.pos.x, top + 0.4, this.pos.z, fx, 0, fz, d + 0.8, G.world.rails, null) < d + 0.8;   // a railing along the ledge: no climbing through it
+        const railed = rayBoxes(this.pos.x, top + 0.4, this.pos.z, fx, 0, fz, d + 0.8, rails, null) < d + 0.8;
         if (!railed && ceilingAt(tx, tz, top + 0.2, 0.3, cols) > top + 1.3) { this.mantle = { t: 0, from: this.pos.clone(), to: V(tx, top, tz) }; G.audio.cloth(1.6); return; }
       }
     }
-    this.vel.y = 6.3; this.grounded = false; G.audio.jump();
+    // Give a jump toward a reachable railing enough height to clear it while retaining horizontal momentum.
+    const speed = Math.hypot(this.vel.x, this.vel.z), moving = speed > 0.5;
+    const dx = moving ? this.vel.x / speed : fx, dz = moving ? this.vel.z / speed : fz;
+    const reach = Math.max(1.05, speed * 0.43), railHit = {};
+    const { x, y, z } = this.pos;
+    const railDist = rayBoxes(x, y + 0.5, z, dx, 0, dz, reach, rails, railHit);
+    const rise = railHit.b ? railHit.b.y1 - y : 0;
+    const railJump = rise > 0.55 && rise <= 1.08
+      && rayBoxes(x, y + 0.5, z, dx, 0, dz, railDist, cols, null) >= railDist;
+    this.vel.y = railJump ? 8.1 : 6.3; this.grounded = false; G.audio.jump();
   }
 
   // One hitscan round. Returns nothing; applies damage, impact effects, tracer, recoil.
