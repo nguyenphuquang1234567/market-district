@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
+import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { MeshoptSimplifier } from 'meshoptimizer';
 
@@ -11,6 +12,7 @@ const TEX_IDS = [
   'rough_plaster_broken', 'weathered_planks', 'wood_shutter', 'rough_pine_door', 'rusty_metal_shutter', 'corrugated_iron_02',
   'rusty_metal_02', 'green_metal_rust', 'metal_plate', 'fabric_pattern_07', 'fabric_pattern_05', 'cotton_jersey',
   'hessian_230', 'dirty_carpet', 'palm_tree_bark',
+  'cobblestone_floor_13', 'terracotta_floor_tiles', 'castle_brick_02_red', 'red_sandstone_wall', 'painted_metal_shutter', 'worn_corrugated_iron',
 ];
 
 // model id -> list of [protoName, nodeNameRegex]; a model with one entry is taken whole.
@@ -123,29 +125,62 @@ function bake(scene, re, name) {
   return { parts, size, small: Math.max(size.x, size.y, size.z) < 0.56 };
 }
 
+// Textures are KTX2 (Basis UASTC, see tools/encode-ktx2.mjs): transcoded off the main thread to whatever block format
+// the GPU takes (ASTC 4x4 or BC7 here), mipmaps included, so they stay a quarter of the size in video memory and
+// nothing is decoded or mipmapped on the main thread. ?tex=jpg loads the original JPEGs instead (for comparisons).
+// Each texture remembers its JPEG (userData.src) for the light bake, which averages colours from the image.
+export const useKTX2 = new URLSearchParams(location.search).get('tex') !== 'jpg';
+
 export async function loadAssets(renderer, onProgress) {
   const manager = new THREE.LoadingManager();
   manager.onProgress = (_u, n, total) => onProgress(n / total);
   const tl = new THREE.TextureLoader(manager), gl = new GLTFLoader(manager), hl = new RGBELoader(manager);
   const aniso = Math.min(8, renderer.capabilities.getMaxAnisotropy());
-  const tex = (url, srgb) => tl.loadAsync(url).then(t => {
+  let kl = null;
+  if (useKTX2) {
+    const base = import.meta.resolve('three/addons/libs/basis/basis_transcoder.js').replace(/[^/]+$/, '');
+    kl = new KTX2Loader(manager).setTranscoderPath(base).detectSupport(renderer);
+    gl.setKTX2Loader(kl);
+  }
+  const tex = (stem, srgb) => (kl ? kl.loadAsync(stem + '.ktx2') : tl.loadAsync(stem + '.jpg')).then(t => {
     t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = aniso;
-    if (srgb) t.colorSpace = THREE.SRGBColorSpace;
+    if (srgb) t.colorSpace = THREE.SRGBColorSpace;          // (a KTX2 file says so itself; the JPEGs need telling)
+    t.userData.src = stem + '.jpg';
     return t;
   });
   await MeshoptSimplifier.ready;
   const jobs = [];
   for (const id of TEX_IDS) {
     const d = `assets/tex/${id}/`;
-    jobs.push(Promise.all([tex(d + 'diff.jpg', true), tex(d + 'nor.jpg'), tex(d + 'arm.jpg')])
+    jobs.push(Promise.all([tex(d + 'diff', true), tex(d + 'nor'), tex(d + 'arm')])
       .then(([diff, nor, arm]) => { assets.tex[id] = { diff, nor, arm }; }));
   }
   for (const [id, defs] of Object.entries(MODELS)) {
-    jobs.push(gl.loadAsync(`assets/models/${id}/${id}.gltf`).then(g => {
-      g.scene.traverse(o => { if (o.isMesh) for (const k of ['map', 'normalMap', 'roughnessMap']) if (o.material[k]) o.material[k].anisotropy = 4; });
+    const dir = `assets/models/${id}/`;
+    jobs.push(gl.loadAsync(dir + id + (kl ? '.basis.gltf' : '.gltf')).then(g => {
+      const json = g.parser.json;
+      g.scene.traverse(o => {
+        if (!o.isMesh) return;
+        for (const k of ['map', 'normalMap', 'roughnessMap']) if (o.material[k]) o.material[k].anisotropy = 4;
+        for (const t of [o.material.map, o.material.normalMap, o.material.roughnessMap, o.material.aoMap, o.material.metalnessMap]) {
+          const ti = t && g.parser.associations.get(t)?.textures, src = ti != null ? json.textures[ti].source : null;
+          if (src != null && json.images[src]?.uri) t.userData.src = dir + json.images[src].uri;     // (the extension's fallback is the original image)
+        }
+      });
       for (const [name, re] of defs) assets.proto[name] = bake(g.scene, re, name);
     }));
   }
+  // the architectural kit (tools/blender/kit.py): piece name -> [{ geometry, slot }], one part per material slot
+  jobs.push(gl.loadAsync('assets/kit/kit.glb').then(g => {
+    const kit = {};
+    g.scene.updateMatrixWorld(true);
+    g.scene.traverse(o => {
+      if (!o.isMesh) return;
+      const piece = o.parent && !o.parent.isScene && o.parent !== g.scene ? o.parent.name : o.name;   // (a node with several materials is a group of meshes)
+      (kit[piece] ||= []).push({ geometry: o.geometry.clone().applyMatrix4(o.matrixWorld), slot: o.material.name });
+    });
+    assets.kit = kit;
+  }));
   jobs.push(gl.loadAsync('assets/models/soldier.glb').then(g => {
     const body = g.scene.getObjectByName('vanguard_Mesh');
     g.allyMap = blueInsignia(body.material.map);

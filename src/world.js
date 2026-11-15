@@ -4,6 +4,7 @@ import { computeBoundsTree, disposeBoundsTree, acceleratedRaycast } from 'three-
 import { Builder } from './builder.js';
 import { NavGrid } from './physics.js';
 import { dress } from './dressing.js';
+import { buildQuarter, HALL, PLAZUELA, ATRIUM, QUARTER_SPAWNS, QUARTER_HOTSPOTS } from './quarter.js';
 import { rng, clamp } from './util.js';
 import { noise } from './materials.js';
 
@@ -13,9 +14,16 @@ THREE.Mesh.prototype.raycast = acceleratedRaycast;
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 export const FLOOR0 = 3.5, FLOORN = 3.05, PARAPET = 0.95, SIDEWALK = 0.14;
+// Passages (z ranges) cut through the east ring (x 31-46) into the new quarter: the two spawn streets and the two cross
+// streets carry on east. Their edges sit on the ring's own building joints, so no sliver of a house is left standing.
+export const GATES = [[-63, -55.57], [-23.27, -17], [17, 23], [57, 63]];
 
-const PLASTER_TINTS = [[0.97, 0.90, 0.76], [1.0, 0.86, 0.75], [0.78, 0.86, 0.93], [0.99, 0.97, 0.92], [0.93, 0.76, 0.62], [0.90, 0.91, 0.90], [0.98, 0.93, 0.84]];
-const GREY_TINTS = [[1.18, 1.10, 0.95], [1.10, 1.12, 1.14], [1.2, 1.03, 0.9], [0.9, 1.02, 1.12], [1.2, 1.17, 1.1]];
+// Lime-washed walls of a Mexican market town: terracotta, mustard, cobalt, white, coral, turquoise, cream on the painted
+// plaster; ochre, lavender, rosa, lime and a sun yellow on the grey plaster (its tints run brighter to lift the grey).
+const PLASTER_TINTS = [[1.02, 0.50, 0.33], [1.08, 0.80, 0.36], [0.46, 0.62, 1.0], [1.0, 0.98, 0.93], [1.06, 0.60, 0.48], [0.50, 0.92, 0.86], [1.04, 0.94, 0.78]];
+const GREY_TINTS = [[1.30, 0.94, 0.48], [1.02, 0.92, 1.25], [1.30, 0.70, 0.80], [0.95, 1.20, 0.62], [1.32, 1.18, 0.62]];
+// painted base bands and window surrounds: maroon, bottle green, cobalt, ochre, slate, oxblood, white
+const BANDS = [[0.42, 0.12, 0.10], [0.16, 0.34, 0.20], [0.16, 0.24, 0.52], [0.78, 0.50, 0.16], [0.34, 0.36, 0.38], [0.52, 0.16, 0.14], [0.96, 0.95, 0.92]];
 const STYLES = [
   { wall: 'w_plaster', tints: PLASTER_TINTS }, { wall: 'w_plaster', tints: PLASTER_TINTS }, { wall: 'w_plaster', tints: PLASTER_TINTS },
   { wall: 'w_plaster2', tints: GREY_TINTS }, { wall: 'w_plaster2', tints: GREY_TINTS },
@@ -25,6 +33,12 @@ const STYLES = [
   { wall: 'w_damaged', tints: [[1, 0.98, 0.94]], tile: 4.6 }, { wall: 'w_broken', tints: [[1, 1, 1]], tile: 4.4 },
 ];
 const SHUTTER_TINTS = [[0.35, 0.55, 0.50], [0.42, 0.52, 0.70], [0.75, 0.62, 0.45], [0.55, 0.36, 0.28], [0.85, 0.85, 0.80], [0.38, 0.46, 0.34]];
+// The architectural kit (assets/kit/kit.glb, see builder.kit) chooses by position, never from the random streams, so the
+// district's layout, cover, dressing and routes are exactly what they were without it.
+const hash = (...a) => { let h = 2166136261; for (const v of a) { h ^= Math.round(v * 997) | 0; h = Math.imul(h, 16777619); } return ((h >>> 0) % 1000003) / 1000003; };
+const UP = new THREE.Vector3(0, 1, 0), DOWN = new THREE.Vector3(0, -1, 0);
+const NEXT = { n: 'e', e: 's', s: 'w', w: 'n' }, PREV = { n: 'w', e: 'n', s: 'e', w: 's' };
+const TEJA = [1.05, 0.66, 0.47];                     // fired clay over the sandstone texture's grain
 const METAL_TINTS = [[1, 1, 1], [0.75, 0.85, 0.95], [0.85, 0.95, 0.8], [1, 0.9, 0.75], [0.7, 0.72, 0.75]];
 
 function frame(side, b) {
@@ -36,13 +50,27 @@ function frame(side, b) {
   }
 }
 
-export function buildWorld(R, M) {
-  const B = new Builder(), rnd = rng(20261114);
-  const buildings = [];
-  const anchors = [];      // hooks for dressing: { kind, p, N, T, w, bd }
+// How far away a merged cell of each material is still worth drawing (metres from the camera to the cell's bounds; the
+// renderer scales it per quality preset). Walls, roofs, ground and paving are always drawn; small things go first.
+// Small props and set dressing that is a few pixels across at that distance are not missed, and cost a draw call per cell.
+const LOD = {
+  d_stain: 45, d_patch: 45, d_scars: 35, matte: 40, glossy: 60, flowers: 90, cable: 70, bulb: 45, cloth_papel: 75, sign: 70, iron: 70, planks: 75, door: 80, dark: 80, glass: 85,
+  shutter_wood: 80, shutter_metal: 85, shutter_paint: 85, metal_white: 80, metal_green: 90, metal_plate: 70, corrugated: 85, tiles: 55, interior: 55, burlap: 55,
+  rubble: 70, plastic: 60, cloth_red: 90, cloth_green: 90, cloth_plain: 90, cloth_tarp: 95, rug: 70,
+};
+export const lodRange = m => {
+  if (m.name.startsWith('prop:')) return m.userData.noShadow ? 45 : 100;                   // small props (odd chunks) and the rest
+  return LOD[m.name] || 0;
+};
 
+// The district's architecture: facades, walk-in shops, buildings and rows of them, drawn into B with one random stream.
+// The old district and the new quarter each get their own (see buildWorld), so adding to one never reshuffles the other.
+// rs: a separate style stream for the decorative layer (painted base bands, window surrounds); it never touches rnd.
+export function architecture(B, rnd, buildings, anchors, rs = null, style = { band: 0, surround: 0 }) {
   // ---------------------------------------------------------------------------------------------- facade --------
-  function facade(bd, side) {
+  // force: draw a side that was deferred (bd.late), with this architecture's random stream.
+  function facade(bd, side, force = false) {
+    if (!force && bd.late && bd.late.includes(side)) return;
     const { O, T, N, L } = frame(side, bd);
     const H = bd.H, wall = bd.wall, wo = { color: bd.tint, tile: bd.tile, uo: bd.uo, vo: bd.vo };
     const P = (u, v, d = 0) => V(O.x + T.x * u - N.x * d, v, O.z + T.z * u - N.z * d);
@@ -68,18 +96,76 @@ export function buildWorld(R, M) {
     const hasFacade = bd.sides.includes(side);
     if (!hasFacade) { Q(wall, 0, 0, L, H); return; }
 
+    // ---- the architectural kit on this facade -------------------------------------------------------------------------
+    // KM: a kit piece's placement, its local X, Y, Z along the given axes (scaled) from the facade point (u, v, d).
+    const KM = (u, v, d, X, Y, Z, sx = 1, sy = 1, sz = 1) => new THREE.Matrix4().makeBasis(X.clone().multiplyScalar(sx), Y.clone().multiplyScalar(sy), Z.clone().multiplyScalar(sz)).setPosition(P(u, v, d));
+    const nT = T.clone().negate();
+    const kTrim = { trim: bd.kit.stone ? 'cantera' : 'concrete' }, oTrim = bd.kit.stone ? { color: [1, 1, 1], tile: 3.2 } : { color: bd.trim, tile: 2.0 };
+    // Outside corners where this facade meets the next (or the previous) one: a quarter metre of each wall is a worn,
+    // rounded corner piece instead (stacked a metre at a time, some of it chipped to the brick).
+    // (not on a side added later, force: its neighbours were drawn without knowing about it)
+    const cs0 = !force && bd.sides.includes(PREV[side]) ? 0.25 : 0, cs1 = !force && bd.sides.includes(NEXT[side]) ? 0.25 : 0;
+    // a sloped run of barrel tiles out from the wall on wooden rafters (a tejaroz along the eaves, a hood over a window)
+    const tiles = (ua, ub, v, depth, pitch, rafters) => {
+      const n = Math.max(1, Math.round((ub - ua) / 1.1)), w = (ub - ua) / n, c = Math.cos(pitch), s = Math.sin(pitch);
+      const Z = N.clone().multiplyScalar(c).addScaledVector(UP, -s), Y = UP.clone().multiplyScalar(c).addScaledVector(N, s);
+      const so = { slot: { tile: { color: TEJA, tile: 1.3 }, mortar: { color: [1.3, 1.62, 1.8], tile: 1.0 } } };     // (lime mortar on the same material: no draw call of its own)
+      for (let i = 0; i < n; i++) {
+        const u = ua + w * (i + 0.5);
+        B.kit('tile_patch', KM(u, v, 0, T, Y, Z, w / 1.1, 1, depth / 0.9), { tile: 'teja', mortar: 'teja' }, { ...so, lod: 'near' });
+        B.kit('tile_patch_lod1', KM(u, v, 0, T, Y, Z, w / 1.1, 1, depth / 0.9), { tile: 'teja' }, { ...so, lod: 'far' });
+      }
+      for (const u of rafters) B.kit('rafter', KM(u, v - 0.012, 0, T, Y, Z, 1, 1, depth + 0.08), { wood: 'door' }, { lod: 'near', slot: { wood: { color: [0.72, 0.6, 0.5], tile: 1.2 } } });
+    };
+
     const m = 0.55, nb = Math.max(1, Math.round((L - 2 * m) / 3.3)), bw = (L - 2 * m) / nb;
-    Q(wall, 0, 0, m, H); Q(wall, L - m, 0, L, H);
+    Q(wall, cs0, 0, m, H); Q(wall, L - m, 0, L - cs1, H);
+    if (cs1) {
+      for (let i = 0; i < Math.ceil(H - 1e-3); i++) {
+        const h = Math.min(1, H - i), r = hash(O.x + T.x * L, O.z + T.z * L, i);
+        const piece = h < 1 ? 'corner_a' : r < (i < 3 ? 0.2 : 0.05) ? 'corner_c' : r < (i < 3 ? 0.5 : 0.16) ? 'corner_b' : 'corner_a';
+        B.kit(piece, KM(L, i, 0, T, UP, N, 1, h, 1), { wall, brick: 'brick' }, { slot: { wall: wo, brick: { tile: 1.1 } } });   // (merged with the wall itself: no draw call of its own)
+      }
+    }
     const street = bd.street?.[side] || 'lane';
     const shops = (bd.shops || []).filter(s => s.side === side).map(s => s.bay);
     const frameKey = bd.frameIron ? 'iron' : 'planks', fo = { color: bd.frameTint, tile: 1.1 };
     const sh = { color: bd.shTint, uv: [0, 0, 1, 1] };
     let doors = 0;
+    const gaps = [];                                                           // ground-floor openings the painted base band stops at
 
     // window dressing ------------------------------------------------------------
+    // The frame round an opening: the flat painted frame, 8 mm proud, and near the camera moulded bars with corner blocks
+    // over it (stone, or plaster painted the surround's colour) and a keystone over a door.
+    const surround = (u0, v0, u1, v1, top = true, door = false) => {
+      const sr = bd.surround; if (!sr) return;
+      const w = sr.w, o = { color: sr.c, tile: 1.4 };
+      FB('paint', u0 - w, v0 - (v0 > 0.05 ? w : 0), u0, v1 + w, -0.008, 0, o); FB('paint', u1, v0 - (v0 > 0.05 ? w : 0), u1 + w, v1 + w, -0.008, 0, o);
+      if (top) FB('paint', u0, v1, u1, v1 + w, -0.008, 0, o);
+      if (v0 > 0.05) FB('paint', u0, v0 - w, u1, v0, -0.008, 0, o);
+      const fk = { trim: bd.kit.stone ? 'cantera' : 'w_plaster' }, fo = bd.kit.stone ? { tile: 3.2, color: [1, 1, 1], lod: 'near' } : { tile: 1.8, color: sr.c, lod: 'near' };
+      const s = w / 0.15, vb = v0 > 0.05 ? v0 - 0.075 : 0;                    // the jambs run down to the sill's underside, or the ground
+      if (top) {
+        B.kit('frame_bar', KM((u0 + u1) / 2, v1, 0, T, UP, N, u1 - u0, s, 1), fk, fo);
+        B.kit('frame_corner', KM(u0 - 0.075 * s, v1, 0, T, UP, N, s, s, 1), fk, fo); B.kit('frame_corner', KM(u1 + 0.075 * s, v1, 0, T, UP, N, s, s, 1), fk, fo);
+        if (door) B.kit('keystone', KM((u0 + u1) / 2, v1, 0, T, UP, N), fk, fo);
+      }
+      B.kit('frame_bar', KM(u0, (vb + v1) / 2, 0, UP, nT, N, v1 - vb, s, 1), fk, fo);
+      B.kit('frame_bar', KM(u1, (vb + v1) / 2, 0, DOWN, T, N, v1 - vb, s, 1), fk, fo);
+      if (door) for (const u of [u0 - w / 2, u1 + w / 2]) {                  // at the foot of a wall: solid for loose props
+        const c = P(u, v1 / 2, -0.026), ax = Math.abs(T.x) > 0.5;
+        B.detail(c.x, c.y, c.z, ax ? w : 0.06, v1, ax ? 0.06 : w, 0, 'concrete');
+      }
+    };
     const windowAt = (u0, v0, u1, v1, type, d) => {
       const uc = (u0 + u1) / 2, hw = (u1 - u0) / 2;
-      FB('concrete', u0 - 0.09, v0 - 0.075, u1 + 0.09, v0, -0.075, d * 0.6, { color: bd.trim });        // sill
+      if (v0 > 2) surround(u0, v0, u1, v1);
+      FB('concrete', u0 - 0.09, v0 - 0.07, u1 + 0.09, v0 - 0.012, -0.08, d * 0.6, { color: bd.trim });        // sill (inside the moulded one drawn near)
+      B.kit('sill', KM(uc, v0, 0, T, UP, N, u1 - u0 + 0.18 + (v0 > 2 && bd.surround ? 2 * bd.surround.w : 0), 1, 1), kTrim, { ...oTrim, lod: 'near' });
+      if (bd.kit.hoods && v0 > 2 && type !== 'dark') {                       // a little tile hood over the window
+        const e = (bd.surround ? bd.surround.w : 0) + 0.28;
+        tiles(u0 - e, u1 + e, v1 + (bd.surround ? bd.surround.w : 0) + 0.1, 0.46, 0.5, [u0 - e + 0.12, u1 + e - 0.12]);
+      }
       if (type === 'dark' || type === 'board') {
         Q('dark', u0, v0, u1, v1, d + 0.5, {});
         hole(u0, v0, u1, v1, d + 0.5, { color: [0.25, 0.24, 0.23], tile: bd.tile });
@@ -120,15 +206,17 @@ export function buildWorld(R, M) {
           if (kind === 'door') {
             doors++;
             const op = { u0: uc - 0.55, v0: 0, u1: uc + 0.55, v1: 2.32, d: 0.3 };
-            cell(cu0, v0, cu1, v1, op);
+            cell(cu0, v0, cu1, v1, op); gaps.push([op.u0, op.u1]); surround(op.u0, 0, op.u1, op.v1, true, true);
             const metal = rnd.chance(0.35);
             Q(metal ? 'metal_green' : 'door', op.u0, 0, op.u1, op.v1, op.d, { uv: [0, 0, 1, 1], color: metal ? rnd.pick(METAL_TINTS) : bd.doorTint });
+            if (!metal) for (const [u, leaf] of [[op.u0, 'door_leaf_l'], [op.u1, 'door_leaf_r']])       // near: two panelled leaves
+              B.kit(leaf, KM(u, 0, op.d - 0.004, T, UP, N), { wood: 'door', iron: 'iron' }, { lod: 'near', slot: { wood: { color: bd.doorTint, tile: 2.4 }, iron: { lod: null } } });
             FB(frameKey, op.u0, op.v1 - 0.07, op.u1, op.v1, op.d - 0.06, op.d, fo); FB(frameKey, op.u0, 0, op.u0 + 0.06, op.v1, op.d - 0.06, op.d, fo); FB(frameKey, op.u1 - 0.06, 0, op.u1, op.v1, op.d - 0.06, op.d, fo);
             FB('iron', op.u1 - 0.2, 1.02, op.u1 - 0.16, 1.14, op.d - 0.05, op.d);
             anchors.push({ kind: 'door', p: P(uc, 0, 0), N, T, w: 1.1, bd, street });
           } else if (kind === 'shutter') {
             const sw = Math.min(2.7, bw - 0.7), op = { u0: uc - sw / 2, v0: 0, u1: uc + sw / 2, v1: 2.72, d: 0.14 };
-            cell(cu0, v0, cu1, v1, op);
+            cell(cu0, v0, cu1, v1, op); gaps.push([op.u0 - 0.05, op.u1 + 0.05]);
             const key = rnd.pick(['shutter_metal', 'shutter_metal', 'corrugated']);
             Q(key, op.u0, 0, op.u1, op.v1, op.d, { tile: key === 'corrugated' ? 1.4 : 1.25, color: rnd.pick(METAL_TINTS), uo: rnd(), vo: rnd() });
             FB('iron', op.u0, 0, op.u0 + 0.04, op.v1, 0.02, op.d); FB('iron', op.u1 - 0.04, 0, op.u1, op.v1, 0.02, op.d);
@@ -137,7 +225,7 @@ export function buildWorld(R, M) {
             anchors.push({ kind: 'shutter', p: P(uc, 0, 0), N, T, w: sw, bd, street });
           } else if (kind === 'shop') {
             const op = { u0: cu0 + 0.28, v0: 0, u1: cu1 - 0.28, v1: 2.8, d: 0.32 };
-            cell(cu0, v0, cu1, v1, op);
+            cell(cu0, v0, cu1, v1, op); gaps.push([op.u0, op.u1]);
             shopRoom(bd, { P, T, N, street }, cu0 + 0.1, cu1 - 0.1, op);
             FB('shutter_metal', op.u0, 2.56, op.u1, 2.8, 0.06, 0.3, { tile: 1.2, color: [0.8, 0.8, 0.8] });
             anchors.push({ kind: 'shop', p: P(uc, 0, 0), N, T, w: op.u1 - op.u0, bd, street });
@@ -165,6 +253,7 @@ export function buildWorld(R, M) {
             }
             const a = cu0 + 0.22, b = cu1 - 0.22, dep = 1.05;
             FB('concrete', a, v0 - 0.16, b, v0, -dep, 0, { color: bd.trim });
+            for (const u of [a + 0.14, b - 0.14]) B.kit('corbel', KM(u, v0 - 0.16, 0, T, UP, N), kTrim, { ...oTrim, lod: 'near' });     // brackets under the slab
             if (bd.balcSolid) {
               FB(wall, a, v0, b, v0 + 0.95, -dep, -dep + 0.11, wo); FB(wall, a, v0, a + 0.11, v0 + 0.95, -dep + 0.11, 0, wo); FB(wall, b - 0.11, v0, b, v0 + 0.95, -dep + 0.11, 0, wo);
             } else {
@@ -183,13 +272,34 @@ export function buildWorld(R, M) {
           }
         }
       }
-      if (f > 0 && bd.ledge) FB('concrete', 0, v0 - 0.085, L, v0 + 0.085, -0.07, 0, { color: bd.trim });
+      if (f > 0 && bd.ledge) {                                                   // moulded string course, mitred round a corner
+        const a = cs0 ? 0.12 : 0, b = L - (cs1 ? 0.12 : 0);
+        B.kit('string', KM((a + b) / 2, v0, 0, T, UP, N, b - a, 1, 1), kTrim, oTrim);
+        if (cs1) B.kit('string_corner', KM(L, v0, 0, T, UP, N), kTrim, oTrim);
+      }
     }
-    if (bd.cornice) FB('concrete', 0, H + PARAPET - 0.2, L, H + PARAPET - 0.06, -0.09, 0, { color: bd.trim });
+    if (bd.band && street !== 'none') {                                       // the painted base band (guardapolvo), stopping at doors and shutters
+      const c = bd.band.c, h = bd.band.h, line = [c[0] * 0.75, c[1] * 0.75, c[2] * 0.75];
+      const seg = (u0, u1) => { FB('paint', u0, 0, u1, h, -0.012, 0, { color: c, tile: 1.6 }); FB('paint', u0, h, u1, h + 0.05, -0.016, 0, { color: line, tile: 1.6 }); };     // with a darker pin-line on top
+      let a = cs0 ? 0.03 : 0; const e = L - (cs1 ? 0.03 : 0);                  // (kept off the worn corners)
+      for (const [g0, g1] of gaps.sort((p, q) => p[0] - q[0])) { if (g0 - a > 0.05) seg(a, g0); a = Math.max(a, g1); }
+      if (e - a > 0.05) seg(a, e);
+    }
+    if (bd.cornice) {                                                            // the main cornice at the roofline
+      const a = cs0 ? 0.32 : 0, b = L - (cs1 ? 0.32 : 0), y = H - 0.2;
+      B.kit('cornice', KM((a + b) / 2, y, 0, T, UP, N, b - a, 1, 1), kTrim, oTrim);
+      if (cs1) B.kit('cornice_corner', KM(L, y, 0, T, UP, N), kTrim, oTrim);
+    }
+    if (bd.kit.tejaroz) {                                                        // or a tiled eave on rafters
+      const ua = cs0 ? 0 : 0.12, ub = L - (cs1 ? 0 : 0.12), raf = [];
+      for (let u = ua + 0.35; u < ub - 0.2; u += 0.75) raf.push(u);
+      tiles(ua, ub, H + 0.04, 0.72, 0.42, raf);
+    }
     // pipes, conduits, scars
     if (rnd.chance(0.65)) {
       const u = rnd.chance(0.5) ? 0.28 : L - 0.28, p = P(u, 0, -0.085), len = H + 0.3;
       B.geom(rnd.chance(0.5) ? 'metal_white' : 'iron', new THREE.CylinderGeometry(0.055, 0.055, len, 8), new THREE.Matrix4().makeTranslation(p.x, 0.25 + len / 2, p.z), { color: [0.75, 0.75, 0.75], uvScale: 1, uvScaleY: len });
+      B.detail(p.x, 1.5, p.z, 0.11, 2.5, 0.11, 0, 'metal');
       for (let y = 1; y < H; y += 2.1) FB('iron', u - 0.08, y, u + 0.08, y + 0.04, -0.15, 0);
     }
     if (rnd.chance(0.55)) { const y = FLOOR0 - rnd.range(0.12, 0.4), a = rnd.range(0.3, L * 0.4); FB('iron', a, y, L - rnd.range(0.2, L * 0.3), y + 0.028, -0.03, 0); FB('iron', a, y - rnd.range(0.8, 2), a + 0.028, y, -0.03, 0); }
@@ -228,15 +338,31 @@ export function buildWorld(R, M) {
     B.quad('interior', P(op.u0, 0, d1), P(ra - 0.4, 0, d1), P(ra - 0.4, t, d1), P(op.u0, t, d1), it);        // (kept short of the next bay's shutter recess)
     B.quad('interior', P(rb + 0.4, 0, d1), P(op.u1, 0, d1), P(op.u1, t, d1), P(rb + 0.4, t, d1), it);
     B.quad('interior', P(op.u1, op.v1, d1), P(op.u0, op.v1, d1), P(op.u0, t, d1), P(op.u1, t, d1), it);
+    // a bare bulb on its flex in the middle of the room: lit (the light bake takes it as a lamp)
+    const lb = P((ra + rb) / 2, h - 0.5, D * 0.55), lc = P((ra + rb) / 2, h - 0.22, D * 0.55);
+    B.box('cable', lc.x, lc.y, lc.z, 0.008, 0.46, 0.008, { solid: false });
+    B.geom('bulb', new THREE.SphereGeometry(0.05, 10, 8), new THREE.Matrix4().makeTranslation(lb.x, lb.y, lb.z));
+    B.lamp(lb.x, lb.y - 0.04, lb.z);
     const a = P(ra, 0, 0), b = P(rb, 0, D);
     bd.carves.push({ x0: Math.min(a.x, b.x), x1: Math.max(a.x, b.x), z0: Math.min(a.z, b.z), z1: Math.max(a.z, b.z) });
+    // the strips of front wall either side of the opening are drawn solid but fall inside the carved-out room: solid for
+    // loose props (as movement colliders they would have made new cover spots and changed where soldiers run to)
+    const ax = Math.abs(fr.T.x) > 0.5;
+    for (const [u0, u1] of [[ra, op.u0], [op.u1, rb]]) {
+      const c = P((u0 + u1) / 2, 0, d0 / 2);
+      B.detail(c.x, h / 2, c.z, ax ? u1 - u0 : d0, h, ax ? d0 : u1 - u0, 0, 'plaster');
+    }
+    // a raised floor (shops on the main street sit at pavement height) is something to stand on, not 14 cm of tiles to sink into
+    if (y > 0.05) { const c = P((ra + rb) / 2, 0, (0 + D) / 2); B.collide(c.x, (y - 0.5) / 2, c.z, ax ? rb - ra : D, y + 0.5, ax ? D : rb - ra, 0, 'tile'); }
     anchors.push({ kind: 'room', P, ra, rb, D, y, h, N: fr.N, T: fr.T, bd });
   }
 
   // ---------------------------------------------------------------------------------------------- building ------
   function building(x0, x1, z0, z1, o = {}) {
     const st = o.style ?? rnd.pick(STYLES), floors = o.floors ?? rnd.pick([2, 2, 3, 3, 3]);
+    const was = B.mute; if (o.ghost) B.mute = true;              // a ghost is generated (same random draws) and thrown away: a passage replaces it
     const bd = {
+      ghost: !!o.ghost, late: o.late || '',
       x0, x1, z0, z1, floors, H: FLOOR0 + (floors - 1) * FLOORN, wall: st.wall, tint: o.tint || rnd.pick(st.tints),
       tile: st.tile || rnd.range(2.6, 3.2), uo: rnd(), vo: rnd(), sides: o.sides || 'nsew', street: o.street || {}, shops: o.shops || [],
       trim: rnd.pick([[0.86, 0.84, 0.8], [0.75, 0.74, 0.72], [0.95, 0.9, 0.82]]), shTint: rnd.pick(SHUTTER_TINTS), doorTint: rnd.pick([[1, 1, 1], [0.7, 0.8, 0.85], [0.6, 0.75, 0.6], [0.85, 0.7, 0.55]]),
@@ -247,19 +373,33 @@ export function buildWorld(R, M) {
       winTypes: rnd.pick([['shut', 'open', 'glass', 'half', 'glass'], ['glass', 'glass', 'dark', 'board', 'shut'], ['open', 'half', 'shut', 'shut', 'glass'], ['glass', 'dark', 'open', 'glass', 'board']]),
       carves: [], roofAccess: !!o.roofAccess, parapetGap: o.parapetGap,
     };
+    if (rs) {
+      const shade = k => [bd.tint[0] * k, bd.tint[1] * k, bd.tint[2] * k];
+      bd.band = rs() < (o.band ?? style.band) ? { h: rs.range(0.85, 1.2), c: rs() < 0.45 ? shade(rs.range(0.42, 0.6)) : rs.pick(BANDS) } : null;
+      bd.surround = rs() < (o.surround ?? style.surround) ? { w: rs.range(0.1, 0.16), c: rs() < 0.5 ? [0.97, 0.96, 0.92] : rs.pick(BANDS) } : null;
+    }
+    // the kit's choices for this building: stone (cantera) or plaster trim, a tiled eave instead of a cornice, tile hoods
+    const hk = k => hash(x0, z0, x1, z1, k);
+    bd.kit = { stone: hk(1) < 0.38, tejaroz: !bd.cornice && floors >= 2 && hk(2) < 0.34, hoods: hk(3) < 0.24 };
     buildings.push(bd);
     for (const s of 'nsew') facade(bd, s);
     const H = bd.H, wo = { color: bd.tint, tile: bd.tile, uo: bd.uo, vo: bd.vo }, pt = 0.26, py = H + PARAPET / 2;
     B.quad('concrete', V(x0, H, z1), V(x1, H, z1), V(x1, H, z0), V(x0, H, z0), { tile: 3, color: [0.78, 0.76, 0.72] });
+    // the parapet's moulded coping (kit), crowned and dripped on both faces
+    const cTrim = { trim: bd.kit.stone ? 'cantera' : 'concrete' }, cO = bd.kit.stone ? { color: [1, 1, 1], tile: 3.2 } : { color: bd.trim, tile: 2.0 };
+    const coping = (cx, cz, sx, sz) => {
+      const along = sz > sx ? new THREE.Vector3(0, 0, 1) : new THREE.Vector3(1, 0, 0), len = Math.max(sx, sz) + 0.04;
+      B.kit('coping', new THREE.Matrix4().makeBasis(along.clone().multiplyScalar(len), UP, along.clone().cross(UP)).setPosition(cx, H + PARAPET, cz), cTrim, cO);
+    };
     const par = (cx, cz, sx, sz, side) => {
       const g = bd.parapetGap;
       if (g && g.side === side) {     // split around a gap (z-range) for roof access
         const zA = cz - sz / 2, zB = cz + sz / 2;
-        for (const [a, b] of [[zA, g.a], [g.b, zB]]) { B.box(bd.wall, cx, py, (a + b) / 2, sx, PARAPET, b - a, wo); B.box('concrete', cx, H + PARAPET + 0.035, (a + b) / 2, sx + 0.08, 0.07, b - a + 0.04, { color: bd.trim }); if (bd.roofAccess) B.collide(cx, py, (a + b) / 2, sx, PARAPET, b - a); }
+        for (const [a, b] of [[zA, g.a], [g.b, zB]]) { B.box(bd.wall, cx, py, (a + b) / 2, sx, PARAPET, b - a, wo); coping(cx, (a + b) / 2, sx, b - a); if (bd.roofAccess) B.collide(cx, py, (a + b) / 2, sx, PARAPET, b - a); }
         return;
       }
       B.box(bd.wall, cx, py, cz, sx, PARAPET, sz, wo);
-      B.box('concrete', cx, H + PARAPET + 0.035, cz, sx + 0.08, 0.07, sz + 0.08, { color: bd.trim });
+      coping(cx, cz, sx, sz);
       if (bd.roofAccess) B.collide(cx, py, cz, sx, PARAPET, sz);
     };
     par(x1 - pt / 2, (z0 + z1) / 2, pt, z1 - z0, 'e'); par(x0 + pt / 2, (z0 + z1) / 2, pt, z1 - z0, 'w');
@@ -282,6 +422,7 @@ export function buildWorld(R, M) {
     for (const r of rects) B.collide((r.x0 + r.x1) / 2, (top - 1) / 2, (r.z0 + r.z1) / 2, r.x1 - r.x0, top + 1, r.z1 - r.z0, 0, bd.wall === 'w_brick' ? 'brick' : 'plaster');
     for (const c of bd.carves) B.collide((c.x0 + c.x1) / 2, (3.0 + top) / 2, (c.z0 + c.z1) / 2, c.x1 - c.x0, top - 3.0, c.z1 - c.z0, 0, 'plaster');
     anchors.push({ kind: 'roof', bd });
+    B.mute = was;
     return bd;
   }
 
@@ -299,6 +440,14 @@ export function buildWorld(R, M) {
       a += len; k++;
     }
   }
+  return { facade, shopRoom, building, row };
+}
+
+export function buildWorld(R, M) {
+  const B = new Builder(), rnd = rng(20261114);
+  const buildings = [];
+  const anchors = [];      // hooks for dressing: { kind, p, N, T, w, bd }
+  const { building, row } = architecture(B, rnd, buildings, anchors, rng(31337), { band: 0.55, surround: 0.4 });     // (the style stream only adds paint: bands and window surrounds)
 
   // ---- city blocks ---------------------------------------------------------------------------------------------------
   // west of main street (their east faces line the street, west faces line the alley)
@@ -313,7 +462,9 @@ export function buildWorld(R, M) {
   building(-27, -17, 1.2, 17, { floors: 3, sides: 'nsew', street: { e: 'plaza', w: 'alley', n: 'cross', s: 'lane' }, shops: [{ side: 'e', bay: 2 }] });
   // outer ring
   row(-46, -31, -80, 80, 'z', { sides: 'e', street: { e: 'alley' }, min: 9, max: 15, each: () => ({ floors: rnd.pick([2, 3, 3, 4]) }) });
-  row(31, 46, -80, 80, 'z', { sides: 'w', street: { w: 'market' }, min: 9, max: 15, each: k => ({ floors: rnd.pick([2, 3, 3, 4]), shops: k % 3 === 1 ? [{ side: 'w', bay: 1 }] : [] }) });
+  // (the east ring now also fronts the new quarter: its east faces are drawn later, and the stretches the four passages
+  // cut through are generated as ghosts and rebuilt round the passages, so nothing else in the district moves)
+  row(31, 46, -80, 80, 'z', { sides: 'w', street: { w: 'market' }, min: 9, max: 15, each: (k, a, len) => ({ floors: rnd.pick([2, 3, 3, 4]), shops: k % 3 === 1 ? [{ side: 'w', bay: 1 }] : [], ghost: GATES.some(([g0, g1]) => a < g1 - 0.05 && a + len > g0 + 0.05), late: 'e' }) });
   row(-31, 31, -80, -63, 'x', { sides: 'n', street: { n: 'cross' }, min: 9, max: 14, each: () => ({ floors: rnd.pick([2, 3, 3]) }) });
   row(-31, 31, 63, 80, 'x', { sides: 's', street: { s: 'cross' }, min: 9, max: 14, each: () => ({ floors: rnd.pick([3, 3, 4]) }) });
 
@@ -375,20 +526,27 @@ export function buildWorld(R, M) {
   }
 
   // ---- dressing (props, stalls, cloth, palms, cables…) ---------------------------------------------------------------
-  const ctx = { B, M, rnd, buildings, anchors, low };
+  const ctx = { B, M, rnd, buildings, anchors, low, gates: GATES, rs: rng(4711) };
   dress(ctx);
+  const ghosts = buildings.filter(b => b.ghost);
+  for (const g of ghosts) buildings.splice(buildings.indexOf(g), 1);            // from here on the passages are open ground
+
+  // ---- the market quarter east of the ring (its own random streams) ---------------------------------------------------
+  const quarter = buildQuarter({ B, M, buildings, anchors, ghosts, gates: GATES, architecture, FLOOR0, PARAPET });
 
   // ---- ground: 1 m grid with blend weights (x = paving, y = sand, z = stain) -----------------------------------------
   {
-    const X0 = -70, X1 = 70, Z0 = -104, Z1 = 104, nx = X1 - X0, nz = Z1 - Z0;
+    const X0 = -70, X1 = 132, Z0 = -104, Z1 = 104, nx = X1 - X0, nz = Z1 - Z0;
+    const own = [...quarter.paved, [HALL.x0, HALL.x1, HALL.z0, HALL.z1], [PLAZUELA.x0, PLAZUELA.x1, PLAZUELA.z0, PLAZUELA.z1], [ATRIUM.x0, ATRIUM.x1, ATRIUM.z0, ATRIUM.z1]];
+    const underOwn = (x, z) => own.some(([a, b, c, d]) => x >= a - 1e-6 && x + 1 <= b + 1e-6 && z >= c - 1e-6 && z + 1 <= d + 1e-6);   // a whole 1 m cell under the quarter's paving
     const inside = (x, z) => { for (const b of buildings) if (x > b.x0 + 0.4 && x < b.x1 - 0.4 && z > b.z0 + 0.4 && z < b.z1 - 0.4 && !b.carves.length) return true; return false; };
     const distB = (x, z) => { let d = 9; for (const b of buildings) { const dx = Math.max(b.x0 - x, 0, x - b.x1), dz = Math.max(b.z0 - z, 0, z - b.z1); const q = Math.hypot(dx, dz); if (q < d) d = q; } return d; };
     const nd = noise.image.data, nAt = (x, z, s, ch) => nd[(((Math.floor(z * s) % 256) + 256) % 256 * 256 + ((Math.floor(x * s) % 256) + 256) % 256) * 4 + ch] / 255;
     const wts = new Float32Array((nx + 1) * (nz + 1) * 3);
     for (let j = 0; j <= nz; j++) for (let i = 0; i <= nx; i++) {
       const x = X0 + i, z = Z0 + j, o = (j * (nx + 1) + i) * 3;
-      const inMap = Math.abs(x) < 31.5 && Math.abs(z) < 63.5;
-      const road = inMap && (Math.abs(x) <= 4.2 || [-60, -20, 20, 60].some(c => Math.abs(z - c) <= 3.2));
+      const inMap = (Math.abs(x) < 31.5 || (x > 30 && x < 96.5)) && Math.abs(z) < 63.5;
+      const road = inMap && x < 31.5 && (Math.abs(x) <= 4.2 || [-60, -20, 20, 60].some(c => Math.abs(z - c) <= 3.2));
       const alley = x <= -26.5 && x >= -31.5, market = x >= 25.5 && x <= 31.5, plaza = x > -17.5 && x < -5 && Math.abs(z) < 17.5;
       let pave = road ? 0 : 1, sand = 0.0;
       if (alley) { pave = 0.9; sand = 0.3; }
@@ -399,12 +557,12 @@ export function buildWorld(R, M) {
       sand += 0.6 * Math.exp(-d / 0.8) + (nAt(x, z, 2.1, 0) - 0.5) * 0.35 + (road && Math.abs(Math.abs(x) - 4) < 0.7 ? 0.45 : 0) + (road ? Math.max(0, nAt(x, z, 0.6, 1) - 0.62) * 1.6 : 0);
       wts[o] = pave; wts[o + 1] = clamp(sand, 0, 1); wts[o + 2] = 0;
     }
-    for (const a of anchors) if (a.kind === 'stain') {       // oil / soot patches left by vehicles and fires
+    for (const a of [...anchors, ...quarter.anchors]) if (a.kind === 'stain') {       // oil / soot patches left by vehicles and fires
       for (let j = 0; j <= nz; j++) for (let i = 0; i <= nx; i++) { const d = Math.hypot(X0 + i - a.x, Z0 + j - a.z); if (d < a.r) wts[(j * (nx + 1) + i) * 3 + 2] = Math.max(wts[(j * (nx + 1) + i) * 3 + 2], (1 - d / a.r) * a.s); }
     }
     for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
       const x = X0 + i, z = Z0 + j;
-      if (inside(x + 0.5, z + 0.5)) continue;
+      if (inside(x + 0.5, z + 0.5) || underOwn(x, z)) continue;
       const w = (ii, jj) => { const o = (jj * (nx + 1) + ii) * 3; return [wts[o], wts[o + 1], wts[o + 2]]; };
       B.quad('ground', V(x, 0, z + 1), V(x + 1, 0, z + 1), V(x + 1, 0, z), V(x, 0, z), { tile: 3.2, xs: [w(i, j + 1), w(i + 1, j + 1), w(i + 1, j), w(i, j)] });
     }
@@ -416,28 +574,34 @@ export function buildWorld(R, M) {
   const meshes = B.build(M), rayMeshes = [], clothMeshes = [];      // rayMeshes: what stops a bullet's ray. clothMeshes: awnings, laundry, rugs: a round goes through, a thrown object does not
   const group = new THREE.Group(); group.name = 'world';
   for (const m of meshes) {
-    m.castShadow = !m.name.startsWith('d_') && !['ground', 'cable', 'dark', 'glass', 'matte'].includes(m.name) && !m.userData.noShadow; m.receiveShadow = true;
+    m.castShadow = !m.name.startsWith('d_') && !['ground', 'cable', 'dark', 'glass', 'matte', 'paint', 'sign', 'bulb'].includes(m.name) && !m.userData.noShadow; m.receiveShadow = true;    // (paint and signs lie flat on walls: nothing to cast)
+    const lod = lodRange(m); if (lod) m.userData.lod = lod;
     m.matrixAutoUpdate = false;
-    if (m.name === 'frond' || m.name.startsWith('d_')) m.userData.noAO = true;
+    if (m.name === 'frond' || m.name === 'leaves' || m.name === 'flowers' || m.name.startsWith('d_')) m.userData.noAO = true;
     if (m.name.startsWith('d_')) m.renderOrder = 2;
     if (!m.material.userData.noBVH && !m.userData.noBVH && !m.name.startsWith('d_')) { m.geometry.computeBoundsTree({ maxLeafTris: 8 }); rayMeshes.push(m); }
-    else if (m.material.userData.noBVH && m.name !== 'frond' && !m.name.startsWith('d_')) { m.geometry.computeBoundsTree({ maxLeafTris: 8 }); m.userData.cloth = true; clothMeshes.push(m); }
+    else if (m.material.userData.noBVH && m.name !== 'frond' && m.name !== 'leaves' && m.name !== 'flowers' && !m.name.startsWith('d_')) { m.geometry.computeBoundsTree({ maxLeafTris: 8 }); m.userData.cloth = true; clothMeshes.push(m); }
     group.add(m);
   }
   R.scene.add(group); R.setupTree(group);
 
-  const nav = new NavGrid(B.colliders, -48, -82, 48, 82);
+  const nav = new NavGrid(B.colliders, -48, -82, 113, 82);
   const spawns = {
-    0: [[-29, -60], [0, -60.5], [28.5, -60], [-14, -60], [14, -60], [-3, -52], [3, -55]].map(([x, z]) => ({ x, z, yaw: 0 })),
-    1: [[-29, 60], [0, 60.5], [28.5, 60], [-14, 60], [14, 60], [-3, 52], [3, 55]].map(([x, z]) => ({ x, z, yaw: Math.PI })),
+    0: [[-29, -60], [0, -60.5], [28.5, -60], [-14, -60], [14, -60], [-3, -52], [3, -55], ...QUARTER_SPAWNS[0]].map(([x, z]) => ({ x, z, yaw: 0 })),
+    1: [[-29, 60], [0, 60.5], [28.5, 60], [-14, 60], [14, 60], [-3, 52], [3, 55], ...QUARTER_SPAWNS[1]].map(([x, z]) => ({ x, z, yaw: Math.PI })),
   };
   for (const sp of [...spawns[0], ...spawns[1]]) if (!nav.free(sp.x, sp.z)) nav.center(nav.nearestFree(sp.x, sp.z), sp);      // dressing may have parked something on a spawn point
   const tris = meshes.reduce((s, m) => s + (m.geometry.index ? m.geometry.index.count / 3 : 0), 0);
-  console.info(`world: ${meshes.length} meshes, ${Math.round(tris / 1000)}k tris, ${B.colliders.length} colliders, ${buildings.length} buildings, ${B.dynamic.length} loose props`);
+  console.info(`world: ${meshes.length} meshes, ${Math.round(tris / 1000)}k tris, ${B.colliders.length} colliders, ${B.details.length} detail solids, ${buildings.length} buildings, ${B.dynamic.length} loose props${B.dropped.length ? ` (${B.dropped.length} left out: no clear spot)` : ''}`);
   const surfaceAt = (x, z) => {
-    if (Math.abs(x) > 46 || Math.abs(z) > 80) return 'dirt';
+    if (x < -46 || x > 111 || Math.abs(z) > 80) return 'dirt';
+    if (x > HALL.x0 && x < HALL.x1 && z > HALL.z0 && z < HALL.z1) return 'tile';
     for (const b of buildings) if (b.carves.length && x > b.x0 && x < b.x1 && z > b.z0 && z < b.z1) return 'tile';
     return 'concrete';
   };
-  return { group, colliders: B.colliders, rayMeshes, clothMeshes, buildings, nav, spawns, anchors, surfaceAt, dynamic: B.dynamic, emitters: B.emitters };
+  // The east ring is a solid wall between the districts but for the four passages: what the renderer needs to know to
+  // leave out the side the camera cannot see (its lowest roofline, and the passages it can see through).
+  const ringRoof = Math.min(...buildings.filter(b => b.x0 === 31 && b.x1 === 46).map(b => b.H + (b.roofAccess ? 0 : PARAPET)));
+  const zones = { x0: 31, x1: 46, split0: 22, split1: 46, roof: ringRoof, gates: quarter.passages };
+  return { group, colliders: B.colliders, details: B.details, rayMeshes, clothMeshes, buildings, nav, spawns, anchors, surfaceAt, dynamic: B.dynamic, emitters: B.emitters, lamps: B.lamps, quarterHotspots: QUARTER_HOTSPOTS, zones };
 }

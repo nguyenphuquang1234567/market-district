@@ -1,6 +1,7 @@
 // Scripted acceptance run through the real game systems. In the browser console: await G.selfTest()
 // Uses fixed time steps and the seeded RNGs, so results are repeatable.
 import { BOT_RELOAD_DURATION } from './weapon.js';
+import { scan as clipScan, shove as clipShove } from './clipcheck.js';
 
 export function selfTest(G) {
   const P = G.player, W = G.weapon, out = [], $ = id => document.getElementById(id), clamp1 = v => Math.max(-1, Math.min(1, v));
@@ -72,6 +73,30 @@ export function selfTest(G) {
   for (let i = 0; i < 90; i++) { run(1, 1 / 30); P.health = 100; }
   const fights = G.bots.list.reduce((s, b) => s + b.kills, 0);
   check('bots navigate, engage and score on their own (90 s)', fights >= 3, `${fights} eliminations, score ${G.score}`);
+  // --- the market quarter: one navigation grid over both districts, and a soldier who actually walks there and back
+  {
+    park(); const nav = G.world.nav, Q = G.world.quarterHotspots || [];
+    const from = [[0, -60.5], [0, 60.5], [-29, 0], [28.4, -40], [-11, 5]];
+    let routes = 0, missing = []; for (const h of Q) for (const f of from) { if (nav.path(f[0], f[1], h[0], h[1])) routes++; else missing.push(`${f}→${h}`); }
+    for (const a of G.world.spawns[0]) for (const b of G.world.spawns[1]) { if (nav.path(a.x, a.z, b.x, b.z)) routes++; else missing.push(`spawn ${a.x},${a.z}→${b.x},${b.z}`); }
+    check('every spot in the market quarter can be routed to from the old district, and every spawn to every enemy spawn', Q.length > 20 && !missing.length, missing.length ? missing.slice(0, 4).join('; ') : `${routes} routes`);
+    const walker = dummy(2, 28.4, -21, Math.PI / 2);
+    const trip = (gx, gz, secs) => {                                            // under direct orders: route, then jog it (no decisions of his own on the way)
+      walker.setGoal(gx, gz, false); walker.think = 1e9; walker.state = 'advance'; walker.onPath = true; walker.wishDir = null; walker.wishSpeed = walker.pace.jog;
+      let t = 0, stuck = 0, k = 0, last = { x: walker.pos.x, z: walker.pos.z };
+      while (t < secs && Math.hypot(walker.pos.x - gx, walker.pos.z - gz) > 1.2) {
+        G.step(2, 1 / 60); t += 1 / 30;
+        if (++k % 60 === 0) { if (Math.hypot(walker.pos.x - last.x, walker.pos.z - last.z) < 0.3) stuck++; last = { x: walker.pos.x, z: walker.pos.z }; }
+      }
+      return { t, d: Math.hypot(walker.pos.x - gx, walker.pos.z - gz), stuck };
+    };
+    const into = trip(69, -5, 40), back = trip(0, -30, 50);
+    check('a soldier walks from the market lane through a passage into the market hall, and back to the main street', into.d < 1.5 && back.d < 1.5 && into.stuck + back.stuck < 2,
+      `in: ${into.t.toFixed(1)} s, ${into.d.toFixed(1)} m short; back: ${back.t.toFixed(1)} s, ${back.d.toFixed(1)} m short; stalls ${into.stuck + back.stuck}`);
+    park();
+  }
+  const fought = clipScan(G, { min: 0.03 });
+  check('clutter knocked about in the fighting is not left inside walls (90 s)', !fought.length, fought.length ? fought.slice(0, 3).map(r => `${r.name} at ${r.now} ${Math.max(r.boxPen, r.drawnPen) * 100 | 0} cm into ${r.what || r.surf}`).join('; ') : 'all clear');
 
   // --- firing on the run
   G.resetMatch(); G.playing = true; G.hud.show(null); park();
@@ -84,7 +109,8 @@ export function selfTest(G) {
   let prop = null, from = null;
   for (const it of Rg.props) {
     if (it.name !== 'chair' && it.name !== 'plastic_crate' && it.name !== 'stool') continue;
-    for (const [dx, dz] of [[0, -2.2], [0, 2.2], [2.2, 0], [-2.2, 0]]) { const x = it.home.x + dx, z = it.home.z + dz; if (nav.free(x, z) && nav.walkable(x, z, it.home.x + dx * 0.35, it.home.z + dz * 0.35)) { prop = it; from = { x, z, yaw: Math.atan2(-dx, -dz) }; break; } }
+    // open ground to walk in from, and room beyond for it to go (one against a wall is held there by the wall)
+    for (const [dx, dz] of [[0, -2.2], [0, 2.2], [2.2, 0], [-2.2, 0]]) { const x = it.home.x + dx, z = it.home.z + dz, bx = it.home.x - dx * 0.75, bz = it.home.z - dz * 0.75; if (nav.free(x, z) && nav.free(bx, bz) && nav.walkable(x, z, bx, bz)) { prop = it; from = { x, z, yaw: Math.atan2(-dx, -dz) }; break; } }
     if (prop) break;
   }
   if (prop) {
@@ -100,6 +126,16 @@ export function selfTest(G) {
     check('bullets knock loose clutter about', knocked > 0.03, `${G.stats.shots - hits0} rounds moved it ${knocked.toFixed(2)} m`);
   } else check('a loose prop with open ground beside it exists', false, 'none found');
   P.sim = { f: 0, s: 0 };
+
+  // --- loose props never sit in walls: none is dressed into anything solid, and a chair shoved against a wall stays out of it
+  Rg.reset(); run(0.5);
+  const atRest = clipScan(G, { min: 0.015 });                                 // (a stacked crate settles a centimetre into the pavement under the load: contact tolerance, not visible)
+  check('no loose prop starts inside anything solid', !atRest.length, atRest.length ? atRest.slice(0, 3).map(r => `${r.name} at ${r.now} ${Math.max(r.boxPen, r.drawnPen) * 100 | 0} cm into ${r.what || r.surf}`).join('; ') : `${Rg.props.length} props clear`);
+  const shoves = [-50.5, -40, -33.5, 49].map(z => clipShove(G, { z }));
+  const worstShove = shoves.reduce((a, b) => (Math.max(b.boxPen, b.drawnPen) > Math.max(a.boxPen, a.drawnPen) ? b : a));
+  check('a chair shoved against a wall is not pushed into it', shoves.every(s => s.boxPen < 0.02 && s.drawnPen < 0.03),
+    `worst ${(worstShove.boxPen * 100).toFixed(1)} cm into the wall box, ${(worstShove.drawnPen * 100).toFixed(1)} cm behind the drawn ${worstShove.what || 'surface'} (z ${worstShove.z})`);
+  Rg.reset(); P.sim = { f: 0, s: 0 };
 
   // --- ragdoll: the body falls under physics, the rifle drops, and a corpse is left when the soldier respawns
   park(); G.goto(0, -50, 0); let dead = dummy(5, 0, -44); run(0.3);

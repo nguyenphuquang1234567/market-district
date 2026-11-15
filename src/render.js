@@ -1,6 +1,7 @@
 // Renderer, HDRI sky, sun + cascaded shadows, and the HDR post stack.
 import * as THREE from 'three';
 import { CSM } from 'three/addons/csm/CSM.js';
+import { CSMFrustum } from 'three/addons/csm/CSMFrustum.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
@@ -11,10 +12,10 @@ import { clamp, damp } from './util.js';
 import { noise } from './materials.js';
 
 export const PRESETS = {
-  low:    { maxPR: 1.0,  scale: 0.7, shadow: 1024, cascades: 2, shadowFar: 90,  msaa: 0, ao: false, bloom: false, aoSamples: 8,  aoScale: 0.5, soft: false },
-  medium: { maxPR: 1.0,  scale: 0.9, shadow: 2048, cascades: 3, shadowFar: 120, msaa: 2, ao: true,  bloom: true,  aoSamples: 8,  aoScale: 0.5, soft: false },
-  high:   { maxPR: 1.25, scale: 1.0, shadow: 2048, cascades: 3, shadowFar: 140, msaa: 4, ao: true,  bloom: true,  aoSamples: 12, aoScale: 0.5, soft: false },
-  ultra:  { maxPR: 1.4,  scale: 1.0, shadow: 4096, cascades: 4, shadowFar: 170, msaa: 4, ao: true,  bloom: true,  aoSamples: 16, aoScale: 0.5, soft: true },   // measured: full-res AO cost 6.5 ms for little gain; the 4k cascades are nearly free
+  low:    { maxPR: 1.0,  scale: 0.7, shadow: 1024, cascades: 2, shadowFar: 90,  msaa: 0, ao: false, bloom: false, aoSamples: 8,  aoScale: 0.5, soft: false, lod: 0.7 },
+  medium: { maxPR: 1.0,  scale: 0.9, shadow: 2048, cascades: 3, shadowFar: 120, msaa: 2, ao: true,  bloom: true,  aoSamples: 8,  aoScale: 0.5, soft: false, lod: 0.85 },
+  high:   { maxPR: 1.25, scale: 1.0, shadow: 2048, cascades: 3, shadowFar: 140, msaa: 4, ao: true,  bloom: true,  aoSamples: 12, aoScale: 0.5, soft: false, lod: 1.0 },
+  ultra:  { maxPR: 1.4,  scale: 1.0, shadow: 4096, cascades: 4, shadowFar: 170, msaa: 4, ao: true,  bloom: true,  aoSamples: 16, aoScale: 0.5, soft: true, lod: 1.35 },   // measured: full-res AO cost 6.5 ms for little gain; the 4k cascades are nearly free
 };
 
 const SUN_PHI = THREE.MathUtils.degToRad(-60);   // sun azimuth: from +x (east) towards -z (south) = late morning
@@ -78,10 +79,11 @@ const FinalShader = {
     tDiffuse: { value: null }, uRes: { value: new THREE.Vector2(1, 1) }, uTime: { value: 0 },
     uVignette: { value: 0.22 }, uGrain: { value: 0.018 }, uCA: { value: 0.6 }, uSharp: { value: 0.22 },
     uDamage: { value: 0 }, uDesat: { value: 0 }, uFlash: { value: 0 }, uBlur: { value: new THREE.Vector2() },
+    uSat: { value: 1.08 }, uWarm: { value: new THREE.Vector3(1.035, 1.0, 0.94) }, uCool: { value: new THREE.Vector3(0.975, 0.99, 1.03) },
   },
   vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
   fragmentShader: `
-    uniform sampler2D tDiffuse; uniform vec2 uRes, uBlur; uniform float uTime, uVignette, uGrain, uCA, uSharp, uDamage, uDesat, uFlash;
+    uniform sampler2D tDiffuse; uniform vec2 uRes, uBlur; uniform float uTime, uVignette, uGrain, uCA, uSharp, uDamage, uDesat, uFlash, uSat; uniform vec3 uWarm, uCool;
     varying vec2 vUv;
     float hash(vec2 p){ vec3 p3 = fract(vec3(p.xyx) * .1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
     void main(){
@@ -97,6 +99,10 @@ const FinalShader = {
         col = mix(col, acc / 11.0, smoothstep(0.02, 0.2, r2));
       }
       col *= 1.0 - uVignette * smoothstep(0.12, 0.80, r2 * 1.7);
+      // grade: a little more colour in the lime-washed walls and papel picado, sunlit tones warmed, shade a touch cooler
+      // (balanced so neither end gets darker: shade stays readable)
+      float lg = dot(col, vec3(.2126, .7152, .0722));
+      col = mix(vec3(lg), col, uSat) * mix(uCool, uWarm, smoothstep(0.12, 0.8, lg));
       float l = dot(col, vec3(.2126, .7152, .0722));
       col = mix(col, vec3(l), uDesat);
       float edge = smoothstep(0.16, 0.72, r2 * 1.9);          // damage tint hugs the frame edge; the centre stays readable
@@ -178,7 +184,10 @@ class MeterPass extends Pass {
     if (!this.sync && (this.pending || ++this.frame % 4)) return;
     this.quad.material.uniforms.tDiffuse.value = readBuffer.texture;
     renderer.setRenderTarget(this.rt); this.quad.render(renderer);
-    if (this.sync) { renderer.readRenderTargetPixels(this.rt, 0, 0, 32, 18, this.buf); this.read(); return; }
+    if (this.sync) {                 // (an asynchronous read still in flight leaves its pack buffer bound, which would make this one fail)
+      const gl = renderer.getContext(); gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
+      renderer.readRenderTargetPixels(this.rt, 0, 0, 32, 18, this.buf); this.read(); return;
+    }
     this.pending = true;
     renderer.readRenderTargetPixelsAsync(this.rt, 0, 0, 32, 18, this.buf).then(() => { this.read(); }).catch(() => {}).finally(() => { this.pending = false; });
   }
@@ -233,14 +242,30 @@ export function createRenderer(canvas, skyTex, presetName) {
 
   // --- sun + cascaded shadow maps ---------------------------------------------------------------------------------
   const sunIntensity = clamp(sky.Esun, 7 * sky.E, 9 * sky.E);     // the HDRI's own direct light, held to a clear-sky direct:diffuse ratio
-  const sunColor = new THREE.Color(1.0, 0.955, 0.87);
+  const sunColor = new THREE.Color(1.0, 0.94, 0.84);                  // late-morning sun through a little dust: a shade warmer than before
   const csm = new CSM({
     camera, parent: scene, cascades: Q.cascades, maxFar: Q.shadowFar, mode: 'practical', shadowMapSize: Q.shadow,
-    lightDirection: sky.sunDir.clone().negate(), lightIntensity: sunIntensity, lightNear: 1, lightFar: 500, lightMargin: 140,
+    lightDirection: sky.sunDir.clone().negate(), lightIntensity: sunIntensity, lightNear: 1, lightFar: 500, lightMargin: 45,
     shadowBias: -0.00012,
   });
   csm.fade = true;
   for (const l of csm.lights) { l.color.copy(sunColor); l.shadow.normalBias = 0.035; l.shadow.autoUpdate = false; l.shadow.needsUpdate = true; }
+
+  // CSM puts each cascade's light lightMargin metres sunward of its slice of the view but leaves the far plane at
+  // lightFar (500 m), so every cascade also drew whatever lies beyond its slice away from the sun: things that cannot
+  // shadow anything in view. Each far plane is pulled in to the back of its own slice. (45 m of margin still holds
+  // casters up to 30 m tall at this sun height; the tallest thing in the district is 16 m.)
+  const lightOrient = new THREE.Matrix4(), lightInv = new THREE.Matrix4(), camToLight = new THREE.Matrix4(), box = new THREE.Box3(), up = new THREE.Vector3(0, 1, 0), origin = new THREE.Vector3(), lf = new CSMFrustum();
+  const fitShadowDepth = () => {
+    lightOrient.lookAt(origin, csm.lightDirection, up); lightInv.copy(lightOrient).invert();
+    camToLight.multiplyMatrices(lightInv, camera.matrixWorld);
+    csm.frustums.forEach((f, i) => {
+      const sc = csm.lights[i].shadow.camera; f.toSpace(camToLight, lf);
+      box.makeEmpty(); for (let k = 0; k < 4; k++) { box.expandByPoint(lf.vertices.near[k]); box.expandByPoint(lf.vertices.far[k]); }
+      const far = csm.lightMargin + (box.max.z - box.min.z) + 4;
+      if (Math.abs(sc.far - far) > 0.5) { sc.far = far; sc.updateProjectionMatrix(); }
+    });
+  };
 
   // Every lit material must go through this: cascades, the material's own patch, then the shared indirect-light patch.
   const prepared = new WeakSet();
@@ -310,7 +335,7 @@ export function createRenderer(canvas, skyTex, presetName) {
   const saveStep = () => { try { localStorage.setItem(stepKey, step); } catch { /* private mode */ } };
   try { const v = +localStorage.getItem(stepKey); if (v > 0 && v < STEPS.length) step = Math.floor(v); } catch { /* ignore */ }
   const api = {
-    renderer, scene, camera, composer, csm, setup, setupTree, sky, sunDir: sky.sunDir, sunColor, sunIntensity, haze, Q, final: final.uniforms, sceneDepth: sceneRT.depthTexture, wind,
+    renderer, scene, camera, composer, csm, setup, setupTree, sky, sunDir: sky.sunDir, sunColor, sunIntensity, haze, Q, final: final.uniforms, sceneRT, sceneDepth: sceneRT.depthTexture, wind,
     exposureTarget: 0.85, baseExposure: 0.85, renderScale: STEPS[step], adaptive: true, meter, autoExposure: true, keyLum: 0.125, exposure: 0.85,
     resize() {
       const w = canvas.clientWidth || window.innerWidth, h = canvas.clientHeight || window.innerHeight;
@@ -334,6 +359,66 @@ export function createRenderer(canvas, skyTex, presetName) {
         step++; slowT = 0; holdT = (12 + step * 6) * backoff; api.renderScale = STEPS[step]; api.resize(); ema = 16.7; saveStep();
       } else if (fastT > 6 && holdT <= 0 && step > 0) { step--; fastT = 0; holdT = 20; sinceUp = 0; api.renderScale = STEPS[step]; api.resize(); ema = 16.7; saveStep(); }
     },
+    // Distance culling of small things (userData.lod, metres; see world.js) and the far cascade's layer: details are not
+    // drawn into the outermost shadow cascade, whose texels are too coarse for them anyway.
+    lodScale: Q.lod ?? 1, lodList: null, zones: null, zoneList: null, zoneHidden: 0, kitNear: 30,
+    cull() {
+      if (!api.lodList) {
+        api.lodList = []; api.zoneList = [];
+        const z = api.zones, bb = new THREE.Box3();
+        scene.traverse(o => {
+          if (!o.isMesh) return;
+          if (!o.geometry.boundingSphere) o.geometry.computeBoundingSphere();
+          const s = o.geometry.boundingSphere.clone().applyMatrix4(o.matrixWorld);
+          if (o.userData.lod || o.userData.kitLod) api.lodList.push({ o, s });
+          if (z && o.parent?.name === 'world') {                             // the merged district, cell by cell: which side of the ring
+            const side = s.center.x < z.split0 ? -1 : s.center.x > z.split1 ? 1 : 0;
+            if (side) { if (!o.geometry.boundingBox) o.geometry.computeBoundingBox(); bb.copy(o.geometry.boundingBox).applyMatrix4(o.matrixWorld); api.zoneList.push({ o, side, x0: bb.min.x, x1: bb.max.x, z0: bb.min.z, z1: bb.max.z, y1: bb.max.y }); }
+          }
+        });
+      }
+      const p = camera.position, k = api.lodScale, kn = api.kitNear * k;
+      for (const { o, s } of api.lodList) {
+        const u = o.userData; let vis = !u.lod || p.distanceTo(s.center) - s.radius < u.lod * k;
+        if (u.kitLod) {                                   // the architectural kit: detailed pieces near, plain stand-ins beyond
+          const b = u.lodBox, dx = Math.max(b[0] - p.x, 0, p.x - b[2]), dz = Math.max(b[1] - p.z, 0, p.z - b[3]), near = dx * dx + dz * dz < kn * kn;
+          vis = vis && (u.kitLod === 'near' ? near : !near);
+        }
+        o.visible = vis;
+      }
+      api.zoneHidden = 0;
+      const z = api.zones;
+      for (const e of api.zoneList) if (!e.o.userData.lod && !e.o.userData.kitLod) e.o.visible = true;     // (the distance pass above has already set the others for this frame)
+      if (z) {
+        // Zone culling. From street level on one side of the east ring, a cell on the other side shows only through one of
+        // the passages or over the ring's roofs. Both tests are conservative: the passage is a wedge of view through both of
+        // its mouths, and the roof test takes the ring's lowest roofline and the cell's nearest top.
+        const side = p.x < z.x0 ? -1 : p.x > z.x1 ? 1 : 0, low = p.y < z.roof - 0.3;
+        if (side && low) {
+          const near = side < 0 ? z.x0 : z.x1, far = side < 0 ? z.x1 : z.x0, ang = (x, zz) => Math.atan2(zz - p.z, (x - p.x) * -side);
+          const wedges = [];
+          for (const [g0, g1] of z.gates) {
+            const a0 = Math.min(ang(near, g0), ang(near, g1)), a1 = Math.max(ang(near, g0), ang(near, g1)), b0 = Math.min(ang(far, g0), ang(far, g1)), b1 = Math.max(ang(far, g0), ang(far, g1));
+            const lo = Math.max(a0, b0) - 0.01, hi = Math.min(a1, b1) + 0.01; if (lo < hi) wedges.push([lo, hi]);
+          }
+          for (const e of api.zoneList) {
+            if (e.side !== -side || !e.o.visible) continue;
+            const ex = side < 0 ? e.x0 : e.x1, t = (near - p.x) / (ex - p.x);
+            if (p.y + (e.y1 - p.y) * t > z.roof) continue;                           // its top shows over the roofs
+            let lo = Infinity, hi = -Infinity;
+            for (const x of [e.x0, e.x1]) for (const zz of [e.z0, e.z1]) { const a = ang(x, zz); lo = Math.min(lo, a); hi = Math.max(hi, a); }
+            if (wedges.some(([a, b]) => lo < b && hi > a)) continue;                   // seen through a passage
+            e.o.visible = false; api.zoneHidden++;
+          }
+        }
+      }
+      if (api.onCull) api.onCull(p, k);
+    },
+    farShadowLayer() {                                                    // everything already in the scene casts in the far cascade except the detail meshes
+      scene.traverse(o => { if (!o.userData.lod && o.userData.kitLod !== 'near') o.layers.enable(2); });
+      const far = csm.lights[csm.lights.length - 1];
+      if (csm.lights.length > 2) far.shadow.camera.layers.set(2);
+    },
     render(dt, time) {
       if (Math.abs(camera.fov - lastFov) > 0.05) { camera.updateProjectionMatrix(); csm.updateFrustums(); lastFov = camera.fov; }
       // eye adaptation from the metered frame: partial compensation (shade stays moodier than sun), quick into light, slower into dark
@@ -342,7 +427,8 @@ export function createRenderer(canvas, skyTex, presetName) {
       renderer.toneMappingExposure = api.exposure = exposure;
       final.uniforms.uTime.value = time; skyMat.uniforms.uTime.value = time;
       giUniforms.uCloud.value.x = -wind.x * time * 0.0085; giUniforms.uCloud.value.y = -wind.y * time * 0.0085;
-      csm.update();
+      csm.update(); fitShadowDepth();
+      api.cull();
       // nearest cascade every frame, the rest in rotation (their lookups stay valid: each keeps the matrix it was drawn with)
       const n = csm.lights.length; frameNo++;
       for (let i = 0; i < n; i++) if (i === 0 || n < 3 || frameNo < 8 || (i - 1) === frameNo % (n - 1)) csm.lights[i].shadow.needsUpdate = true;

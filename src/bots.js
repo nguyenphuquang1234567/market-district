@@ -7,6 +7,7 @@ import { poseBotRifle, setUpBotRifle } from './bot-rifle.js';
 import { STEP, STRIDE_STEP, resolveXZ, groundAt, rayBoxes, losClear } from './physics.js';
 import { rng, clamp, lerp, damp, smooth, angDiff } from './util.js';
 import { CONTACT, STRAFE_STRIDE, BACK_STRIDE, bakeDirectionalGaits, applyDirectionalGait, directionBlend } from './soldier-gait.js';
+import { QUARTER_HOTSPOTS } from './quarter.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 const BODY_RADIUS = 0.39;
@@ -143,7 +144,7 @@ function calibrate(bot) {
 class Bot {
   constructor(G, team, idx, shared) {
     this.G = G; this.team = team; this.idx = idx; this.name = NAMES[team][idx % NAMES[team].length]; this.isPlayer = false;
-    this.rnd = rng(1000 + team * 100 + idx * 7);
+    this.rnd = rng(1000 + team * 100 + idx * 7); this.qrnd = rng(5000 + team * 100 + idx * 7);
     // No two people move alike: each soldier has a preferred pace and a taste in routes.
     const temper = rng(77 + team * 31 + idx * 13);
     this.pace = { walk: 1.5 + temper() * 0.32, jog: 3.25 + temper() * 0.45, run: 4.55 + temper() * 0.5, sway: temper() * 6.28, caution: temper() };
@@ -302,10 +303,12 @@ class Bot {
     if (rep.length && R() < 0.7) { const r = rep[rep.length - 1]; this.setGoal(r.pos.x + (R() - 0.5) * 6, r.pos.z + (R() - 0.5) * 6, true); return; }
     const dirZ = this.team === 0 ? 1 : -1, hx = Math.sin(this.heading), hz = Math.cos(this.heading);
     let best = null, bs = -1e9;
-    for (const h of HOTSPOTS) {
+    // (the market quarter's spots draw their dice from a stream of their own, so each soldier's own stream, and with it
+    // everything he does in the old district, runs as it did before the quarter was built)
+    for (const [list, roll] of [[HOTSPOTS, R], [QUARTER_HOTSPOTS, this.qrnd]]) for (const h of list) {
       const dx = h[0] - this.pos.x, dz = h[1] - this.pos.z, d = Math.hypot(dx, dz);
       // towards the other side of the district, not the spot just left, and rarely straight back the way they came
-      const sc = dz * dirZ * 0.04 + R() * 2.2 - Math.abs(dx) * 0.012 - (d < 8 ? 3 : 0) + (d > 1 ? (dx * hx + dz * hz) / d * 0.45 : 0);
+      const sc = dz * dirZ * 0.04 + roll() * 2.2 - Math.abs(dx) * 0.012 - (d < 8 ? 3 : 0) + (d > 1 ? (dx * hx + dz * hz) / d * 0.45 : 0);
       if (sc > bs) { bs = sc; best = h; }
     }
     if (R() < 0.4) this.haltT = 1.3 + R() * 2.6;                                        // some places are worth a look round; most are walked through

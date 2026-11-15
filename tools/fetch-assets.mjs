@@ -21,6 +21,10 @@ const TEX = {
   rusty_metal_shutter: '1k', corrugated_iron_02: '1k', rusty_metal_02: '1k', green_metal_rust: '1k', metal_plate: '1k',
   fabric_pattern_07: '1k', fabric_pattern_05: '1k', cotton_jersey: '1k', hessian_230: '1k', dirty_carpet: '1k',
   palm_tree_bark: '1k',
+  // the market quarter: river-stone street paving, terracotta floor tiles, red brick, pink building stone (cantera),
+  // painted roll-up shutters, corrugated roofing
+  cobblestone_floor_13: '2k', terracotta_floor_tiles: '1k', castle_brick_02_red: '1k', red_sandstone_wall: '1k',
+  painted_metal_shutter: '1k', worn_corrugated_iron: '1k',
 };
 
 const MODELS = [

@@ -37,16 +37,17 @@ async function start() {
   const settings = loadSettings();
   const probe = new THREE.WebGLRenderer({ canvas: document.createElement('canvas') });
   const assets = await loadAssets(probe, p => { $('bootBar').style.width = (p * 82).toFixed(0) + '%'; });
-  probe.dispose();
+  probe.dispose(); performance.mark('boot:assets');
   $('bootText').textContent = 'Building district'; $('bootBar').style.width = '88%';
   await new Promise(r => setTimeout(r, 30));
 
   const R = createRenderer(canvas, assets.sky, settings.quality);
   const M = createMaterials();
-  const world = buildWorld(R, M);
+  const world = buildWorld(R, M); performance.mark('boot:world');
   $('bootText').textContent = 'Lighting'; $('bootBar').style.width = '90%';
   await new Promise(r => setTimeout(r, 30));
   const gi = await setupGI(R, world, M, p => { $('bootText').textContent = `Baking light ${Math.round(p * 100)}%`; }, !!params.get('bake'));
+  performance.mark('boot:gi');
   const G = window.G = { R, M, world, settings, THREE, gi, time: 0, playing: false, matchLive: false, score: [0, 0], timeLeft: MATCH.time, stats: { shots: 0, hits: 0 } };
   G.audio = new Audio();
   G.audio.cast = (ox, oy, oz, dx, dy, dz, max) => rayBoxes(ox, oy, oz, dx, dy, dz, max, world.colliders, null);       // echoes and occlusion use the real walls
@@ -243,6 +244,7 @@ async function start() {
 
   // ---- test / capture hooks (same systems as normal play) -------------------------------------------------------------------
   // Manual stepping renders every 4th step so metering and exposure settle the way they do on screen.
+  G.setClock = t => { wall = t; };          // captures: the same drifting clouds and cloud shadows in every run
   G.step = (n = 1, dt = 1 / 60) => { R.meter.sync = true; for (let i = 0; i < n; i++) { simulate(dt); wall += dt; windUniforms.uTime.value = wall; if (i % 4 === 3 && i < n - 1) R.render(dt * 4, wall); } R.render(dt, wall); R.meter.sync = false; };
   G.capture = async (name, w, h) => {
     if (w) { canvas.style.width = w + 'px'; canvas.style.height = h + 'px'; }
@@ -286,7 +288,7 @@ async function start() {
   // Synchronous benchmark: simulate + render n frames, waiting on the GPU each time (independent of display vsync / tab throttling).
   G.bench = (n = 240, dt = 1 / 60) => {
     const gl = R.renderer.getContext(), ts = [], px = new Uint8Array(4); G.manual = true;
-    for (let i = 0; i < n; i++) { const t0 = performance.now(); G.step(1, dt); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); ts.push(performance.now() - t0); }   // readPixels forces the GPU to finish
+    for (let i = 0; i < n; i++) { const t0 = performance.now(); G.step(1, dt); gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); ts.push(performance.now() - t0); }   // readPixels forces the GPU to finish (it fails, and does not wait, while the exposure meter's async read holds a pack buffer)
     G.manual = false; last = performance.now();
     ts.splice(0, Math.min(20, ts.length - 1)); ts.sort((a, b) => a - b);
     const avg = ts.reduce((a, b) => a + b, 0) / ts.length, i = R.renderer.info.render, c = R.renderer.domElement;
@@ -301,17 +303,58 @@ async function start() {
 
   $('bootText').textContent = 'Compiling shaders'; $('bootBar').style.width = '94%';
   await new Promise(r => setTimeout(r, 30));
+  R.farShadowLayer();                                  // (once everything that casts is in the scene)
+  R.zones = world.zones;
+  R.onCull = (p, k) => G.rigid.cullProps(p, 70 * k);  // loose clutter out of reach is not drawn
   G.weapon.root.visible = true; for (const b of G.bots.list) { b.root.visible = true; b.gun.visible = true; }
   G.throw.warm(true);
-  try { await R.renderer.compileAsync(R.scene, R.camera); } catch (e) { console.warn(e); }
+  // Compile for the target the scene is really drawn into (linear half-float, tone mapped later): compiled for the
+  // screen, a material gets a tone-mapped sRGB program nothing uses and still compiles on first sight in play. Twice:
+  // with the first-person weapon shown, and hidden as while the player is dead, which also hides its muzzle light,
+  // and a different light count is a different program for every lit material (first death froze for 0.3-0.5 s).
+  const precompile = async () => {
+    R.renderer.setRenderTarget(R.sceneRT);
+    const ready = R.renderer.compileAsync(R.scene, R.camera);   // (programs are chosen synchronously, for the bound target)
+    R.renderer.setRenderTarget(null);
+    try { await ready; } catch (e) { console.warn(e); }
+  };
+  await precompile();
+  G.weapon.root.visible = false; await precompile(); G.weapon.root.visible = true;
+  // Upload every texture now as well: three.js sends a texture to the GPU the first time something drawn uses it, and
+  // the market quarter's twenty-odd maps arriving in one frame stalled the first look at it for over 100 ms.
+  const sent = new Set(), send = t => { if (t && t.isTexture && !t.isRenderTargetTexture && !sent.has(t)) { sent.add(t); R.renderer.initTexture(t); } };
+  R.scene.traverse(o => {
+    for (const m of [o.material].flat()) {
+      if (!m) continue;
+      for (const v of Object.values(m)) send(v);
+      if (m.uniforms) for (const u of Object.values(m.uniforms)) send(u && u.value);
+      if (m.userData.layers) for (const v of Object.values(m.userData.layers)) send(v);
+    }
+  });
   R.render(0.016, 0);                                  // warm every pipeline before the first interactive frame
   G.weapon.root.visible = false; for (const b of G.bots.list) { b.root.visible = false; b.gun.visible = false; }
   G.throw.warm(false); G.throw.puffs.reset();
-  $('boot').remove();
+  $('boot').remove(); performance.mark('boot:ready');
+  // Load-time phases in ms since navigation: assets fetched and decoded, district built, light loaded or baked, shaders and textures warmed.
+  G.bootTimes = () => Object.fromEntries(['assets', 'world', 'gi', 'ready'].map(k => [k, Math.round(performance.getEntriesByName('boot:' + k)[0]?.startTime ?? -1)]));
   G.hud.show('start');
   G.los = (a, b) => losClear(a, b, world.colliders) && !G.throw.smoked(a, b);
+  if (params.get('bench')) runBench(G, params.get('bench'));        // dev: timings and captures with no console at hand (the native window)
   if (params.get('auto') || params.get('demo')) G.autoStart();
   if (params.get('demo')) { G.demo = demoDriver(G); G.frozen = false; G.audio.start(); }
   requestAnimationFrame(frame);
 }
 start().catch(e => { $('bootText').textContent = 'Error: ' + e.message; console.error(e); });
+
+// ?bench=<tag>: once loaded, time the fixed views (tools/perf-probe.js, median of three), estimate GPU memory, note the
+// load-time phases, save the comparison captures (tools/compare-shots.js), and post it all to captures/ as bench_<tag>.
+async function runBench(G, tag) {
+  const post = (name, body) => fetch('/__capture/' + name, { method: 'POST', body });
+  await new Promise(r => setTimeout(r, 1500));
+  const perf = await import('/tools/perf-probe.js'), cmp = await import('/tools/compare-shots.js');
+  const res = { tag, when: new Date().toISOString(), ua: navigator.userAgent, boot: G.bootTimes() };
+  const p = await perf.median(G); res.size = p.size; res.views = p.views; res.memory = p.memory;
+  await post(`bench_${tag}.json`, JSON.stringify(res, null, 1));
+  if (!/noshots/.test(location.search)) await cmp.shots(G, tag);
+  await post(`bench_${tag}_done.json`, '{}');
+}

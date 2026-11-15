@@ -57,10 +57,17 @@ Key bindings live in the same saved settings object (`binds`, including `frag` a
 
 - **Rendering** — HDR pipeline with ACES tone mapping; a 4k HDRI sky; the sun is located in the HDRI, removed from it, and
   replaced by a directional light with cascaded soft shadows; screen-space ambient occlusion (GTAO); bloom on genuinely bright
-  pixels only; 4× MSAA; restrained turn blur, vignette, grain.
-- **Bounce lighting** — a baked irradiance volume (93 × 8 × 161 probes at 1 m spacing, first-order spherical harmonics,
-  ray-traced against the real geometry with sky occlusion, sun bounce and two further bounces, light through cloth). Shade,
-  alleys, the covered lane and shop interiors are lit by what they can actually see rather than by an unoccluded sky.
+  pixels only; 4× MSAA; restrained turn blur, vignette, grain. Textures are KTX2 (Basis UASTC, see `tools/encode-ktx2.mjs`),
+  transcoded off the main thread to the GPU's own block format (ASTC 4×4 on Apple GPUs, BC7 elsewhere) with their mip chains,
+  so they take a quarter of the video memory of decoded JPEGs; every shader is compiled and every texture uploaded at boot.
+- **Bounce lighting** — a baked irradiance volume (158 × 8 × 161 probes at 1 m spacing over both districts, first-order spherical harmonics,
+  ray-traced against the real geometry: 96 rays a probe, the ray set turned by a different angle at each probe so neighbours
+  do not share the same gaps, sky occlusion, sun bounce and three further bounces, light through cloth, and the lit bulbs as
+  point lights: one over every stall in the market hall and one on its flex in every walk-in shop). Shade, alleys, the
+  covered lane and shop interiors are lit by what they can actually see rather than by an unoccluded sky; rooms and the hall
+  get warm pools of light round their bulbs, falling off into darker corners. The hall's corrugated roof is painted and
+  rusted sheet (not bare metal), so its underside picks up the light bounced off the floor. The bake takes about 30 s and is
+  cached in `assets/gi.bin`.
   The physically correct result leaves alleys at a tenth of the open-sky light and rooms at a fiftieth, so the shader
   range-compresses it (`uGiLift` in `src/render.js`: exponent and floor): shade stays shade, but nowhere is too dark to read.
 - **Exposure and sky** — exposure is metered from the rendered frame (log-average luminance) and adapts quickly into light,
@@ -70,6 +77,34 @@ Key bindings live in the same saved settings object (`binds`, including `frag` a
   walk-in shops, an exterior stair to a low rooftop. Buildings have real window and door depth, shutters, bars, balconies,
   parapets, pipes, cables and rooftop clutter. Surfaces are scanned PBR texture sets with world-space weathering on top;
   props are scanned models simplified at load.
+- **Architectural kit** — mouldings and details modelled in Blender from a script (`tools/blender/kit.py`, swept profiles,
+  bevels and boolean cuts; `assets/kit/kit.glb`) and fitted to every house in both districts by `world.js`: moulded
+  window sills with a drip groove, window and door surrounds in pink cantera or painted plaster with corner blocks and a
+  keystone over doors, panelled double doors with raised fields and an iron pull, moulded string courses between floors,
+  a cornice at the roofline with mitred outside corners, crowned parapet copings, stone corbels under balconies, tiled
+  eaves (tejaroz) of clay barrel tiles on wooden rafters on some houses and small tile hoods over some windows (every tile
+  its own shell, shaded tile by tile, the eave tiles' mouths closed with lime mortar), and worn street corners: a quarter
+  metre of each wall at every outside corner is a rounded arris, chipped in places down to the brick, stacked a metre at
+  a time. Each piece's texture is projected in world space, exactly as the walls are, so plaster runs on across a corner
+  and stone across a frame. The kit decides by position, never from the random streams: the layout, cover, dressing and
+  routes are unchanged. Near the camera (30 m from a 24 m cell, scaled by the quality preset) the detailed pieces are
+  drawn over the flat stand-ins that were there before (painted frames, box sills, plain doors); further off only the
+  stand-ins and a corrugated low-detail version of the tiles are drawn, and the detail stays out of the farthest shadow
+  cascade.
+- **The market quarter** — a second district (x 46…111, about 65 × 160 m; west on the in-game compass, behind the
+  covered market lane) reached through four passages cut in the ring of houses behind the lane, which carry on the two
+  spawn streets and the two cross streets. Cobbled streets: *Calle del Mercado* along the ring, *Calle Sur* and *Calle
+  Norte*, an outer street and a new outer ring of houses. An iron market hall (28 × 24 m) in the manner of the
+  early-1900s mercados: a raised nave with an open clerestory and skylights, lean-to aisles on slim green columns, a
+  brick and stone portal facing Calle del Mercado and five more ways in through low brick walls that leave it open
+  above waist height, a terracotta floor, islands of stalls with their goods, painted signs and bulbs on flex, and a
+  canopy of papel picado. A *plazuela* with a raised kiosk, a laurel in a planter, café tables and umbrellas, and a
+  parish chapel with a pink-stone doorway, a bell gable (espadaña) with three bells, a tiled dome and a walled atrium. The architecture is a Mexican colonial-market vernacular rather than
+  any particular place: lime plaster in ochre, terracotta, pink, cobalt and lime green over a darker base band, cantera
+  door and window surrounds, rebar left standing on flat roofs, roller shutters, talavera tile panels, hand-painted
+  shop signs (all generic), papel picado strung across the streets, striped tarps, bougainvillea, ristras and piñatas.
+  The old district gets the same palette, bands, surrounds and papel picado (its layout, cover and routes are unchanged).
+  The design notes are in `docs/superpowers/specs/2026-11-15-mercado-quarter-design.md`.
 - **Weapon** — a procedurally modelled M4-pattern carbine with a tube red dot (the reticle is collimated in the shader, so it
   stays on the bore line as the view moves) and a weapon light with tape switch; finish with micro-normal grain, edge wear
   driven by surface curvature, and light dust on upward faces. Gloved hands are modelled as smooth distance-field surfaces
@@ -78,7 +113,8 @@ Key bindings live in the same saved settings object (`binds`, including `frag` a
   impacts and decals, light penetration and ricochets. Reloads bring the rifle up, the hand strips and seats the magazine,
   and the bolt closes as the support hand returns after an empty reload.
 - **Bots** — rigged soldiers with separate low-ready and shouldered rifle poses, a support hand that follows the weapon,
-  and a visible magazine extraction and insertion. They navigate with A* on a 1 m grid, see only inside a field
+  and a visible magazine extraction and insertion. They navigate with A* on a 1 m grid that covers both districts and
+  the passages between them (and pick objectives in the market quarter as well as the old streets), see only inside a field
   of view (which follows where the head is turned) with line of sight and a detection delay, react to gunfire and footsteps
   with an uncertain position, share sightings after a delay, use cover and peek, fire in bursts, reload, search after losing
   contact, and respawn out of sight.
@@ -160,11 +196,13 @@ Key bindings live in the same saved settings object (`binds`, including `frag` a
   often on Easy): he runs to cover that would hide a crouching man if he can reach it in time, otherwise straight
   away from it, gets down, and afterwards goes looking for where it came from. Bursts are heard across the district,
   leave soldiers nearby dazed (slower to pick out a target, wilder shooting) and keep heads down. Bots do not throw.
-- **Physics** — a rigid-body world (Rapier) built from the district's collision boxes. 160-odd pieces of loose clutter
+- **Physics** — a rigid-body world (Rapier) built from the district's collision boxes. About 330 pieces of loose clutter
   (chairs, crates, cans, bins, tyres, pots, baskets, gas bottles, hand trucks…) rest as dressed until disturbed, then can be
   shoved by walking into them and knocked about by bullets, with material-dependent mass, friction and bounce; light
   materials let a round through, dense ones stop it. Heavy cover (barriers, steel drums, sandbags) stays fixed so cover
-  stays cover.
+  stays cover. Every prop is placed only where its hull clears the walls and the small solid details (sills, steps, door
+  stubs), and soldiers push clutter with a light dynamic body whose acceleration is capped, so a chair walked into a
+  wall stops at the wall instead of being driven through it (props also use continuous collision).
 - **Ragdolls** — a kill hands the soldier to eleven jointed bodies built from the pose at that instant: hinged knees and
   elbows with anatomical limits, limited ball joints with a little muscle tone elsewhere, a shove from the round that
   killed. The rifle drops as its own body. Bodies react to further hits, and when the soldier respawns the body and rifle
@@ -228,6 +266,67 @@ physics step averaged 0.18 ms a frame and the whole frame 12.4 ms.
 About 1,300–2,200 draw calls and 1.8–3.3 M triangles per frame across the main and shadow passes. Low is limited by draw
 calls rather than pixels, so it is not much faster than Medium.
 
+**With the market quarter** — `tools/perf-probe.js`, `median()`: each view timed to GPU completion over 110 frames, the
+median of three passes after a warm-up pass, bots parked, High at 1890×1057, embedded Chromium on the same machine. The
+baseline is `main` checked out in a separate worktree and measured the same way in the same session:
+
+| View | `main` | This build | Change | Draw calls | Triangles |
+| --- | --- | --- | --- | --- | --- |
+| Main street, long sightline | 14.37 ms | 13.80 ms | −4.0 % | 1998 → 1789 | 3.03 M → 2.47 M |
+| Arch and plaza | 12.30 ms | 13.56 ms | +10.2 % | 1659 → 1690 | 2.58 M → 2.67 M |
+| Covered market lane | 13.79 ms | 13.07 ms | −5.2 % | 1838 → 1457 | 2.84 M → 2.41 M |
+| Laundry alley | 13.28 ms | 12.62 ms | −5.0 % | 1774 → 1496 | 2.68 M → 2.02 M |
+| Market lane through the north passage | — | 11.09 ms | | 1293 | 2.21 M |
+| Market hall, from Calle del Mercado | — | 12.15 ms | | 1482 | 2.18 M |
+| Inside the market hall | — | 11.55 ms | | 1318 | 2.00 M |
+| Plazuela and kiosk | — | 9.88 ms | | 779 | 1.18 M |
+
+The heaviest view of the map got lighter (14.4 → 13.8 ms); the plaza is the one view that costs more. What holds the
+cost: small details are dropped by distance per material (`userData.lod`, scaled per preset), loose clutter beyond 70 m
+is not drawn, the farthest shadow cascade draws only large casters, each cascade's depth range is fitted to what is in
+it, and the ring of houses between the districts is used for zone culling (the far side is drawn only through a passage
+that is in view). Estimated GPU memory (`perf.gpuMemory(G)`; WebGL does not report real use) rose from 1961 to 2196 MB
+(+12 %): scene textures 1000 → 1172 MB, model textures 592 → 608 MB, geometry 86 → 132 MB, irradiance volume 2.7 → 4.7 MB;
+render targets and shadow maps are unchanged. (Textures were still uncompressed then; see the next table.)
+
+At boot every shader is compiled for the target the scene is really drawn into (linear half-float, tone mapped later),
+both with the first-person rifle shown and hidden, and every texture is uploaded. Before that, the first death froze one
+frame for 0.35–0.46 s (hiding the rifle hides its muzzle light, and the new light count recompiled every lit material)
+and the first look into the market quarter for 0.14 s (twenty-odd textures uploaded at once); both now stay under 26 ms.
+Played live in a small embedded window (842×873 px, 120 Hz display) for 67 s, including a death, a respawn and the first
+walk into the quarter: mean 8.33 ms (display-capped 120 fps), p95 9.4 ms, p99 10.2 ms, worst 10.4 ms, nothing over 20 ms.
+
+(The exposure meter's asynchronous read can leave a pixel-pack buffer bound, which makes a plain `readPixels` fail without
+waiting for the GPU; `G.bench()` and the probe unbind it first.)
+
+**With the architectural kit, KTX2 textures and the new bake** — the same probe, run by `?bench=` in the native window
+(WebKit) twice for each build, alternating; the baseline is the build before these three changes, kept in a copy:
+
+| View | Before | After | Change | Draw calls | Triangles |
+| --- | --- | --- | --- | --- | --- |
+| Main street, long sightline | 12.62 ms | 13.49 ms | +6.9 % | 1788 → 2029 | 2.47 M → 3.37 M |
+| Arch and plaza | 12.05 ms | 13.38 ms | +11.0 % | 1690 → 1888 | 2.67 M → 3.37 M |
+| Covered market lane | 12.03 ms | 13.31 ms | +10.7 % | 1457 → 1628 | 2.41 M → 2.88 M |
+| Laundry alley | 11.38 ms | 12.91 ms | +13.5 % | 1496 → 1696 | 2.02 M → 2.81 M |
+| Market lane through the north passage | 10.30 ms | 10.96 ms | +6.5 % | 939 → 1036 | 1.81 M → 2.12 M |
+| Market hall, from Calle del Mercado | 11.06 ms | 11.91 ms | +7.6 % | 1386 → 1500 | 2.11 M → 2.55 M |
+| Inside the market hall | 10.55 ms | 11.10 ms | +5.2 % | 1121 → 1211 | 1.79 M → 2.13 M |
+| Plazuela and kiosk | 9.32 ms | 9.79 ms | +4.9 % | 774 → 879 | 1.17 M → 1.54 M |
+
+The kit costs about 0.5–1.5 ms a frame on this machine (+8 % on average); the heaviest view stays at 13.5 ms. Estimated
+GPU memory fell from 2196 to 1072 MB (−51 %): scene textures 1172 → 444 MB and model textures 608 → 164 MB as ASTC 4×4,
+geometry 132 → 180 MB with the kit. Loading to the menu took 6.9 s instead of 8.8 s (mean of the two runs each; WebKit,
+warm cache): transcoding in workers replaces decoding and mipmapping JPEGs on the main thread. The download grows from
+190 MB of JPEG/PNG to 296 MB of KTX2 (UASTC keeps normal maps and roughness at full quality; ETC1S would be about a
+quarter of that size at visibly lower quality). Played live in the native window (`?live=1&demo=1`, an auto-played match at 1890×1057 on a
+60 Hz display) the new build held the display rate: mean 16.67 ms, p99 19 ms, worst 24 ms, no frame over 33 ms, at full
+resolution (the build before: mean 16.73 ms, p99 19 ms, worst 70 ms, 8 frames over 33 ms).
+
+What the dark places look like now, measured on the before/after captures (`tools/compare-shots.js`, same views, same
+clock, exposure metered as in play; share of the frame darker than 40/255): inside a walk-in shop 13.0 % → 4.6 %, inside the
+market hall 43.5 % → 33.4 %, the laundry alley 15.5 % → 14.3 %, the covered lane 15.4 % → 14.1 %; nothing clips anywhere
+(at most 0.02 % of a frame at 255).
+
 Profiling switches: `?demo=1` auto-plays the match (for pacing runs), `?live=1` writes `captures/live.json` every 3 s,
 `?tune={"maxPR":1.25}` overrides any preset field.
 
@@ -245,8 +344,24 @@ In the browser console, with the dev server running:
   turns a grenade back and holds one dropped onto it, burst damage at
   3 m and 8 m and behind buildings with the score and kill feed, the ragdoll, clutter thrown by the blast, a soldier
   running from a grenade at his feet, an underhand smoke lob that blinds an enemy and then clears, a primed grenade
-  dropped at death, and restart. (One check fails and did before the throwables were added: the empty-magazine reload
-  is sampled 0.13 s before the reload finishes.)
+  dropped at death, and restart. For the map: every hotspot in the market quarter routed from five places in the old
+  district and every spawn to every enemy spawn (225 routes), a soldier walking from the market lane through a passage
+  into the market hall and back, clutter left by 90 s of fighting not inside any wall, no loose prop starting inside
+  anything solid, and a chair shoved into walls at four places staying out of them. (One check fails and did before the
+  throwables were added, on `main` as well: the empty-magazine reload is sampled 0.13 s before the reload finishes.)
+- `src/clipcheck.js` (also `tools/clip-probe.js`) — how far each loose prop sits inside the collision boxes and behind
+  the drawn surfaces: `clip.scan(G)` for all of them, `clip.prop(G, item)` for one, `clip.shove(G, { z })` walks a
+  soldier's pusher into a chair against a wall.
+- `tools/perf-probe.js` — the view timings, draw calls and GPU-memory estimate in the table above (see the top of the file).
+- `tools/compare-shots.js` — before/after captures from fixed camera positions (both districts, the alleys, under the
+  shade cloths, inside a shop and the hall, close-ups of eaves, a street corner and a doorway) at a fixed clock, so cloud
+  shadows match; `python3 tools/compare-montage.py <dirA> <tagA> <dirB> <tagB> <out>` lays two sets side by side and
+  prints the difference per view. `?bench=<tag>` in the URL runs the timings, the memory estimate, the load-time phases
+  (`G.bootTimes()`) and the captures by itself and saves them to `captures/` (for the native window, where there is no
+  console). `?tex=jpg` loads the original JPEGs instead of the KTX2 textures, for comparisons on the dev server.
+- `node tools/encode-ktx2.mjs` — re-encodes changed textures to KTX2 (needs `basisu`, Homebrew `basis_universal`).
+- `Blender --background --factory-startup --python tools/blender/kit.py -- assets/kit/kit.glb [--preview file.png]` —
+  rebuilds the architectural kit (and a contact sheet of its pieces).
 - `tools/locomotion-probe.js` — measures how the soldiers move over minutes of play (see the top of the file):
   `probe.patrol(G, 150)` reports acceleration, turn rates, sole drift, wall clearance, stops and wall contacts;
   `probe.posture(G)` how far pelvis, shoulders, head and rifle swing over a stride; `probe.steps(G)` how hard the legs
@@ -280,6 +395,16 @@ moves is too coarse); kills, ragdolls and bullet-struck props are covered by the
 bots' fighting. Never exercised by live input: holding right mouse to aim (covered by the scripted checks) and aiming with
 the pointer locked.
 
+The market-quarter build was played live in the embedded browser window instead (the native window could not be driven
+that time): one full match against the bots (lost 20–30) and parts of two more, the last on the production build in
+`dist/`. Keys and mouse moves were sent as events through the game's own input handlers, clicks and the cursor were real.
+A white chair was pushed along the house wall and then square into it: it stopped at the wall (0 cm into the wall box,
+3 mm into the paving, as at rest); another was bowled over into the street. Then on through the south passage, the
+covered lane, Calle Sur, the plazuela, the market hall, the chapel atrium and back through the north passage, dying and
+respawning in both districts. Screenshots are in `captures/playtest/`. That window refuses pointer lock, so the view
+follows the cursor and a turn is limited to one sweep across the window (pause and resume to go further); no kill was
+scored by hand.
+
 ## Layout
 
 ```
@@ -289,8 +414,11 @@ src/render.js         renderer, sky analysis, sun + cascades, clouds, exposure m
 src/gi.js             irradiance-volume bake, cache and upload
 src/materials.js      PBR library, weathering / ground-blend / cloth shader patches
 src/builder.js        static geometry + prop + collider accumulator
-src/world.js          ground, buildings, arch, sidewalks, nav grid, spawns
-src/dressing.js       cover, stalls, cloth, palms, cables, rooftop clutter, litter
+src/world.js          ground, buildings, facade bands and surrounds, arch, sidewalks, nav grid, spawns, culling zones
+src/quarter.js        the market quarter: streets, passages, market hall, plazuela and kiosk, chapel, spawns, hotspots
+src/mexico.js         procedural sign atlas, papel picado, talavera, tarps, leaves and bougainvillea textures
+src/dressing.js       cover, stalls, cloth, papel picado, plants, cables, rooftop clutter, litter
+src/clipcheck.js      prop-inside-wall measurement (self-test and tools/clip-probe.js)
 src/weapon.js         carbine, optic, hands, view-model animation
 src/sdf.js            distance-field modelling + marching cubes (gloves)
 src/player.js         input, movement, camera, health, hitscan
@@ -306,7 +434,10 @@ src/sounds.js         modelled sound library (pure JS, computed at boot)
 src/audio.js          audio engine: propagation, occlusion, reflections, reverbs, mix
 src/hud.js            HUD and menus
 src/selftest.js       scripted checks and capture set
-tools/                asset downloader, static server, native window (tools/shell), audio-report.mjs, locomotion-probe.js
+tools/                asset downloader, static server, native window (tools/shell), audio-report.mjs, locomotion-probe.js,
+                      perf-probe.js, clip-probe.js, compare-shots.js, compare-montage.py, encode-ktx2.mjs,
+                      blender/kit.py (the architectural kit)
+assets/kit/kit.glb    the architectural kit, modelled by tools/blender/kit.py
 ```
 
 Assets and licences are listed in `ASSETS.md`.

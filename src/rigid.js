@@ -5,6 +5,13 @@ import { assets } from './assets.js';
 import { losClear } from './physics.js';
 
 const H = 1 / 60, G_STATIC = 1, G_PROP = 2, G_RAG = 4, G_CHAR = 8;
+// The capsule that shoves clutter aside is a dynamic body chased towards its soldier: it wants to be on him next step
+// (at up to PUSH_SPEED) but may change speed by only PUSH_ACCEL, so the most it can lean on anything is
+// PUSHER_MASS * PUSH_ACCEL (200 N, a firm shove). Walking into a chair in the open still sends it 2-3 m, and a wall
+// behind the chair stops both: measured 1.5 cm at most into the wall with the soldier leaning on it, against 26-33 cm
+// before. (A heavy capsule whose speed is reset every step, like a kinematic one, carries more momentum into the chair
+// than the solver can hand on to the wall in its few iterations, so the chair was pressed into the wall instead.)
+const PUSHER_MASS = 8, PUSH_SPEED = 9, PUSH_ACCEL = 25, ZERO = { x: 0, y: 0, z: 0 };
 const grp = (member, filter) => ((member << 16) | filter) >>> 0;
 const V = (x, y, z) => new THREE.Vector3(x, y, z), UP = V(0, 1, 0);
 const FEEL = [[0.33, 0], [-0.33, 0], [0.66, 0], [-0.66, 0], [0.95, 0], [-0.95, 0], [0, 0.8], [0, -0.8]];      // where a thrown object feels ahead, across and above/below its centre, in radii
@@ -52,13 +59,14 @@ export class Rigid {
   constructor(G, dynamic) {
     this.G = G; this.acc = 0; this.time = 0; this.items = new Map(); this.props = []; this.rags = []; this.guns = []; this.corpses = []; this.pushers = [];
     this.m4 = new THREE.Matrix4(); this.inv = new THREE.Matrix4(); this.tp = V(); this.tq = new THREE.Quaternion(); this.ts = V(); this.onImpact = null;
-    this.nades = []; this.surfOf = new Map();                                 // static collider handle -> surface
+    this.nades = []; this.surfOf = new Map(); this.pushAccel = PUSH_ACCEL;                                 // static collider handle -> surface
     this.meshRay = new THREE.Raycaster(); this.meshRay.firstHitOnly = true; this.meshBoxes = null; this.meshHits = []; this.nv = V(); this.nd = V(); this.nn = V(); this.na = V(); this.nc = V(); this.no = V();
     const w = this.world = new RAPIER.World({ x: 0, y: -9.81, z: 0 }); w.timestep = H;
     this.events = new RAPIER.EventQueue(true);
     const fixed = w.createRigidBody(RAPIER.RigidBodyDesc.fixed()), sg = grp(G_STATIC, G_PROP | G_RAG);
-    this.ground = w.createCollider(RAPIER.ColliderDesc.cuboid(70, 2, 100).setTranslation(0, -2, 0).setCollisionGroups(sg).setFriction(0.9), fixed).handle;
-    for (const b of G.world.colliders) {
+    this.ground = w.createCollider(RAPIER.ColliderDesc.cuboid(100, 2, 100).setTranslation(30, -2, 0).setCollisionGroups(sg).setFriction(0.9), fixed).handle;
+    // the movement boxes, plus the drawn details only clutter, bodies and thrown things meet (plinths, sills, stall posts…)
+    for (const b of [...G.world.colliders, ...(G.world.details || [])]) {
       const hy = (b.y1 - b.y0) / 2; if (hy < 0.005 || b.hx < 0.005 || b.hz < 0.005) continue;
       const a = Math.atan2(b.s, b.c) / 2;
       const col = w.createCollider(RAPIER.ColliderDesc.cuboid(b.hx, hy, b.hz).setTranslation(b.x, b.y0 + hy, b.z).setRotation({ x: 0, y: Math.sin(a), z: 0, w: Math.cos(a) }).setCollisionGroups(sg).setFriction(0.85), fixed);
@@ -73,18 +81,21 @@ export class Rigid {
     const G = this.G, byName = new Map(), q = new THREE.Quaternion(), e = new THREE.Euler();
     for (const d of dyn) { if (!byName.has(d.name)) byName.set(d.name, []); byName.get(d.name).push(d); }
     this.group = new THREE.Group(); this.group.name = 'dynamic';
+    this.kinds = [];                                                          // per prop kind: its instanced meshes and items, for distance culling
     for (const [name, list] of byName) {
       const proto = assets.proto[name], def = DYNAMIC[name], pts = hullPoints(proto), fr = MATS[def.mat];
-      const meshes = proto.parts.map(part => { const m = new THREE.InstancedMesh(part.geometry, part.material, list.length); m.castShadow = !proto.small; m.receiveShadow = true; m.frustumCulled = false; m.name = 'dyn:' + name; this.group.add(m); return m; });
+      const meshes = proto.parts.map(part => { const m = new THREE.InstancedMesh(part.geometry, part.material, list.length); m.castShadow = !proto.small; m.receiveShadow = true; m.frustumCulled = false; m.name = 'dyn:' + name; m.userData.lod = Infinity; this.group.add(m); return m; });
+      const kind = { meshes, items: [], shown: -1 }; this.kinds.push(kind);
       list.forEach((d, i) => {
         q.setFromEuler(e.set(d.tilt ? d.tilt[0] : 0, d.rot, d.tilt ? d.tilt[1] : 0, 'YXZ'));
-        const body = this.world.createRigidBody(RAPIER.RigidBodyDesc.dynamic().setTranslation(d.x, d.y, d.z).setRotation({ x: q.x, y: q.y, z: q.z, w: q.w }).setLinearDamping(0.2).setAngularDamping(1.1));
+        const body = this.world.createRigidBody(RAPIER.RigidBodyDesc.dynamic().setTranslation(d.x, d.y, d.z).setRotation({ x: q.x, y: q.y, z: q.z, w: q.w }).setLinearDamping(0.2).setAngularDamping(1.1)
+          .setCcdEnabled(true));                                                // a blast throws a chair at 10 m/s: without it, it could pass through a thin wall
         const sp = new Float32Array(pts.length); for (let k = 0; k < pts.length; k++) sp[k] = pts[k] * d.scale;
         let cd = RAPIER.ColliderDesc.convexHull(sp);
         if (!cd) { const s = proto.size; cd = RAPIER.ColliderDesc.cuboid(s.x * d.scale / 2, s.y * d.scale / 2, s.z * d.scale / 2).setTranslation(0, s.y * d.scale / 2, 0); }
         const col = this.world.createCollider(cd.setMass(def.m * d.scale ** 3).setFriction(fr[0]).setRestitution(fr[1]).setCollisionGroups(grp(G_PROP, G_STATIC | G_PROP | G_RAG | G_CHAR)).setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS), body);
-        const item = { kind: 'prop', name, mat: def.mat, mass: def.m * d.scale ** 3, body, meshes, index: i, scale: d.scale, home: { x: d.x, y: d.y, z: d.z, q: { x: q.x, y: q.y, z: q.z, w: q.w } }, pvx: 0, pvy: 0, pvz: 0, snd: -1, moved: true };
-        this.items.set(col.handle, item); this.props.push(item);
+        const item = { kind: 'prop', name, mat: def.mat, mass: def.m * d.scale ** 3, body, meshes, index: i, slot: i, scale: d.scale, home: { x: d.x, y: d.y, z: d.z, q: { x: q.x, y: q.y, z: q.z, w: q.w } }, pvx: 0, pvy: 0, pvz: 0, snd: -1, moved: true, px: d.x, pz: d.z, m: new THREE.Matrix4() };
+        this.items.set(col.handle, item); this.props.push(item); kind.items.push(item);
       });
     }
     G.R.scene.add(this.group); G.R.setupTree(this.group);
@@ -98,18 +109,47 @@ export class Rigid {
       it.moved = awake;
       const t = it.body.translation(), r = it.body.rotation();
       if (t.y < -15) { this._home(it); continue; }
-      this.m4.compose(this.tp.set(t.x, t.y, t.z), this.tq.set(r.x, r.y, r.z, r.w), this.ts.setScalar(it.scale));
-      for (const m of it.meshes) { m.setMatrixAt(it.index, this.m4); dirty.add(m); }
+      it.m.compose(this.tp.set(t.x, t.y, t.z), this.tq.set(r.x, r.y, r.z, r.w), this.ts.setScalar(it.scale)); it.px = t.x; it.pz = t.z;
+      if (it.slot >= 0) for (const m of it.meshes) { m.setMatrixAt(it.slot, it.m); dirty.add(m); }
     }
     for (const m of dirty) m.instanceMatrix.needsUpdate = true;
+  }
+  // Only clutter within `range` of the camera is drawn (main view and shadows): the instances in reach are packed to the
+  // front of each kind's buffer. Out there it is a few pixels, and all of it was drawn in every pass before.
+  cullProps(cam, range) {
+    for (const k of this.kinds) {
+      let n = 0;
+      for (const it of k.items) { const d = Math.hypot(it.px - cam.x, it.pz - cam.z), keep = d < (it.slot >= 0 ? range + 4 : range); it.want = keep; if (keep) n++; }
+      let same = n === k.shown; if (same) for (const it of k.items) if (it.want !== it.slot >= 0) { same = false; break; }
+      if (same) continue;
+      let slot = 0;
+      for (const it of k.items) { if (it.want) { it.slot = slot; for (const m of k.meshes) m.setMatrixAt(slot, it.m); slot++; } else it.slot = -1; }
+      for (const m of k.meshes) { m.count = slot; m.instanceMatrix.needsUpdate = true; }
+      k.shown = n;
+    }
   }
   _home(it) { const b = it.body, z = { x: 0, y: 0, z: 0 }; b.setTranslation(it.home, false); b.setRotation(it.home.q, false); b.setLinvel(z, false); b.setAngvel(z, false); b.sleep(); it.moved = true; }
 
   // A capsule that follows a living character and shoves clutter out of the way. Low objects are stepped over.
+  // It is a dynamic body chased towards the character, not a kinematic one: a kinematic body is infinitely strong, so a
+  // chair caught between it and a wall was crushed 20-30 cm into the wall (and down into the pavement). With a finite
+  // mass the wall wins, the chair stays out of it and the capsule is held back at the chair until the soldier moves off.
   addPusher(actor) {
-    const body = this.world.createRigidBody(RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(0, -50, 0));
-    this.world.createCollider(RAPIER.ColliderDesc.capsule(0.4, 0.31).setCollisionGroups(grp(G_CHAR, G_PROP)).setFriction(0.3), body);
-    this.pushers.push({ actor, body, on: false });
+    const body = this.world.createRigidBody(RAPIER.RigidBodyDesc.dynamic().setTranslation(0, -50, 0).setGravityScale(0).lockRotations().setCanSleep(false).setLinearDamping(0));
+    const col = this.world.createCollider(RAPIER.ColliderDesc.capsule(0.4, 0.31).setMass(PUSHER_MASS).setCollisionGroups(grp(G_CHAR, G_PROP)).setFriction(0.3), body);
+    this.pushers.push({ actor, body, col, on: false, ghost: false });
+    if (!this.capsule) this.capsule = new RAPIER.Capsule(0.4, 0.31);
+  }
+  // Moved straight onto its soldier (spawn, or left far behind), it may land inside a prop: it then passes through
+  // clutter until it is clear of all of it, instead of blasting what it landed in out of the way.
+  _jump(p, x, y, z) {
+    p.body.setTranslation({ x, y, z }, true); p.body.setLinvel(ZERO, true);
+    if (!p.ghost) { p.ghost = true; p.col.setEnabled(false); }
+  }
+  _settle(p) {
+    const t = p.body.translation(); let hit = false;
+    this.world.intersectionsWithShape(t, { x: 0, y: 0, z: 0, w: 1 }, this.capsule, () => { hit = true; return false; }, undefined, grp(G_CHAR, G_PROP));
+    if (!hit) { p.ghost = false; p.col.setEnabled(true); }
   }
 
   // ---- stepping ------------------------------------------------------------------------------------------------------------
@@ -120,11 +160,17 @@ export class Rigid {
       for (const p of this.pushers) {
         const a = p.actor, y = a.pos.y + 0.95;
         if (a.alive) {
-          const t = p.body.translation();
-          if (!p.on || Math.abs(t.x - a.pos.x) + Math.abs(t.z - a.pos.z) + Math.abs(t.y - y) > 1.5) p.body.setTranslation({ x: a.pos.x, y, z: a.pos.z }, true);
-          else p.body.setNextKinematicTranslation({ x: a.pos.x, y, z: a.pos.z });
+          const t = p.body.translation(), dx = a.pos.x - t.x, dy = y - t.y, dz = a.pos.z - t.z, d = Math.hypot(dx, dy, dz);
+          if (!p.on || d > 1.5) this._jump(p, a.pos.x, y, a.pos.z);
+          else {
+            const k = Math.min(1 / H, PUSH_SPEED / Math.max(d, 1e-6)), v = p.body.linvel(), cap = this.pushAccel * H;
+            let ex = dx * k - v.x, ey = dy * k - v.y, ez = dz * k - v.z; const e = Math.hypot(ex, ey, ez);
+            if (e > cap) { ex *= cap / e; ey *= cap / e; ez *= cap / e; }
+            p.body.setLinvel({ x: v.x + ex, y: v.y + ey, z: v.z + ez }, true);
+          }
+          if (p.ghost) this._settle(p);
           p.on = true;
-        } else if (p.on) { p.body.setTranslation({ x: 0, y: -50, z: 0 }, false); p.on = false; }
+        } else if (p.on) { p.body.setTranslation({ x: 0, y: -50, z: 0 }, false); p.body.setLinvel(ZERO, false); p.on = false; }
       }
       for (const it of this.items.values()) { if (it.body.isSleeping()) { it.pvx = it.pvy = it.pvz = 0; } else { const v = it.body.linvel(); it.pvx = v.x; it.pvy = v.y; it.pvz = v.z; } }
       for (const it of this.nades) this._nadeMesh(it);

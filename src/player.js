@@ -193,7 +193,7 @@ export class Player {
         else this.grounded = false;
         if (this.vel.y > 0) { const c = ceilingAt(this.pos.x, this.pos.z, this.pos.y + this.height, 0.3, cols); if (this.pos.y + this.height > c) { this.pos.y = c - this.height; this.vel.y = 0; } }
       }
-      this.pos.x = clamp(this.pos.x, -47, 47); this.pos.z = clamp(this.pos.z, -81, 81);
+      this.pos.x = clamp(this.pos.x, -47, 112); this.pos.z = clamp(this.pos.z, -81, 81);      // (the old district and the market quarter east of it)
     }
     const speed = Math.hypot(this.vel.x, this.vel.z);
     if (landed) { const v = clamp(landed / 9, 0.25, 1); this.landDip = v; W.land = v; G.audio.land(v, this.surf); G.bots.hear(this.pos, 12, this.team); }

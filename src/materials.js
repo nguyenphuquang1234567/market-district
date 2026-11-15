@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { assets } from './assets.js';
 import { noiseTexture, canvasTexture, rng } from './util.js';
+import { signAtlas, papelTexture, talaveraTexture, tarpTexture, leavesTexture, flowersTexture } from './mexico.js';
 
 export const noise = noiseTexture(256, 11);
 export const windUniforms = { uTime: { value: 0 } };
@@ -186,14 +187,33 @@ export function createMaterials() {
     rug: cloth('dirty_carpet', 0.12),
     frond: windy(new THREE.MeshStandardMaterial({ map: frondTexture(), alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.62, vertexColors: true }), 0.16, 0.6),
     d_stain: decal('stain'), d_patch: decal('patch'), d_scars: decal('scars'),
+    // ---- the market quarter --------------------------------------------------------------------------------------------
+    cobble: weather(pbr('cobblestone_floor_13', { normalScale: 1.3 }), 0, 0.55),          // river-stone paving (empedrado)
+    terracotta: weather(pbr('terracotta_floor_tiles'), 0, 0.5),                           // the hall's floor, patios
+    brick: weather(pbr('castle_brick_02_red'), 0.7, 0.5),                                 // the hall's portal, piers and low walls
+    cantera: weather(pbr('red_sandstone_wall'), 0.6, 0.6),                                // pink building stone: surrounds, cornices, steps
+    shutter_paint: weather(pbr('painted_metal_shutter', { metal: true }), 0.5, 0.6),      // painted roll-up shutters (cortinas)
+    roof_tin: pbr('worn_corrugated_iron', { side: THREE.DoubleSide }),                    // corrugated roofing, seen from below too (painted and rusted: no bare metal, so it takes the bounce light)
+    sign: new THREE.MeshStandardMaterial({ map: signAtlas(), roughness: 0.78, vertexColors: true }),
+    talavera: new THREE.MeshStandardMaterial({ map: talaveraTexture(), roughness: 0.22, vertexColors: true, envMapIntensity: 1.2 }),
+    cloth_papel: windy(new THREE.MeshStandardMaterial({ map: papelTexture(), alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.85, vertexColors: true }), 0.12, 0.9),
+    cloth_tarp: windy(new THREE.MeshStandardMaterial({ map: tarpTexture(), normalMap: assets.tex.cotton_jersey.nor, normalScale: new THREE.Vector2(0.5, 0.5), roughness: 0.55, side: THREE.DoubleSide, vertexColors: true }), 0.05, 0.7),
+    leaves: windy(new THREE.MeshStandardMaterial({ map: leavesTexture(), alphaTest: 0.45, side: THREE.DoubleSide, roughness: 0.68, vertexColors: true }), 0.035, 0.45),
+    bulb: new THREE.MeshStandardMaterial({ color: 0x302a20, emissive: 0xffd49a, emissiveIntensity: 9, roughness: 0.4 }),
+    flowers: windy(new THREE.MeshStandardMaterial({ map: flowersTexture(), alphaTest: 0.45, side: THREE.DoubleSide, roughness: 0.75, vertexColors: true }), 0.03, 0.5),    // bougainvillea
+    glossy: flat(0xffffff, 0.32),                                                         // chiles, piñata foil
+    paint: weather(flat(0xcfcfcf, 0.86), 0.9, 1),                                         // a flat painted band (base, window surround), tinted per building (as bright as the plaster it is painted on)
+    teja: weather(pbr('red_sandstone_wall', { normalScale: 0.7 }), 0.25, 0.6),           // fired clay roof tiles (the kit's barrel tiles), shaded tile by tile through vertex colours
   };
   M.glass.roughnessMap = null; M.glass.roughness = 0.09;
-  for (const k of ['frond', 'cloth_red', 'cloth_green', 'cloth_plain', 'rug']) M[k].userData.noBVH = true;
+  for (const k of ['frond', 'cloth_red', 'cloth_green', 'cloth_plain', 'rug', 'cloth_papel', 'cloth_tarp', 'leaves', 'flowers']) M[k].userData.noBVH = true;
   // what a bullet sees
   const surf = {
     w_brick: 'brick', planks: 'wood', shutter_wood: 'wood', door: 'wood', shutter_metal: 'metal', corrugated: 'metal',
     metal_white: 'metal', metal_green: 'metal', metal_plate: 'metal', iron: 'metal', glass: 'glass', burlap: 'fabric',
     ground: 'dirt', bark: 'wood', cable: 'fabric', plastic: 'wood', rubble: 'concrete', tiles: 'concrete', dark: 'none',
+    cobble: 'concrete', terracotta: 'concrete', brick: 'brick', cantera: 'concrete', shutter_paint: 'metal', roof_tin: 'metal', sign: 'plaster',
+    talavera: 'concrete', cloth_papel: 'fabric', cloth_tarp: 'fabric', leaves: 'wood', bulb: 'glass', paint: 'plaster', flowers: 'wood', glossy: 'wood', teja: 'concrete',
   };
   for (const [k, m] of Object.entries(M)) { m.userData.surf = surf[k] || (k.startsWith('w_') ? 'plaster' : 'concrete'); m.name = k; }
   return M;

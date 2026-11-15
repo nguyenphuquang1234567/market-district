@@ -229,7 +229,9 @@ export class NavGrid {
     const ex = e % w, ez = Math.floor(e / w);
     const heap = [], hf = [];
     const push = (i, f) => { let k = heap.length; heap.push(i); hf.push(f); while (k > 0) { const p = (k - 1) >> 1; if (hf[p] <= f) break; heap[k] = heap[p]; hf[k] = hf[p]; k = p; } heap[k] = i; hf[k] = f; };
+    let popF = 0;
     const pop = () => {
+      popF = hf[0];
       const top = heap[0], li = heap.pop(), lf = hf.pop(), n = heap.length;
       if (n) { let k = 0; for (;;) { let c = k * 2 + 1; if (c >= n) break; if (c + 1 < n && hf[c + 1] < hf[c]) c++; if (hf[c] >= lf) break; heap[k] = heap[c]; hf[k] = hf[c]; k = c; } heap[k] = li; hf[k] = lf; }
       return top;
@@ -237,8 +239,10 @@ export class NavGrid {
     const H = i => { const dx = Math.abs((i % w) - ex), dz = Math.abs(Math.floor(i / w) - ez); return Math.max(dx, dz) + 0.414 * Math.min(dx, dz); };
     g[s] = 0; stamp[s] = gen; from[s] = -1; push(s, H(s));
     let found = false, guard = 0;
-    while (heap.length && guard++ < 20000) {
+    while (heap.length && guard < bl.length) {                            // (as many expansions as there are cells: a route across the whole map is never cut short)
       const c = pop();
+      if (popF > g[c] + H(c) + 1e-3) continue;                            // a stale entry: this cell was reached more cheaply since, and has been expanded from there (g is float32: compare loosely)
+      guard++;
       if (c === e) { found = true; break; }
       const cx = c % w, cz = Math.floor(c / w);
       for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
