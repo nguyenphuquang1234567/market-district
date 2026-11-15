@@ -119,7 +119,8 @@ Key bindings live in the same saved settings object (`binds`, including `frag` a
   so no knee locks straight and snaps free. When the barrel approaches a wall, the soldier tucks the rifle closer to
   the chest.
 - **Throwables** — you carry two K-22 fragmentation grenades and two V-8 smoke canisters (both fictional), restocked
-  each life and counted on the HUD beside the ammunition. Each is a modelled object (pressed steel ball or rolled can,
+  each life and counted on the HUD beside the ammunition. Each spent throwable also refills after 15 seconds of active
+  play. Each is a modelled object (pressed steel ball or rolled can,
   fuze, safety lever, pin and ring, stencilled paint with chips and dust) held in a gloved right hand shaped to it while
   the left index finger hooks the ring. Holding the mouse button draws the pin straight out, the left hand lets it
   fall, and the arm goes back; releasing throws. The lever springs off as the hand opens and the fuze starts only

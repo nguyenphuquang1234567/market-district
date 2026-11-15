@@ -42,6 +42,11 @@ export class HUD {
     if (this.last.ammoSeg !== W.ammo) { this.last.ammoSeg = W.ammo; [...$('abar').children].forEach((e, i) => e.classList.toggle('on', i < W.ammo)); }
     const T = G.throw;
     this.set('nFragN', T.count.frag); this.set('nSmokeN', T.count.smoke);
+    for (const [kind, id] of [['frag', 'nFragRefill'], ['smoke', 'nSmokeRefill']]) {
+      const pending = T.refillAt[kind];
+      const seconds = pending.length ? Math.max(1, Math.ceil(pending[0] - G.time)) : 0;
+      this.set(id, seconds ? `${seconds}s` : '');
+    }
     this.cls('nFrag', 'none', T.count.frag <= 0); this.cls('nSmoke', 'none', T.count.smoke <= 0); this.cls('nFrag', 'sel', T.sel === 'frag'); this.cls('nSmoke', 'sel', T.sel === 'smoke');
     this.set('wlabel', T.sel === 'frag' ? 'K-22 Frag' : T.sel === 'smoke' ? 'V-8 Smoke' : 'MK4 Carbine');
     this.set('s0', G.score[0]); this.set('s1', G.score[1]);

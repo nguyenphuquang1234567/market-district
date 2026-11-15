@@ -43,7 +43,8 @@
   #nades { display: flex; justify-content: flex-end; gap: 14px; margin-top: 8px; font-size: 15px; font-weight: 600; letter-spacing: .04em; }
   #nades .n { display: flex; align-items: center; gap: 5px; padding: 1px 0 2px; border-bottom: 2px solid transparent; transition: opacity .15s, border-color .15s; }
   #nades svg { height: 19px; width: auto; fill: #efeadf; } #nades kbd { font: 600 10px var(--ui); letter-spacing: .1em; opacity: .55; border: 1px solid rgba(255, 255, 255, .4); padding: 0 4px; margin-left: 2px; }
-  #nades .n.none { opacity: .3; } #nades .n.sel { border-bottom-color: #ffd27a; } #nades .n.sel svg { fill: #ffd27a; }
+  #nades .n.none > :not(.refill) { opacity: .3; } #nades .n.sel { border-bottom-color: #ffd27a; } #nades .n.sel svg { fill: #ffd27a; }
+  #nades .refill { min-width: 3ch; color: #ffd27a; font-size: 12px; font-variant-numeric: tabular-nums; text-align: right; }
   #feed .nadei { width: 13px; height: 15px; fill: #e9e4d8; opacity: .9; }
   #ammo.low #mag { color: #ffb347; } #ammo.low #abar i.on { background: #ffb347; } #ammo.reload .count::after { content: "RELOADING"; font-size: 11px; letter-spacing: .22em; margin-left: 10px; opacity: .8; }
   #cross { position: absolute; left: 50%; top: 50%; --g: 6px; transition: opacity .1s; }
@@ -106,8 +107,8 @@
   <div id="health" class="panel"><div class="lbl">Health</div><div id="hp">100</div><div id="hpbar"></div></div>
   <div id="ammo" class="panel"><div class="rowtop"><span id="fmode">AUTO</span><span class="lbl" id="wlabel">MK4 Carbine</span></div><div class="count"><span id="mag">30</span><i id="res">120</i></div><div id="abar"></div>
     <div id="nades">
-      <span class="n" id="nFrag"><svg viewBox="0 0 16 19" aria-label="Fragmentation grenade"><path d="M5.6 0h5.2v2.1h3.4L15 6.4l-1.6.5-.5-2.7h-2.1v1.3a6.5 6.5 0 1 1-5.2 0V4.2H4.3V2.1h1.3z"/></svg><span id="nFragN">2</span><kbd>G</kbd></span>
-      <span class="n" id="nSmoke"><svg viewBox="0 0 13 19" aria-label="Smoke canister"><path d="M4.4 0h4.4v2h3.1l.9 3.2-1.5.4-.5-1.8H9.9V5H12a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H1a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h2.3V3.8H2.2V2h2.2zM1.5 9v2.2h10V9z" fill-rule="evenodd"/></svg><span id="nSmokeN">2</span><kbd>Q</kbd></span>
+      <span class="n" id="nFrag"><svg viewBox="0 0 16 19" aria-label="Fragmentation grenade"><path d="M5.6 0h5.2v2.1h3.4L15 6.4l-1.6.5-.5-2.7h-2.1v1.3a6.5 6.5 0 1 1-5.2 0V4.2H4.3V2.1h1.3z"/></svg><span id="nFragN">2</span><kbd>G</kbd><span class="refill" id="nFragRefill" title="Time until next frag refills"></span></span>
+      <span class="n" id="nSmoke"><svg viewBox="0 0 13 19" aria-label="Smoke canister"><path d="M4.4 0h4.4v2h3.1l.9 3.2-1.5.4-.5-1.8H9.9V5H12a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H1a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h2.3V3.8H2.2V2h2.2zM1.5 9v2.2h10V9z" fill-rule="evenodd"/></svg><span id="nSmokeN">2</span><kbd>Q</kbd><span class="refill" id="nSmokeRefill" title="Time until next smoke refills"></span></span>
     </div></div>
   <div id="cross"><i></i><i></i><i></i><i></i><i></i></div>
   <div id="hit"></div>

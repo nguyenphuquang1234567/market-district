@@ -11,6 +11,7 @@ import { canvasTexture, rng, clamp, lerp, damp, smooth } from './util.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 export const KIT = { frag: 2, smoke: 2 };
+const REFILL_TIME = 15;
 export const FUSE = { frag: 4.0, smoke: 1.6 };
 const THROW = { over: { speed: 17.5, lift: 0.15 }, under: { speed: 8.2, lift: 0.26 } };
 const BLAST = { reach: 11.5, peak: 175, shove: 8, power: 13 };      // fictional damage: lethal inside about 4 m in the open, nothing past 11.5 m or behind a wall
@@ -121,7 +122,8 @@ const GRIP = {
 export class Throwables {
   constructor(G) {
     this.G = G; const R = G.R, cam = R.camera, W = G.weapon; this.rnd = rng(60606);
-    this.count = { ...KIT }; this.sel = null; this.st = null; this.t = 0; this.under = false; this.press = false; this.was = false; this.live = []; this.clouds = []; this.bits = []; this.frags = []; this.flash = 0; this.lampT = 0; this.thrown = 0;
+    this.count = { ...KIT }; this.refillAt = { frag: [], smoke: [] };
+    this.sel = null; this.st = null; this.t = 0; this.under = false; this.press = false; this.was = false; this.live = []; this.clouds = []; this.bits = []; this.frags = []; this.flash = 0; this.lampT = 0; this.thrown = 0;
     this.puffs = new Puffs(G);
     const Md = this.models = buildModels();
     // one light for blasts, always in the scene so switching it on never recompiles a shader
@@ -196,7 +198,17 @@ export class Throwables {
   get busy() { return this.st !== null; }
   get primed() { return this.st === 'cock' || this.st === 'hold' || (this.st === 'pull' && this.t > 0.2) || (this.st === 'swing' && !this.gone); }
 
-  restock() { this.count = { ...KIT }; this.stow(true); }
+  restock() {
+    this.count = { ...KIT };
+    this.refillAt.frag.length = 0;
+    this.refillAt.smoke.length = 0;
+    this.stow(true);
+  }
+
+  consume(kind) {
+    this.count[kind]--;
+    this.refillAt[kind].push(this.G.time + REFILL_TIME);
+  }
   stow(now) { this.st = null; this.sel = null; this.rig.visible = false; this.G.weapon.holster(false); if (now) this.press = false; }
   reset() {
     for (const n of [...this.live]) this.remove(n);
@@ -313,7 +325,7 @@ export class Throwables {
     this.spawnBit(kind + 'Lever', held.lever.matrixWorld, vel.clone().multiplyScalar(0.25).addScaledVector(right, 1.6 + R()).addScaledVector(up, 2.2 + R()), 1);
     G.audio.nade('spoon', 0.8);
     held.group.visible = false; this.hand[kind].visible = false; this.hand.open.visible = true; this.gone = true;
-    this.count[kind]--; this.thrown++;
+    this.consume(kind); this.thrown++;
     return n;
   }
   // Killed with the pin out: the hand opens and it falls where the soldier stood.
@@ -321,7 +333,7 @@ export class Throwables {
     if (this.primed && this.sel && this.count[this.sel] > 0) {
       const G = this.G, P = G.player, R = this.rnd;
       this.spawn(this.sel, V(P.pos.x, P.pos.y + 1.1, P.pos.z), V(P.vel.x * 0.5 + (R() - 0.5), 0.5, P.vel.z * 0.5 + (R() - 0.5)), V(R() * 6 - 3, R() * 6 - 3, R() * 6 - 3), new THREE.Quaternion(), P);
-      this.count[this.sel]--; G.audio.nade('spoon', 0.6);
+      this.consume(this.sel); G.audio.nade('spoon', 0.6);
     }
     this.stow(true);
   }
@@ -351,6 +363,13 @@ export class Throwables {
   // ---- per frame -------------------------------------------------------------------------------------------------------------
   update(dt) {
     const G = this.G, R = this.rnd, tv = this.tv;
+    for (const kind of ['frag', 'smoke']) {
+      const pending = this.refillAt[kind];
+      while (pending.length && pending[0] <= G.time) {
+        pending.shift();
+        this.count[kind]++;
+      }
+    }
     for (const n of [...this.live]) {
       G.rigid.nadeTick(n.item, dt); n.t += dt;
       const p = this.pos(n, tv);
