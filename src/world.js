@@ -413,7 +413,7 @@ export function buildWorld(R, M) {
   }
 
   // ---- finalize ------------------------------------------------------------------------------------------------------
-  const meshes = B.build(M), rayMeshes = [];
+  const meshes = B.build(M), rayMeshes = [], clothMeshes = [];      // rayMeshes: what stops a bullet's ray. clothMeshes: awnings, laundry, rugs: a round goes through, a thrown object does not
   const group = new THREE.Group(); group.name = 'world';
   for (const m of meshes) {
     m.castShadow = !m.name.startsWith('d_') && !['ground', 'cable', 'dark', 'glass', 'matte'].includes(m.name) && !m.userData.noShadow; m.receiveShadow = true;
@@ -421,6 +421,7 @@ export function buildWorld(R, M) {
     if (m.name === 'frond' || m.name.startsWith('d_')) m.userData.noAO = true;
     if (m.name.startsWith('d_')) m.renderOrder = 2;
     if (!m.material.userData.noBVH && !m.userData.noBVH && !m.name.startsWith('d_')) { m.geometry.computeBoundsTree({ maxLeafTris: 8 }); rayMeshes.push(m); }
+    else if (m.material.userData.noBVH && m.name !== 'frond' && !m.name.startsWith('d_')) { m.geometry.computeBoundsTree({ maxLeafTris: 8 }); m.userData.cloth = true; clothMeshes.push(m); }
     group.add(m);
   }
   R.scene.add(group); R.setupTree(group);
@@ -438,5 +439,5 @@ export function buildWorld(R, M) {
     for (const b of buildings) if (b.carves.length && x > b.x0 && x < b.x1 && z > b.z0 && z < b.z1) return 'tile';
     return 'concrete';
   };
-  return { group, colliders: B.colliders, rayMeshes, buildings, nav, spawns, anchors, surfaceAt, dynamic: B.dynamic, emitters: B.emitters };
+  return { group, colliders: B.colliders, rayMeshes, clothMeshes, buildings, nav, spawns, anchors, surfaceAt, dynamic: B.dynamic, emitters: B.emitters };
 }

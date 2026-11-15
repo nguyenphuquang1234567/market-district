@@ -131,6 +131,18 @@ export function selfTest(G) {
   const backX = nw ? nw.item.body.translation().x : 0;
   check('thrown hard at a wall it comes back off it, not through it', !!nw && minX > -6.3 && nw.bounces >= 1 && backX > minX + 0.5, `nearest the wall x ${minX.toFixed(2)}, came back to x ${backX.toFixed(2)}`);
   if (nw) T.remove(nw);
+  // balconies, railings and awnings have no collision box: thrown objects meet them as the triangles that are drawn
+  const balc = G.world.anchors.find(q => q.kind === 'balcony' && q.solid && q.street === 'main');
+  if (balc) {
+    const B0 = balc.p, N0 = balc.N, into = q => (B0.x - q.x) * N0.x + (B0.z - q.z) * N0.z;      // how far past the balcony's outer face (metres)
+    const gb = T.spawn('frag', new V3(B0.x + N0.x * 4, B0.y + 0.2, B0.z + N0.z * 4), new V3(-N0.x * 10, 2.4, -N0.z * 10), still, new Q4(), null); gb.fuse = 99;
+    let deepest = -9; for (let i = 0; i < 70; i++) { G.step(1); deepest = Math.max(deepest, into(gb.item.body.translation())); }
+    const backOff = into(gb.item.body.translation()), knocked = gb.bounces; T.remove(gb);
+    const gd = T.spawn('frag', new V3(B0.x - N0.x * 0.5, B0.y + 1.3, B0.z - N0.z * 0.5), still, still, new Q4(), null); gd.fuse = 99; run(3.2);
+    const lying = gd.item.body.translation().y - B0.y, asleep = gd.item.body.isSleeping(); T.remove(gd);
+    check('a grenade thrown at a balcony comes back off it, and one dropped onto it stays lying there', deepest < 0.06 && knocked >= 1 && backOff < -0.5 && lying > 0.01 && lying < 0.06 && asleep,
+      `got ${(deepest * 100).toFixed(0)} cm past its face at most, came back ${(-backOff).toFixed(1)} m; dropped one lies ${(lying * 100).toFixed(1)} cm above the floor, at rest ${asleep}`);
+  }
   park(); G.goto(0.6, -58, 0, 0); P.health = 100;
   const close = dummy(3, 0.5, -37), far8 = dummy(4, 0.5, -32), behind = dummy(5, -29, -40), sc0 = G.score[0], k0 = P.kills;
   const g1 = T.spawn('frag', new V3(0.5, 0.2, -40), still, still, new Q4(), P); g1.fuse = 0.3; run(0.6);

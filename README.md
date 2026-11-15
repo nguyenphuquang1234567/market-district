@@ -129,6 +129,11 @@ Key bindings live in the same saved settings object (`binds`, including `frag` a
   In flight each is a rigid body with continuous collision (a ball or a can with the fuze standing proud, so it kicks
   off line, wobbles and stops on its side): it comes back off walls, cover, clutter and soldiers, skips along the road,
   is braked by rolling and comes to rest, with a knock at every contact that depends on what it struck.
+  The collision boxes only cover house blocks, kerbs, steps and cover, so a thrown object also feels ahead along its
+  path and beneath itself through the triangles that are actually drawn (the same trees the bullets use, plus the
+  cloth a bullet passes through): it comes back off a balcony front, can land on a balcony and lie there, slides down
+  an awning and drops off its edge, and gets between railing bars only as often as a 6 cm ball would (about half the
+  time). What it is lying on counts as its floor for the scorch mark, the dust and the smoke.
 - **The grenade** — a two-frame flash that lights walls and smoke, a fireball that is soot within a tenth of a second,
   sparks, a dust skirt scoured off the ground, a dark column that climbs and drifts with the wind, earth and chips
   lobbed up to rain back, a scorch on the road (and on a wall it burst against), and some fifty fragments traced as
@@ -236,7 +241,8 @@ In the browser console, with the dev server running:
   planted-sole drift walking, running and strafing, a street corner taken at a run (sideways load, braking, wall
   contact), a kerb stepped up and down without the legs being thrown about, head and shoulders steady at a walk, the
   bot magazine reload, sound arrival delay, wall muffling, and echoes. For the throwables: issue and HUD count, the
-  throw by hand with the rifle slung, arc, bounces and the fuze, a hard throw coming back off a wall, burst damage at
+  throw by hand with the rifle slung, arc, bounces and the fuze, a hard throw coming back off a wall, a balcony that
+  turns a grenade back and holds one dropped onto it, burst damage at
   3 m and 8 m and behind buildings with the score and kill feed, the ragdoll, clutter thrown by the blast, a soldier
   running from a grenade at his feet, an underhand smoke lob that blinds an enemy and then clears, a primed grenade
   dropped at death, and restart. (One check fails and did before the throwables were added: the empty-magazine reload

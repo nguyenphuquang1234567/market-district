@@ -7,6 +7,7 @@ import { losClear } from './physics.js';
 const H = 1 / 60, G_STATIC = 1, G_PROP = 2, G_RAG = 4, G_CHAR = 8;
 const grp = (member, filter) => ((member << 16) | filter) >>> 0;
 const V = (x, y, z) => new THREE.Vector3(x, y, z), UP = V(0, 1, 0);
+const FEEL = [[0.33, 0], [-0.33, 0], [0.66, 0], [-0.66, 0], [0.95, 0], [-0.95, 0], [0, 0.8], [0, -0.8]];      // where a thrown object feels ahead, across and above/below its centre, in radii
 
 // Props that are simulated when they sit on something solid. m = mass in kg at scale 1.
 export const DYNAMIC = {
@@ -52,6 +53,7 @@ export class Rigid {
     this.G = G; this.acc = 0; this.time = 0; this.items = new Map(); this.props = []; this.rags = []; this.guns = []; this.corpses = []; this.pushers = [];
     this.m4 = new THREE.Matrix4(); this.inv = new THREE.Matrix4(); this.tp = V(); this.tq = new THREE.Quaternion(); this.ts = V(); this.onImpact = null;
     this.nades = []; this.surfOf = new Map();                                 // static collider handle -> surface
+    this.meshRay = new THREE.Raycaster(); this.meshRay.firstHitOnly = true; this.meshBoxes = null; this.meshHits = []; this.nv = V(); this.nd = V(); this.nn = V(); this.na = V(); this.nc = V(); this.no = V();
     const w = this.world = new RAPIER.World({ x: 0, y: -9.81, z: 0 }); w.timestep = H;
     this.events = new RAPIER.EventQueue(true);
     const fixed = w.createRigidBody(RAPIER.RigidBodyDesc.fixed()), sg = grp(G_STATIC, G_PROP | G_RAG);
@@ -125,6 +127,7 @@ export class Rigid {
         } else if (p.on) { p.body.setTranslation({ x: 0, y: -50, z: 0 }, false); p.on = false; }
       }
       for (const it of this.items.values()) { if (it.body.isSleeping()) { it.pvx = it.pvy = it.pvz = 0; } else { const v = it.body.linvel(); it.pvx = v.x; it.pvy = v.y; it.pvz = v.z; } }
+      for (const it of this.nades) this._nadeMesh(it);
       this.world.step(this.events);
       this.events.drainCollisionEvents((a, b, started) => { if (started) this._contact(a, b); });
       for (const r of this.rags) r.t += H;
@@ -155,12 +158,80 @@ export class Rigid {
       ? [CD.ball(0.031).setMass(0.35), CD.cylinder(0.013, 0.0125).setTranslation(0, 0.041, 0).setMass(0.045)]
       : [CD.cylinder(0.056, 0.0295).setMass(0.5), CD.cylinder(0.012, 0.0135).setTranslation(0, 0.068, 0).setMass(0.04)];
     const mass = frag ? 0.395 : 0.54;
-    const item = { kind: 'nade', nade: kind, mat: frag ? 'frag' : 'canister', mass, body, obj, cols: [], pvx: 0, pvy: 0, pvz: 0, snd: -1, age: 0, guarded: true, full,
+    const item = { kind: 'nade', nade: kind, mat: frag ? 'frag' : 'canister', mass, body, obj, cols: [], pvx: 0, pvy: 0, pvz: 0, snd: -1, age: 0, guarded: true, full, rad: frag ? 0.031 : 0.032, bounce: M[1], near: null,
       sync(lead) { const t = body.translation(), r = body.rotation(), v = body.isSleeping() ? null : body.linvel(); obj.position.set(t.x + (v ? v.x * lead : 0), t.y + (v ? v.y * lead : 0), t.z + (v ? v.z * lead : 0)); obj.quaternion.set(r.x, r.y, r.z, r.w); } };
     for (const cd of shapes) { const col = w.createCollider(cd.setFriction(M[0]).setRestitution(M[1]).setCollisionGroups(open).setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS), body); item.cols.push(col); this.items.set(col.handle, item); }
     this.nades.push(item); item.sync(0);
     return item;
   }
+  // ---- thrown objects against what is actually drawn ---------------------------------------------------------------------
+  // The solver knows the district as boxes: house blocks, kerbs, steps, cover. Balconies, railings, awnings, shutters,
+  // lamp posts, pipes and cables exist only as the geometry that is drawn. So before each step a thrown object feels
+  // ahead along its path (five rays, as wide as itself) and beneath itself through the same triangle trees the bullets
+  // use, and whatever is there that no box accounts for stops it, turns it back or carries it.
+  _near(it, p) {                                                               // the drawn meshes within reach, refreshed as it travels
+    const c = it.near;
+    if (!c || (p.x - c.x) ** 2 + (p.y - c.y) ** 2 + (p.z - c.z) ** 2 > 1) {
+      if (!this.meshBoxes) this.meshBoxes = [...this.G.world.rayMeshes, ...this.G.world.clothMeshes].map(m => { m.updateMatrixWorld(); if (!m.geometry.boundingBox) m.geometry.computeBoundingBox(); return { m, b: m.geometry.boundingBox.clone().applyMatrix4(m.matrixWorld) }; });
+      const list = [];
+      for (const e of this.meshBoxes) { const b = e.b; if (p.x > b.min.x - 2 && p.x < b.max.x + 2 && p.y > b.min.y - 2 && p.y < b.max.y + 2 && p.z > b.min.z - 2 && p.z < b.max.z + 2) list.push(e.m); }
+      it.near = { x: p.x, y: p.y, z: p.z, list };
+    }
+    return it.near.list;
+  }
+  // Nearest drawn surface along a ray that the solver has no box for (a box there means the solver deals with it).
+  _meshHit(list, o, d, far) {
+    const rc = this.meshRay, hits = this.meshHits; rc.set(o, d); rc.far = far; hits.length = 0; rc.intersectObjects(list, false, hits);
+    let best = null; for (const h of hits) if (h.distance <= far && (!best || h.distance < best.distance)) best = h;
+    if (!best) return null;
+    const box = this.world.castRay(new RAPIER.Ray({ x: o.x, y: o.y, z: o.z }, { x: d.x, y: d.y, z: d.z }), best.distance + 0.05, true, undefined, grp(0xffff, G_STATIC));
+    return box ? null : best;
+  }
+  meshBelow(p, reach = 0.2) {                                                  // height of a drawn surface just under a point, or null
+    const o = this.no.set(p.x, p.y + 0.05, p.z); this.meshRay.set(o, this.nc.set(0, -1, 0)); this.meshRay.far = reach + 0.05; this.meshHits.length = 0;
+    if (!this.meshBoxes) this._near({}, o);
+    const list = []; for (const e of this.meshBoxes) { const b = e.b; if (o.x > b.min.x - 0.1 && o.x < b.max.x + 0.1 && o.y > b.min.y - 0.4 && o.y < b.max.y + 0.4 && o.z > b.min.z - 0.1 && o.z < b.max.z + 0.1) list.push(e.m); }
+    this.meshRay.intersectObjects(list, false, this.meshHits); let y = null; for (const h of this.meshHits) if (y === null || h.point.y > y) y = h.point.y;
+    return y;
+  }
+  _nadeMesh(it) {
+    const b = it.body; if (b.isSleeping()) return;
+    const t = b.translation(), v = b.linvel(), r = it.rad, sp = Math.hypot(v.x, v.y, v.z);
+    const o = this.nv.set(t.x, t.y, t.z), list = this._near(it, o); if (!list.length) return;
+    const d = this.nd, n = this.nn; let hit = null, back = 0;
+    if (sp > 0.3) {                                                            // along this step's travel
+      d.set(v.x / sp, v.y / sp, v.z / sp);
+      const a = this.na.set(d.z, 0, -d.x); if (a.lengthSq() < 1e-4) a.set(1, 0, 0); a.normalize(); const c = this.nc.crossVectors(d, a);
+      hit = this._meshHit(list, o, d, sp * H + r); back = r;
+      for (const [u, w] of FEEL) {                                             // rays closer together than a railing bar is wide, across its own width
+        const depth = Math.sqrt(1 - u * u - w * w) * r, q = this.no.copy(o).addScaledVector(a, u * r).addScaledVector(c, w * r), h = this._meshHit(list, q, d, sp * H + depth);
+        if (h && (!hit || h.distance - depth < hit.distance - back)) { hit = h; back = depth; }
+      }
+    }
+    if (hit) {
+      n.copy(hit.face.normal).transformDirection(hit.object.matrixWorld); if (n.dot(d) > 0) n.negate();
+      const vn = v.x * n.x + v.y * n.y + v.z * n.z; if (vn >= 0) return;
+      const cloth = !!hit.object.userData.cloth, surf = cloth ? 'fabric' : hit.object.userData.surf || 'concrete', soft = surf === 'fabric', e = it.bounce * (soft ? 0.2 : 1);      // cloth gives: it takes the bounce out and most of the travel
+      const go = Math.max(0, hit.distance - back);                             // as far as it gets before touching
+      let nx = v.x - vn * n.x, ny = v.y - vn * n.y, nz = v.z - vn * n.z; const tl = Math.hypot(nx, ny, nz), grip = Math.min(tl, (soft ? 0.8 : 0.45) * (1 + e) * -vn);
+      if (tl > 1e-5) { const k = (tl - grip) / tl; nx *= k; ny *= k; nz *= k; }                           // the surface drags at it as it glances off
+      const out = -vn > 0.7 ? -e * vn : 0;
+      b.setTranslation({ x: o.x + d.x * go + n.x * 0.002, y: o.y + d.y * go + n.y * 0.002, z: o.z + d.z * go + n.z * 0.002 }, true);
+      b.setLinvel({ x: nx + n.x * out, y: ny + n.y * out, z: nz + n.z * out }, true);
+      const w = b.angvel(); b.setAngvel({ x: w.x * 0.6, y: w.y * 0.6, z: w.z * 0.6 }, true);
+      if (-vn > 0.35 && this.time - it.snd >= 0.11) { it.snd = this.time; if (this.onImpact) this.onImpact(it, -vn, b.translation(), null, surf); }
+      else if (it.snd < 0) it.snd = this.time;
+      return;
+    }
+    // resting or rolling on something only drawn: it is held up, and goes to sleep there like on any floor
+    const h = this._meshHit(list, o, d.set(0, -1, 0), r + 0.006); if (!h) return;
+    n.copy(h.face.normal).transformDirection(h.object.matrixWorld); if (n.y < 0) n.negate(); if (n.y < 0.35) return;
+    const vn = v.x * n.x + v.y * n.y + v.z * n.z;
+    b.setTranslation({ x: o.x, y: h.point.y + r, z: o.z }, false);              // (without waking it: held like this it can settle and sleep)
+    if (vn < 0) b.setLinvel({ x: v.x - vn * n.x, y: v.y - vn * n.y, z: v.z - vn * n.z }, false);
+    if (it.snd < 0) it.snd = this.time;
+  }
+
   // (It leaves the hand inside the thrower's own body capsule, so it only starts to meet the living a moment later.)
   // Rolling over road grit takes the way off it quickly: once it is down and no longer hopping, it is braked.
   nadeTick(item, dt) {

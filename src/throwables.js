@@ -392,13 +392,16 @@ export class Throwables {
     this.updateBits(dt);
   }
 
+  // What an object at p is lying on: the top of a collision box, or something that is only drawn (a balcony floor).
+  floor(p) { const G = this.G, box = groundAt(p.x, p.z, p.y + 0.12, 0.05, G.world.colliders, 0.06).y, drawn = G.rigid.meshBelow(p, 0.2); return drawn !== null && drawn > box ? drawn : box; }
+
   // ---- smoke canister ----------------------------------------------------------------------------------------------------------
   burn(n, p, dt) {
     const G = this.G, R = this.rnd;
     if (!n.lit) {
       if (n.t < n.fuse) return;
       n.lit = true; n.burnT = 0;
-      const fl = groundAt(p.x, p.z, p.y + 0.1, 0.05, G.world.colliders, 0.06).y;
+      const fl = this.floor(p);
       n.cloud = new SmokeCloud(this.puffs, fl, p.x, p.z, { low: 0.62, medium: 0.8, high: 1, ultra: 1.15 }[G.settings.quality] || 1); this.clouds.push(n.cloud);
       G.audio.smokePop({ x: p.x, y: p.y, z: p.z }); n.hiss = G.audio.smokeHiss({ x: p.x, y: p.y, z: p.z });
       G.bots.hear(p, 24, -1);
@@ -423,7 +426,7 @@ export class Throwables {
   explode(n) {
     const G = this.G, R = this.rnd, cols = G.world.colliders, P = G.player, cam = G.R.camera;
     const p = this.pos(n, V()), by = n.by; this.remove(n);
-    const fl = groundAt(p.x, p.z, p.y + 0.12, 0.05, cols, 0.06).y, airborne = p.y - fl > 0.7;
+    const fl = this.floor(p), airborne = p.y - fl > 0.7;
     const o = V(p.x, Math.max(p.y, fl + 0.06) + 0.14, p.z);                                           // a hand's breadth clear of the ground, so a kerb or a body does not swallow it
     const out = {}; let surf = G.world.surfaceAt(p.x, p.z);
     if (rayBoxes(p.x, p.y + 0.1, p.z, 0, -1, 0, 1.2, cols, out) < 1.2 && out.b && out.b.surf) surf = out.b.surf;
