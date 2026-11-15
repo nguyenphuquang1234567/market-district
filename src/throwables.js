@@ -108,6 +108,10 @@ function pose(wrist, fingers, palm, elbow) {
   return { p: V(...wrist), q: new THREE.Quaternion().setFromRotationMatrix(basis(X, Y, Z, V(0, 0, 0))), e: V(...elbow) };
 }
 const blend = (a, b, k, out) => { out.p.lerpVectors(a.p, b.p, k); out.q.slerpQuaternions(a.q, b.q, k); out.e.lerpVectors(a.e, b.e, k); return out; };
+// Which way the forearm leaves each hand, in the hand's own frame (the glove's cuff is modelled along it, and the sleeve
+// is laid along it every frame, so wrist, cuff and sleeve are one line in every pose). The left reaches across with the
+// wrist cocked back a little and turned out; the right is straight.
+const FOREARM = { r: V(0, -1, 0), l: V(-0.3, -0.9, 0.45).normalize() };
 // Where the object sits in the right hand (hand frame: +y to the fingertips, +z out of the palm, thumb on +x).
 const GRIP = {
   frag: { c: V(0.004, 0.084, 0.0465), up: V(0.94, 0, 0.34), turn: 1.5, drop: V(0, 0, 0) },
@@ -132,7 +136,7 @@ export class Throwables {
       smoke: mk(buildHand(1, curlCan, [[0.044, 0.04, 0.03], [0.04, 0.062, 0.076], [0.03, 0.085, 0.0848]], 0), W.M.glove, rh),
       open: mk(buildHand(1, [[0.22, 0.3, 0.2], [0.3, 0.36, 0.25], [0.36, 0.42, 0.3], [0.44, 0.48, 0.32]], [[0.05, 0.04, 0.012], [0.066, 0.066, 0.022], [0.074, 0.09, 0.03]], 0.1), W.M.glove, rh),
     };
-    mk(buildHand(-1, [[0.35, 1.25, 0.95], [1.3, 1.4, 0.95], [1.35, 1.45, 1.0], [1.4, 1.5, 1.0]], [[0.047, 0.05, 0.012], [0.05, 0.076, 0.036], [0.044, 0.098, 0.052]], 0.1), W.M.glove, lh);
+    mk(buildHand(-1, [[0.35, 1.25, 0.95], [1.3, 1.4, 0.95], [1.35, 1.45, 1.0], [1.4, 1.5, 1.0]], [[0.047, 0.05, 0.012], [0.05, 0.076, 0.036], [0.044, 0.098, 0.052]], 0.1, FOREARM.l.toArray()), W.M.glove, lh);
     this.sleeveR = mk(sleeveGeom(), W.M.sleeve, rig); this.sleeveL = mk(sleeveGeom(), W.M.sleeve, rig);
     // the object in the right hand, one per kind
     this.held = {}; this.grip = GRIP; this.hook = { palm: [0.1, -0.8, -0.5], elbow: V(-0.32, -0.42, -0.03) };
@@ -269,7 +273,7 @@ export class Throwables {
     const drop = this.grip[kind].drop;
     this.rh.position.copy(c.r.p).addScaledVector(drop, low); this.rh.quaternion.copy(c.r.q); this.lh.position.copy(c.l.p).addScaledVector(drop, low); this.lh.quaternion.copy(c.l.q);
     this.lh.visible = lhOn; this.sleeveL.visible = lhOn;
-    for (const [sl, h] of [[this.sleeveR, c.r], [this.sleeveL, c.l]]) { const d = this.tv.copy(h.e).sub(h.p).normalize(); sl.position.copy(h.p).addScaledVector(drop, low).addScaledVector(d, 0.012); sl.quaternion.setFromUnitVectors(this.tv2.set(0, -1, 0), d); }
+    for (const [sl, h, f] of [[this.sleeveR, c.r, FOREARM.r], [this.sleeveL, c.l, FOREARM.l]]) { const d = this.tv.copy(f).applyQuaternion(h.q); sl.position.copy(h.p).addScaledVector(drop, low).addScaledVector(d, 0.012); sl.quaternion.setFromUnitVectors(this.tv2.set(0, -1, 0), d); }
     // the rig rides the body like the rifle does: breath, footfall, look inertia, and it draws back from a wall
     const bob = Math.min(1, inp.speed / 4.5) * (inp.grounded ? 1 : 0.2), wall = clamp((0.8 - inp.wallDist) / 0.5, 0, 1), still = this.st === 'ready' || this.st === 'hold' ? 1 : 0.4;
     this.rig.position.set(Math.cos(W.bobT) * 0.004 * bob + W.sway.x * 0.04, Math.sin(W.time * 1.5) * 0.0018 * still - Math.abs(Math.sin(W.bobT)) * 0.006 * bob - W.land * 0.03 - wall * 0.04, wall * 0.13);
