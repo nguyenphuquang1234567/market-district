@@ -109,6 +109,10 @@ All runtime assets live in `assets/` and are loaded locally. Re-create with `npm
 | Basis Universal `basisu` 2.50 (Homebrew `basis_universal`) | Apache-2.0 | encoding the textures above to KTX2 (`tools/encode-ktx2.mjs`); the files it writes carry the source textures' CC0 terms |
 | Blender 5.3 | GPL (output is unrestricted) | modelling the architectural kit, `assets/kit/kit.glb`, from `tools/blender/kit.py` (made for this project) |
 
+`cobblestone_floor_13`'s ARM map came with an empty occlusion channel (red all but black), which darkened every bit of
+indirect light on the cobbles to about a tenth; its red channel was rebuilt from the set's normal map by
+`tools/repack-ao.py` (roughness and metalness untouched).
+
 The texture library ships as KTX2 (Basis UASTC LDR 4x4, Zstandard, full mip chains) next to the original JPEG/PNG files;
 the web build (`npm run build`) keeps only the KTX2 encodings.
 

@@ -9,7 +9,7 @@ const PORT = Number(process.env.PORT) || 5173;
 const MIME = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8',
   '.json': 'application/json', '.css': 'text/css', '.jpg': 'image/jpeg', '.png': 'image/png', '.gltf': 'model/gltf+json',
-  '.glb': 'model/gltf-binary', '.bin': 'application/octet-stream', '.hdr': 'application/octet-stream',
+  '.glb': 'model/gltf-binary', '.bin': 'application/octet-stream', '.hdr': 'application/octet-stream', '.ktx2': 'image/ktx2',
 };
 
 createServer((req, res) => {
@@ -29,11 +29,15 @@ createServer((req, res) => {
   if (!file.startsWith(ROOT + sep) || file.toLowerCase().split(sep).includes('.git')) { res.writeHead(403).end(); return; }
   let st;
   try { st = statSync(file); } catch { res.writeHead(404).end('not found'); return; }
-  const heavy = p.startsWith('/assets/') || p.startsWith('/node_modules/');
+  // Assets are cached but revalidated on every load (Last-Modified / 304), so a re-encoded texture, a rebuilt kit or a
+  // new light bake shows up on a plain reload while unchanged files are not sent again.
+  const heavy = p.startsWith('/assets/') || p.startsWith('/node_modules/'), modified = st.mtime.toUTCString();
+  if (heavy && req.headers['if-modified-since'] === modified) { res.writeHead(304, { 'Last-Modified': modified, 'Cache-Control': 'no-cache' }).end(); return; }
   res.writeHead(200, {
     'Content-Type': MIME[extname(file)] || 'application/octet-stream',
     'Content-Length': st.size,
-    'Cache-Control': heavy ? 'public, max-age=86400' : 'no-store',
+    'Cache-Control': heavy ? 'no-cache' : 'no-store',
+    ...(heavy ? { 'Last-Modified': modified } : {}),
   });
   createReadStream(file).pipe(res);
 }).listen(PORT, () => console.log(`Market District → http://localhost:${PORT}`));

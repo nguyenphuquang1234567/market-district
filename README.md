@@ -325,7 +325,9 @@ resolution (the build before: mean 16.73 ms, p99 19 ms, worst 70 ms, 8 frames ov
 What the dark places look like now, measured on the before/after captures (`tools/compare-shots.js`, same views, same
 clock, exposure metered as in play; share of the frame darker than 40/255): inside a walk-in shop 13.0 % → 4.6 %, inside the
 market hall 43.5 % → 33.4 %, the laundry alley 15.5 % → 14.3 %, the covered lane 15.4 % → 14.1 %; nothing clips anywhere
-(at most 0.02 % of a frame at 255).
+(at most 0.02 % of a frame at 255). The market quarter's cobbled streets in shade had a further fault of their own: the cobblestone
+texture's empty occlusion channel cut their indirect light to a tenth. With it rebuilt, a shaded stretch of cobbles reads
+at a median of 59–68 (of 255) instead of 11–12, against 44 for the old district's shaded asphalt.
 
 Profiling switches: `?demo=1` auto-plays the match (for pacing runs), `?live=1` writes `captures/live.json` every 3 s,
 `?tune={"maxPR":1.25}` overrides any preset field.
@@ -360,6 +362,8 @@ In the browser console, with the dev server running:
   (`G.bootTimes()`) and the captures by itself and saves them to `captures/` (for the native window, where there is no
   console). `?tex=jpg` loads the original JPEGs instead of the KTX2 textures, for comparisons on the dev server.
 - `node tools/encode-ktx2.mjs` — re-encodes changed textures to KTX2 (needs `basisu`, Homebrew `basis_universal`).
+- `python3 tools/repack-ao.py <texture set>` — rebuilds an ARM map's occlusion channel from its normal map when the
+  downloaded one is empty (done for `cobblestone_floor_13`, whose shaded cobbles had come out nearly black).
 - `Blender --background --factory-startup --python tools/blender/kit.py -- assets/kit/kit.glb [--preview file.png]` —
   rebuilds the architectural kit (and a contact sheet of its pieces).
 - `tools/locomotion-probe.js` — measures how the soldiers move over minutes of play (see the top of the file):

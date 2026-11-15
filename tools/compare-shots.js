@@ -25,6 +25,7 @@ export const VIEWS = {
   // ---- the market quarter
   gate_north: [28.4, 20, 90, 2],
   calle_mercado: [49, -45, 0, 4],
+  quarter_south: [88, -60, -90, 2],              // the quarter's south street, cobbles half in shade
   quarter_facades: [50.6, -36, -90, 18],          // the ring's new faces along Calle del Mercado
   hall_portal: [47.5, 0, 90, 6],
   hall_inside: [61, 3.2, 100, 8],
