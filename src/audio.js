@@ -6,13 +6,13 @@ import { bakeSounds } from './sounds.js';
 
 const IMP = { concrete: 'concrete', plaster: 'concrete', brick: 'concrete', tile: 'concrete', dirt: 'dirt', wood: 'wood', metal: 'metal', fabric: 'fabric', glass: 'glass', flesh: 'flesh', plastic: 'plastic' };
 const STEP = { concrete: 'step_concrete', plaster: 'step_concrete', brick: 'step_concrete', dirt: 'step_dirt', wood: 'step_wood', metal: 'step_metal', tile: 'step_tile', fabric: 'step_fabric' };
-const PROP = { plastic: 'prop_plastic', wood: 'prop_wood', bin: 'prop_bin', can: 'prop_can', tank: 'prop_tank', clay: 'prop_clay', cardboard: 'prop_cardboard', rubber: 'prop_rubber', bag: 'prop_bag', wicker: 'prop_wicker', gun: 'prop_gun' };
+const PROP = { plastic: 'prop_plastic', wood: 'prop_wood', bin: 'prop_bin', can: 'prop_can', tank: 'prop_tank', clay: 'prop_clay', cardboard: 'prop_cardboard', rubber: 'prop_rubber', bag: 'prop_bag', wicker: 'prop_wicker', gun: 'prop_gun', frag: 'prop_frag', canister: 'prop_canister' };
 const C = 343;      // speed of sound, m/s
 
 export class Audio {
   constructor() {
     this.ctx = null; this.rnd = rng(31337); this.voices = 0; this.muffle = 0; this.raw = bakeSounds(48000);
-    this.cast = null; this.blocked = null; this.emitters = []; this.active = []; this.env = { room: 0, narrow: 0, open: 1 }; this.lpos = { x: 0, y: 1.6, z: 0 }; this.envT = 0; this.emitT = 0; this.last = {}; this.foot = false;
+    this.cast = null; this.blocked = null; this.emitters = []; this.active = []; this.env = { room: 0, narrow: 0, open: 1 }; this.lpos = { x: 0, y: 1.6, z: 0 }; this.envT = 0; this.emitT = 0; this.last = {}; this.foot = false; this.concuss = 0; this.hisses = [];
   }
 
   start() {
@@ -159,6 +159,72 @@ export class Audio {
     if (heavy) this._play('rattle', { ...o, gain: o.gain * 0.5, delay: o.delay + 0.03 });
   }
 
+  // ---- thrown ordnance -------------------------------------------------------------------------------------------------------------
+  // In the hand: pin, lever, the arm going through. At the ear, so no path to trace.
+  nade(name, gain = 0.6, delay = 0) { if (this.ctx) this._play(name, { bus: this.bus.weapon, gain, delay, jitter: 0.05, rev: 0.08, er: 0.05 }); }
+  // Small steel parts (pin, lever) landing near the feet.
+  tink(pos, vel = 1) { if (this.ctx) this._play('tink', { pos, ref: 0.9, gain: 0.5 * clamp(vel, 0.2, 1.3), jitter: 0.2, rev: 0.1 }); }
+  // A grenade or canister striking something: its own ring, plus what it landed on.
+  nadeBounce(kind, surf, pos, speed) {
+    if (!this.ctx) return;
+    const soft = surf === 'dirt' || surf === 'fabric', v = clamp(speed / 6, 0.14, 1.25);
+    const o = { bus: this.bus.impact, ref: 2.4, gain: v * (soft ? 0.55 : 1.15), rate: 1 + (1 - v) * 0.06, jitter: 0.1, er: 0.2, rev: 0.2 };
+    if (this._carry(pos, o) > 55) return;
+    this._play(kind === 'frag' ? 'prop_frag' : 'prop_canister', o);
+    if (soft) this._play('nade_soft', { ...o, gain: v * 1.1 });
+    else if (surf === 'wood') this._play('prop_wood', { ...o, gain: v * 0.7 });
+    else if (surf === 'metal') this._play('prop_bin', { ...o, gain: v * 0.55 });
+    else if (surf === 'tile' && this.rnd() < 0.6) this._play('imp_glass', { ...o, gain: v * 0.12 });
+  }
+  // High explosive. Close by it is a blow to the ears: everything else drops away, then a ringing. Further off the crack
+  // is gone and the street carries the slam; blocks away only the thud arrives, late.
+  explosion(pos) {
+    if (!this.ctx) return 0;
+    const o = { bus: this.bus.world, ref: 9, er: 0.7, rev: 0.35, jitter: 0.06 }, d = this._carry(pos, o), t = this.now + o.delay;
+    const near = clamp(1 - (d - 6) / 22, 0, 1), far = clamp((d - 45) / 70, 0, 1), mid = 1 - Math.max(near * 0.75, far);
+    const occ = (1 - o.gain) / 0.6;                                            // 0 in the open .. 1 behind walls
+    if (near > 0) this._play('boom', { ...o, gain: o.gain * 3.4 * near, ref: 7 });
+    if (mid > 0.05) this._play('boomMid', { ...o, gain: o.gain * 3.6 * mid, ref: 11 });
+    if (far > 0) this._play('boomFar', { ...o, gain: o.gain * 4.2 * far, ref: 16 });
+    if (d < 30) this._play('debris', { ...o, gain: o.gain * 1.3, ref: 5, delay: o.delay + 0.35, er: 0.1 });
+    const hit = clamp(1.25 - d / 13, 0, 1) * (1 - occ * 0.8);                  // how hard the ears take it
+    if (hit > 0.02) {
+      const dk = this.duck.gain; dk.cancelScheduledValues(t); dk.setTargetAtTime(1 - 0.85 * hit, t, 0.004); dk.setTargetAtTime(1, t + 0.25 + hit * 0.9, 0.5 + hit * 1.2);
+      this.concuss = Math.max(this.concuss, hit);
+      if (hit > 0.3) {                                                         // tinnitus, straight to the output: the ears make it, the muffling does not touch it
+        const ctx = this.ctx, osc = ctx.createOscillator(), osc2 = ctx.createOscillator(), g = ctx.createGain(), dur = 1.6 + hit * 3.4;
+        osc.frequency.value = 4150 + this.rnd() * 300; osc2.frequency.value = osc.frequency.value * 1.493;
+        g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.05 * hit, t + 0.05); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+        const g2 = ctx.createGain(); g2.gain.value = 0.35; osc.connect(g); osc2.connect(g2); g2.connect(g); g.connect(this.master);
+        osc.start(t); osc2.start(t); osc.stop(t + dur + 0.05); osc2.stop(t + dur + 0.05);
+      }
+    }
+    return hit;
+  }
+  smokePop(pos) { if (!this.ctx) return; const o = { bus: this.bus.world, ref: 4, gain: 1.5, er: 0.4, rev: 0.25, jitter: 0.08 }; this._carry(pos, o); this._play('smokepop', o); }
+  // The burning canister: a looped hiss that stays where the canister lies. Returns a handle: set(pos, level) / stop().
+  smokeHiss(pos) {
+    if (!this.ctx) return { set() {}, stop() {} };
+    const ctx = this.ctx, src = ctx.createBufferSource(); src.buffer = this.S.hiss[0]; src.loop = true; src.playbackRate.value = 0.96 + this.rnd() * 0.1;
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 16000; lp.Q.value = 0.5;
+    const g = ctx.createGain(); g.gain.value = 0;
+    const pn = ctx.createPanner(); pn.panningModel = 'HRTF'; pn.distanceModel = 'inverse'; pn.refDistance = 2.2; pn.rolloffFactor = 1.3; pn.maxDistance = 200;
+    pn.positionX.value = pos.x; pn.positionY.value = pos.y; pn.positionZ.value = pos.z;
+    src.connect(lp); lp.connect(g); g.connect(pn); pn.connect(this.bus.world);
+    const s = ctx.createGain(); s.gain.value = 0.18; pn.connect(s); s.connect(this.revSend);
+    src.start(this.now, this.rnd() * 2); this.voices++;
+    const h = { src, t: 0,
+      set: (p, level) => {                                                     // called a few times a second: follow the canister, and the walls between
+        const t = this.now, o = {}; this._carry(p, o);
+        pn.positionX.setTargetAtTime(p.x, t, 0.05); pn.positionY.setTargetAtTime(p.y, t, 0.05); pn.positionZ.setTargetAtTime(p.z, t, 0.05);
+        g.gain.setTargetAtTime(1.1 * level * o.gain, t, 0.12); lp.frequency.setTargetAtTime(Math.max(500, o.lp), t, 0.15);
+      },
+      stop: () => { if (h.done) return; h.done = true; const t = this.now; g.gain.setTargetAtTime(0, t, 0.25); src.stop(t + 1.5); this.voices--; this.hisses.splice(this.hisses.indexOf(h), 1); } };
+    this.hisses.push(h);
+    return h;
+  }
+  stopHisses() { for (const h of [...this.hisses]) h.stop(); }
+
   // ---- foley ------------------------------------------------------------------------------------------------------------------
   step(surf, vol = 1, pos = null) {
     if (!this.ctx) return; const name = STEP[surf] || 'step_concrete';
@@ -211,9 +277,9 @@ export class Audio {
     if (l.positionX) { l.positionX.value = p.x; l.positionY.value = p.y; l.positionZ.value = p.z; l.forwardX.value = fx; l.forwardY.value = -e[9]; l.forwardZ.value = fz; l.upX.value = e[4]; l.upY.value = e[5]; l.upZ.value = e[6]; }
     else { l.setPosition(p.x, p.y, p.z); l.setOrientation(fx, -e[9], fz, e[4], e[5], e[6]); }
     this.lpos.x = p.x; this.lpos.y = p.y; this.lpos.z = p.z;
-    this.muffle = Math.max(0, this.muffle - dt * 0.7);
+    this.muffle = Math.max(0, this.muffle - dt * 0.7); this.concuss = Math.max(0, this.concuss - dt * (0.16 + this.concuss * 0.22));      // a blast leaves the ears dull for seconds, clearing slowly
     const low = health < 35 ? (35 - health) / 35 : 0;
-    this.lp.frequency.setTargetAtTime(20000 * Math.pow(0.06, clamp(this.muffle + low * 0.55, 0, 1)), t, 0.05);
+    this.lp.frequency.setTargetAtTime(20000 * Math.pow(0.06, clamp(this.muffle + low * 0.55 + this.concuss * 0.95, 0, 1)), t, 0.05);
     this.envT -= dt; if (this.envT <= 0) { this.envT = 0.2; this._surroundings(p, interior, t); }
     for (const tap of this.taps) tap.pan.pan.setTargetAtTime(clamp((tap.dx * -fz + tap.dz * fx) * 0.85, -1, 1), t, 0.05);       // echoes stay put as the head turns
     const E = this.env, R = this.rev;

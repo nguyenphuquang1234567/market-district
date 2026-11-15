@@ -207,6 +207,7 @@ class Bot {
     this.think = this.rnd() * 0.2; this.ammo = 30; this.reloadT = 0; this.burst = 0; this.burstCool = 0.4; this.fireCool = 0; this.engageT = 0; this.cover = null; this.peek = null; this.coverT = 0; this.atPeek = false;
     this.strafeT = 0; this.lookYaw = null; this.stuckT = 0; this.flinch = 0; this.hurtT = 9; this.reported = 0; this.searchT = 0;
     this.onPath = false; this.haltT = 0; this.halting = false; this.scanT = 0; this.scanSide = this.rnd() < 0.5 ? -1 : 1; this.scanBase = null; this.offPathT = 0;
+    this.evade = null; this.dazed = 0;
   }
 
   spawn(sp) {
@@ -237,8 +238,11 @@ class Bot {
     if (this.health <= 0) {
       this.alive = false; this.deadT = 0; this.respawnT = 4.5 + this.rnd() * 1.5; this.deaths++;
       const dx = this.pos.x - from.x, dz = this.pos.z - from.z, l = Math.hypot(dx, dz) || 1;
-      this.fall = { dir: V(dx / l, -0.08, dz / l), zone };                           // the ragdoll takes over on the next update
-      this.G.onKill(attacker, this, zone === 'head');
+      if (zone === 'blast') {                                                        // thrown off the feet, away from the burst and a little up
+        const dy = this.pos.y + 1.0 - (from.y ?? 0), l3 = Math.hypot(dx, dy, dz) || 1;
+        this.fall = { dir: V(dx / l3, dy / l3 + 0.45, dz / l3).normalize(), zone: 'body', launch: clamp(amount / 100, 0.35, 1.5) * 2.4 };
+      } else this.fall = { dir: V(dx / l, -0.08, dz / l), zone };                    // the ragdoll takes over on the next update
+      this.G.onKill(attacker, this, zone === 'head', zone);
       return true;
     }
     return false;
@@ -260,10 +264,11 @@ class Bot {
         if (ang < 1.05 || d < 2.2 || s.t >= 1) {
           const ey = e.eyeY - 0.12;
           vis = losClear(eye, t2.set(e.pos.x, ey, e.pos.z), cols) || losClear(eye, t2.set(e.pos.x, e.pos.y + (ey - e.pos.y) * 0.55, e.pos.z), cols);
+          if (vis && d > 2.5 && this.G.throw.smoked(eye, t2.set(e.pos.x, e.pos.y + (ey - e.pos.y) * 0.75, e.pos.z))) { vis = false; s.smoke = this.G.time; }      // smoke between them
         }
       }
       if (vis) {
-        const rate = (1 / D.react) * clamp(1.6 - d / 60, 0.45, 1.6) * (e.crouching ? 0.75 : 1) * (e.vel.lengthSq() > 4 ? 1.3 : 1);
+        const rate = (1 / D.react) * clamp(1.6 - d / 60, 0.45, 1.6) * (e.crouching ? 0.75 : 1) * (e.vel.lengthSq() > 4 ? 1.3 : 1) * (1 - 0.55 * Math.min(1, this.dazed));
         s.t = Math.min(1.5, s.t + dt * rate);
         if (s.t >= 1) { s.pos = e.pos.clone(); s.when = this.G.time; }
       } else s.t = Math.max(s.pos ? 1 : 0, s.t - dt * 0.25);
@@ -339,11 +344,45 @@ class Bot {
     return best;
   }
 
+  // A live grenade: behind the nearest thing that will stop fragments if that is not past the grenade itself, else
+  // straight away from it as far as the fuze allows.
+  runFrom(ev, cols) {
+    const nav = this.G.world.nav, mine = Math.hypot(this.pos.x - ev.x, this.pos.z - ev.z);
+    let c = this.findCover({ x: ev.x, y: ev.y - 1.3, z: ev.z }, cols);
+    if (c && Math.hypot(c.x - ev.x, c.z - ev.z) < Math.max(3.5, mine + 0.5)) c = null;                      // not if it means running past the thing
+    if (c && (Math.hypot(c.x - this.pos.x, c.z - this.pos.z) > 2 + ev.t * 3.2 || losClear(t1.set(ev.x, ev.y + 0.2, ev.z), t2.set(c.x, 0.4, c.z), cols))) c = null;      // nor if it cannot be reached in time, or would not hide a crouching man
+    if (!c) {
+      const base = Math.atan2(this.pos.x - ev.x, this.pos.z - ev.z);
+      find: for (const dist of [11, 8, 5]) for (const da of [0, 0.45, -0.45, 0.9, -0.9, 1.5, -1.5]) {
+        const gx = this.pos.x + Math.sin(base + da) * dist, gz = this.pos.z + Math.cos(base + da) * dist;
+        if (nav.free(gx, gz) && nav.walkable(this.pos.x, this.pos.z, gx, gz)) { c = { x: gx, z: gz }; break find; }
+      }
+    }
+    this.cover = null; this.halting = false; this.lookYaw = null; this.strafeGoal = null; this.burst = 0;
+    if (c) this.setGoal(c.x, c.z, true);
+  }
+
   // ---- decisions --------------------------------------------------------------------------------------------------------
   brain(dt, actors, cols) {
     const G = this.G, D = DIFF[G.settings.difficulty] || DIFF.normal, R = this.rnd;
     const vis = this.perceive(dt, actors, cols);
-    this.hurtT += dt;
+    this.hurtT += dt; this.dazed = Math.max(0, this.dazed - dt);
+    const ev = this.evade;
+    if (ev) {
+      ev.t -= dt;
+      if (ev.wait > 0) { ev.wait -= dt; if (ev.wait <= 0) this.runFrom(ev, cols); }      // the moment it takes to understand what just landed
+      if (ev.wait <= 0) {
+        if (ev.t > 0) {
+          const there = !this.path || this.pathI >= this.path.length;                  // out of reach or behind something: get down and face away
+          this.state = 'evade'; this.crouching = there; this.onPath = !there; this.wishDir = null; this.wishSpeed = there ? 0 : this.pace.run + 0.9; this.wantPitch = 0;
+          this.wantYaw = there ? Math.atan2(this.pos.x - ev.x, this.pos.z - ev.z) : null;
+          return;
+        }
+        this.evade = null; this.crouching = false; this.cover = null; this.lookYaw = Math.atan2(ev.fx - this.pos.x, ev.fz - this.pos.z);
+        this.state = 'search'; this.searchT = 4 + R() * 3; this.setGoal(ev.fx + (R() - 0.5) * 9, ev.fz + (R() - 0.5) * 9, false);      // then: where did that come from
+      }
+    }
+    const smoked = this.target && (this.seen.get(this.target)?.smoke ?? -9) > G.time - 0.35;      // lost him behind smoke, not behind a wall
     if (vis) {
       if (this.target !== vis) { this.target = vis; this.engageT = 0; }
       if (this.state !== 'combat') { this.state = 'combat'; this.cover = null; this.strafeT = 0; this.burstCool = 0.15 + R() * 0.3; }
@@ -351,7 +390,13 @@ class Bot {
       this.reported += dt; if (this.reported > 1.2) { this.reported = 0; G.bots.report(this.team, vis.pos, this, vis); }
     } else if (this.state === 'combat') {
       this.lostT += dt;
-      if (this.lostT > 1.3 && this.reloadT <= 0) { this.state = 'search'; this.searchT = 6 + R() * 3; this.cover = null; this.crouching = false; if (this.lastKnown) this.setGoal(this.lastKnown.x + (R() - 0.5) * 3, this.lastKnown.z + (R() - 0.5) * 3, R() < 0.5); }
+      if (this.lostT > (smoked ? 2.6 : 1.3) && this.reloadT <= 0) {
+        this.state = 'search'; this.searchT = 6 + R() * 3; this.cover = null; this.crouching = false;
+        if (this.lastKnown && smoked) {                                                // nobody walks into a smoke screen: work round one side of it
+          const lx = this.lastKnown.x - this.pos.x, lz = this.lastKnown.z - this.pos.z, ll = Math.hypot(lx, lz) || 1, side = R() < 0.5 ? -1 : 1;
+          this.setGoal(this.lastKnown.x - lz / ll * side * 7, this.lastKnown.z + lx / ll * side * 7, true);
+        } else if (this.lastKnown) this.setGoal(this.lastKnown.x + (R() - 0.5) * 3, this.lastKnown.z + (R() - 0.5) * 3, R() < 0.5);
+      }
     }
 
     let wish = null, speed = 0, onPath = false;
@@ -392,7 +437,7 @@ class Bot {
       // fire control: short controlled bursts, longer suppressive ones when the target ducks out of sight
       this.burstCool -= dt; this.fireCool -= dt;
       const aimErr = Math.abs(angDiff(this.yaw, this.wantYaw || 0));
-      const canShoot = this.ammo > 0 && this.reloadT <= 0 && !this.gunBlocked && aimErr < 0.14 && (vis || (this.lostT < 1.1 && this.lastKnown && !this.crouching));
+      const canShoot = this.ammo > 0 && this.reloadT <= 0 && !this.gunBlocked && aimErr < 0.14 && (vis || (this.lostT < (smoked ? 2.3 : 1.1) && this.lastKnown && !this.crouching));      // into the smoke where he was, for a little longer
       if (this.ammo <= 0 && this.reloadT <= 0) { this.reloadT = BOT_RELOAD_DURATION; this.burst = 0; }
       if (canShoot && this.burst <= 0 && this.burstCool <= 0 && this.engageT > D.react * 0.6) { this.burst = vis ? 2 + (R() * (this.tDist < 15 ? 6 : 3) | 0) : 3 + (R() * 4 | 0); }
       if (this.burst > 0 && this.fireCool <= 0 && canShoot) {
@@ -505,7 +550,7 @@ class Bot {
     const G = this.G;
     if (!this.alive) {
       this.deadT += dt; this.respawnT -= dt;
-      if (this.fall && this.root.visible) { this.rag = G.rigid.ragdoll(this, this.fall.dir, this.fall.zone); this.dropped = G.rigid.dropGun(this); this.fall = null; }
+      if (this.fall && this.root.visible) { this.rag = G.rigid.ragdoll(this, this.fall.dir, this.fall.zone, this.fall.launch || 0); this.dropped = G.rigid.dropGun(this); this.fall = null; }
       if (this.respawnT <= 0 && G.matchLive) { const sp = G.bots.pickSpawn(this.team); if (sp) { this.leaveBody(); this.spawn(sp); } }
       return;
     }
@@ -1202,13 +1247,34 @@ export class Bots {
   // Sound events with an uncertain position; only idle bots react.
   hear(pos, radius, sourceTeam) {
     for (const b of this.list) {
-      if (!b.alive || b.team === sourceTeam || b.state === 'combat') continue;
+      if (!b.alive || b.team === sourceTeam || b.state === 'combat' || b.evade) continue;
       const d = Math.hypot(b.pos.x - pos.x, b.pos.z - pos.z);
       if (d > radius || b.rnd() > 0.75) continue;
       const err = 1.5 + d * 0.16;
       b.state = 'search'; b.searchT = 5 + b.rnd() * 3; b.lookYaw = Math.atan2(pos.x - b.pos.x, pos.z - b.pos.z);
       b.setGoal(pos.x + (b.rnd() - 0.5) * err * 2, pos.z + (b.rnd() - 0.5) * err * 2, d > 25);
     }
+  }
+
+  // A grenade has struck the ground at p with `left` seconds on its fuze. Soldiers who see it land or hear it strike
+  // close by get out of its way, after the moment it takes to register; some never notice.
+  grenade(n, p, left) {
+    const G = this.G, name = G.settings.difficulty, D = DIFF[name] || DIFF.normal, cols = G.world.colliders;
+    for (const b of this.list) {
+      if (!b.alive || n.warned.has(b)) continue;
+      const d = Math.hypot(b.pos.x - p.x, b.pos.z - p.z); if (d > 12) continue;
+      const see = losClear(b.eye(t1), t2.set(p.x, p.y + 0.1, p.z), cols), ang = Math.abs(angDiff(b.yaw + b.headYaw, Math.atan2(p.x - b.pos.x, p.z - b.pos.z)));
+      if (!((see && ang < 1.2) || d < 6.5)) continue;
+      n.warned.add(b);
+      if ((!see && d > 4) || d > 10) continue;                                         // behind a wall from it, or far enough already
+      if (b.rnd() > (name === 'easy' ? 0.6 : name === 'hard' ? 1 : 0.88)) continue;
+      b.evade = { x: p.x, y: p.y, z: p.z, t: left + 0.7, wait: D.react * (0.4 + b.rnd() * 0.6) * (1 + b.dazed), fx: n.from.x, fz: n.from.z };
+    }
+  }
+  // After a burst: those who felt it keep their heads down for a moment.
+  blasted(o) {
+    const cols = this.G.world.colliders;
+    for (const b of this.list) { if (!b.alive) continue; const d = Math.hypot(b.pos.x - o.x, b.pos.z - o.z); if (d < 18 && losClear(b.eye(t1), o, cols)) { b.hurtT = 0; b.flinch = 1; } }
   }
 
   sound(b, kind, speed = 3) {
@@ -1225,7 +1291,7 @@ export class Bots {
     if (tg) { aim = V(tg.pos.x, tg.pos.y + (tg.eyeY - tg.pos.y) * (0.55 + R() * 0.3), tg.pos.z); const lead = eye.distanceTo(aim) / 420; aim.addScaledVector(tg.vel, lead * (0.6 + R() * 0.5)); }
     else aim = V(b.lastKnown.x + (R() - 0.5) * 1.6, 1.0 + R() * 0.7, b.lastKnown.z + (R() - 0.5) * 1.6);
     const dir = aim.sub(eye).normalize();
-    const err = 0.016 * D.err * (1 + Math.max(0, 0.6 - b.engageT) * 3.5) * (tg && tg.vel.lengthSq() > 9 ? 1.5 : 1) * (b.vel.lengthSq() > 2 ? 1.6 : 1) * (1 + b.flinch) * (b.crouching ? 0.85 : 1);
+    const err = 0.016 * D.err * (1 + Math.max(0, 0.6 - b.engageT) * 3.5) * (tg && tg.vel.lengthSq() > 9 ? 1.5 : 1) * (b.vel.lengthSq() > 2 ? 1.6 : 1) * (1 + b.flinch) * (1 + b.dazed * 0.6) * (b.crouching ? 0.85 : 1);
     const g = () => (R() + R() + R() - 1.5) * 1.15;
     dir.x += g() * err; dir.y += g() * err * 0.8; dir.z += g() * err; dir.normalize();
     const hitInfo = {}; let tMax = rayBoxes(eye.x, eye.y, eye.z, dir.x, dir.y, dir.z, 220, cols, hitInfo), victim = null, zone = 'body';

@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { assets } from './assets.js';
+import { losClear } from './physics.js';
 
 const H = 1 / 60, G_STATIC = 1, G_PROP = 2, G_RAG = 4, G_CHAR = 8;
 const grp = (member, filter) => ((member << 16) | filter) >>> 0;
@@ -19,6 +20,7 @@ const MATS = {
   plastic: [0.45, 0.3, 'wood', false], wood: [0.6, 0.2, 'wood', true], cardboard: [0.75, 0.05, 'fabric', false], wicker: [0.65, 0.1, 'wood', false],
   clay: [0.6, 0.12, 'plaster', true], can: [0.5, 0.22, 'metal', false], tank: [0.5, 0.2, 'metal', true], bin: [0.5, 0.25, 'metal', false],
   rubber: [0.95, 0.5, 'fabric', true], bag: [0.95, 0, 'fabric', false], body: [0.85, 0, 'fabric', true], gun: [0.55, 0.15, 'metal', true],
+  frag: [0.62, 0.34, 'metal', true], canister: [0.55, 0.28, 'metal', true],
 };
 
 // Convex hull input: the extreme vertex of the scan along a spread of directions (a few dozen points per prop type).
@@ -49,14 +51,16 @@ export class Rigid {
   constructor(G, dynamic) {
     this.G = G; this.acc = 0; this.time = 0; this.items = new Map(); this.props = []; this.rags = []; this.guns = []; this.corpses = []; this.pushers = [];
     this.m4 = new THREE.Matrix4(); this.inv = new THREE.Matrix4(); this.tp = V(); this.tq = new THREE.Quaternion(); this.ts = V(); this.onImpact = null;
+    this.nades = []; this.surfOf = new Map();                                 // static collider handle -> surface
     const w = this.world = new RAPIER.World({ x: 0, y: -9.81, z: 0 }); w.timestep = H;
     this.events = new RAPIER.EventQueue(true);
     const fixed = w.createRigidBody(RAPIER.RigidBodyDesc.fixed()), sg = grp(G_STATIC, G_PROP | G_RAG);
-    w.createCollider(RAPIER.ColliderDesc.cuboid(70, 2, 100).setTranslation(0, -2, 0).setCollisionGroups(sg).setFriction(0.9), fixed);
+    this.ground = w.createCollider(RAPIER.ColliderDesc.cuboid(70, 2, 100).setTranslation(0, -2, 0).setCollisionGroups(sg).setFriction(0.9), fixed).handle;
     for (const b of G.world.colliders) {
       const hy = (b.y1 - b.y0) / 2; if (hy < 0.005 || b.hx < 0.005 || b.hz < 0.005) continue;
       const a = Math.atan2(b.s, b.c) / 2;
-      w.createCollider(RAPIER.ColliderDesc.cuboid(b.hx, hy, b.hz).setTranslation(b.x, b.y0 + hy, b.z).setRotation({ x: 0, y: Math.sin(a), z: 0, w: Math.cos(a) }).setCollisionGroups(sg).setFriction(0.85), fixed);
+      const col = w.createCollider(RAPIER.ColliderDesc.cuboid(b.hx, hy, b.hz).setTranslation(b.x, b.y0 + hy, b.z).setRotation({ x: 0, y: Math.sin(a), z: 0, w: Math.cos(a) }).setCollisionGroups(sg).setFriction(0.85), fixed);
+      this.surfOf.set(col.handle, b.surf || 'concrete');
     }
     this._props(dynamic || []);
     w.step(this.events); this.events.drainCollisionEvents(() => {});
@@ -126,15 +130,61 @@ export class Rigid {
       for (const r of this.rags) r.t += H;
     }
     if (n) { this._syncProps(false); for (const r of this.rags) r.sync(); for (const g of this.guns) g.sync(); }
+    for (const it of this.nades) it.sync(this.acc);
   }
   _contact(h1, h2) {
     const a = this.items.get(h1), b = this.items.get(h2); if (!a && !b) return;
-    const it = a || b, o = a && b ? b : null;
+    const it = a && b && b.kind === 'nade' ? b : a || b, o = a && b ? (it === a ? b : a) : null;      // a thrown object reports its own knocks
     if (o && it.rag && it.rag === o.rag) return;                               // a body folding onto itself is silent
     const speed = Math.hypot(it.pvx - (o ? o.pvx : 0), it.pvy - (o ? o.pvy : 0), it.pvz - (o ? o.pvz : 0));
-    if (speed < 0.7 || this.time - it.snd < 0.11) return;
+    if (speed < (it.kind === 'nade' ? 0.35 : 0.7) || this.time - it.snd < 0.11) return;
     it.snd = this.time; if (o) o.snd = this.time;
-    if (this.onImpact) this.onImpact(it, speed, it.body.translation(), o);
+    const sh = a ? h2 : h1, surf = o ? null : sh === this.ground ? this.G.world.surfaceAt(it.body.translation().x, it.body.translation().z) : this.surfOf.get(sh) || null;
+    if (this.onImpact) this.onImpact(it, speed, it.body.translation(), o, surf);
+  }
+
+  // ---- thrown objects --------------------------------------------------------------------------------------------------
+  // A grenade or canister as a body of its own: a dense ball or a can with the fuze standing proud of it, so it bounces
+  // off line, wobbles as it rolls and comes to rest on its side. Continuous collision keeps it out of walls.
+  addNade(kind, obj, pos, vel, spin, quat) {
+    const frag = kind === 'frag', w = this.world, CD = RAPIER.ColliderDesc, M = MATS[frag ? 'frag' : 'canister'];
+    const body = w.createRigidBody(RAPIER.RigidBodyDesc.dynamic().setTranslation(pos.x, pos.y, pos.z).setRotation({ x: quat.x, y: quat.y, z: quat.z, w: quat.w })
+      .setLinvel(vel.x, vel.y, vel.z).setAngvel({ x: spin.x, y: spin.y, z: spin.z }).setLinearDamping(0.03).setAngularDamping(frag ? 0.5 : 0.3).setCcdEnabled(true));
+    const open = grp(G_PROP, G_STATIC | G_PROP | G_RAG), full = grp(G_PROP, G_STATIC | G_PROP | G_RAG | G_CHAR);
+    const shapes = frag
+      ? [CD.ball(0.031).setMass(0.35), CD.cylinder(0.013, 0.0125).setTranslation(0, 0.041, 0).setMass(0.045)]
+      : [CD.cylinder(0.056, 0.0295).setMass(0.5), CD.cylinder(0.012, 0.0135).setTranslation(0, 0.068, 0).setMass(0.04)];
+    const mass = frag ? 0.395 : 0.54;
+    const item = { kind: 'nade', nade: kind, mat: frag ? 'frag' : 'canister', mass, body, obj, cols: [], pvx: 0, pvy: 0, pvz: 0, snd: -1, age: 0, guarded: true, full,
+      sync(lead) { const t = body.translation(), r = body.rotation(), v = body.isSleeping() ? null : body.linvel(); obj.position.set(t.x + (v ? v.x * lead : 0), t.y + (v ? v.y * lead : 0), t.z + (v ? v.z * lead : 0)); obj.quaternion.set(r.x, r.y, r.z, r.w); } };
+    for (const cd of shapes) { const col = w.createCollider(cd.setFriction(M[0]).setRestitution(M[1]).setCollisionGroups(open).setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS), body); item.cols.push(col); this.items.set(col.handle, item); }
+    this.nades.push(item); item.sync(0);
+    return item;
+  }
+  // (It leaves the hand inside the thrower's own body capsule, so it only starts to meet the living a moment later.)
+  // Rolling over road grit takes the way off it quickly: once it is down and no longer hopping, it is braked.
+  nadeTick(item, dt) {
+    item.age += dt; if (item.guarded && item.age > 0.16) { item.guarded = false; for (const c of item.cols) c.setCollisionGroups(item.full); }
+    const b = item.body; if (b.isSleeping()) return;
+    const v = b.linvel(), down = item.snd >= 0 && Math.abs(v.y) < 0.9;
+    if (down !== item.down) { item.down = down; b.setLinearDamping(down ? (item.nade === 'frag' ? 1.5 : 1.9) : 0.03); b.setAngularDamping(down ? 3.2 : item.nade === 'frag' ? 0.5 : 0.3); }
+  }
+  endNade(item) { const i = this.nades.indexOf(item); if (i < 0) return; this.nades.splice(i, 1); for (const c of item.cols) this.items.delete(c.handle); this.world.removeRigidBody(item.body); }
+
+  // A blast wave: everything loose within reach and in sight of it is thrown outwards, light things furthest.
+  blast(c, radius, power) {
+    const G = this.G, cols = G.world.colliders, seen = new Set(), o = V(c.x, c.y + 0.25, c.z), p = V(); let n = 0;
+    for (const it of this.items.values()) {
+      if (seen.has(it)) continue; seen.add(it);
+      const t = it.body.translation(), dx = t.x - c.x, dy = t.y + 0.15 - c.y, dz = t.z - c.z, d = Math.hypot(dx, dy, dz);
+      if (d > radius || !losClear(o, p.set(t.x, t.y + 0.2, t.z), cols)) continue;
+      const k = (1 - d / radius) ** 2, l = Math.max(d, 0.25);
+      const J = Math.min(power * k * Math.cbrt(it.mass) ** 2, it.mass * 8.5), up = 0.35 + 0.3 * k;      // the ground reflects the wave upwards
+      it.body.applyImpulse({ x: dx / l * J, y: (dy / l + up) * J, z: dz / l * J }, true);
+      const tq = J * 0.04; it.body.applyTorqueImpulse({ x: (Math.random() - 0.5) * tq, y: (Math.random() - 0.5) * tq, z: (Math.random() - 0.5) * tq }, true);
+      n++;
+    }
+    return n;
   }
 
   // ---- bullets -------------------------------------------------------------------------------------------------------------
@@ -158,7 +208,7 @@ export class Rigid {
   // ---- ragdolls ------------------------------------------------------------------------------------------------------------
   // Builds one body per major bone from the soldier's current pose, joined at the real joint positions. All bodies start
   // axis-aligned, so joint frames coincide and hinge limits can be written relative to the pose at death.
-  ragdoll(bot, dir, zone) {
+  ragdoll(bot, dir, zone, launch = 0) {
     const b = bot.b, w = this.world, RB = RAPIER.RigidBodyDesc, CD = RAPIER.ColliderDesc, P = o => o.getWorldPosition(V());
     bot.root.updateMatrixWorld(true);
     const p = {}; for (const k of ['hips', 'spine', 'neck', 'head', 'la', 'lf', 'lh', 'ra', 'rf', 'rh', 'lul', 'll', 'lft', 'rul', 'rl', 'rft']) p[k] = P(b[k]);
@@ -210,8 +260,13 @@ export class Rigid {
     hinge(thl, shl, p.ll, p.lft, side.clone().negate(), 2.4); hinge(thr, shr, p.rl, p.rft, side.clone().negate(), 2.4);
     // the round that killed: a shove on the part it struck, plus the knees giving way
     const hitPart = zone === 'head' ? head : zone === 'limb' ? (bot.rnd() < 0.5 ? thl : thr) : torso, J = zone === 'head' ? 10 : zone === 'limb' ? 16 : 36;
-    if (dir) hitPart.body.applyImpulse({ x: dir.x * J, y: dir.y * J + 2, z: dir.z * J }, true);
-    pelvis.body.applyImpulse({ x: 0, y: -14, z: 0 }, true);
+    if (launch > 0 && dir) {                                                   // thrown by a blast: the whole figure goes, limbs trailing
+      for (const pt of rag.parts) { const k = pt.mass * launch * (0.8 + bot.rnd() * 0.4); pt.body.applyImpulse({ x: dir.x * k, y: dir.y * k, z: dir.z * k }, true); }
+      torso.body.applyTorqueImpulse({ x: (bot.rnd() - 0.5) * 9 * launch, y: (bot.rnd() - 0.5) * 4 * launch, z: (bot.rnd() - 0.5) * 9 * launch }, true);
+    } else {
+      if (dir) hitPart.body.applyImpulse({ x: dir.x * J, y: dir.y * J + 2, z: dir.z * J }, true);
+      pelvis.body.applyImpulse({ x: 0, y: -14, z: 0 }, true);
+    }
     const order = [pelvis, torso, head, ual, fal, uar, far, thl, shl, thr, shr], m4 = this.m4, inv = this.inv, tp = this.tp, tq = this.tq, one = V(1, 1, 1);
     rag.sync = () => {
       for (const pt of order) {
@@ -275,6 +330,7 @@ export class Rigid {
   reset() {
     for (const r of [...this.rags]) this.endRagdoll(r);
     for (const g of [...this.guns]) this.endGun(g);
+    for (const n of [...this.nades]) this.endNade(n);
     for (const c of this.corpses) this._dropCorpse(c); this.corpses = [];
     for (const it of this.props) this._home(it);
     this._syncProps(true); this.acc = 0;

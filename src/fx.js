@@ -65,10 +65,21 @@ function decalTex(kind) {
     else if (kind === 'metal') { g.filter = 'blur(1px)'; blob(15, 22, 'rgba(190,190,195,0.85)', 12); g.filter = 'none'; blob(7, 10, 'rgba(8,8,9,1)', 10); g.strokeStyle = 'rgba(30,30,32,0.7)'; g.lineWidth = 2; g.beginPath(); g.arc(64, 64, 17, 0, 6.3); g.stroke(); }
     else if (kind === 'wood') { for (let i = 0; i < 9; i++) { g.strokeStyle = `rgba(${200 + R() * 30 | 0},${170 + R() * 30 | 0},${120 + R() * 20 | 0},0.85)`; g.lineWidth = 1.5 + R() * 2.5; const y = 64 + (R() - 0.5) * 22; g.beginPath(); g.moveTo(64 - 12 - R() * 34, y); g.lineTo(64 + 12 + R() * 34, y + (R() - 0.5) * 6); g.stroke(); } blob(6, 10, 'rgba(20,14,8,1)', 10); }
     else if (kind === 'glass') { g.strokeStyle = 'rgba(235,245,250,0.85)'; for (let i = 0; i < 13; i++) { const a = R() * 6.283, l = 20 + R() * 40; g.lineWidth = 0.6 + R() * 1.2; g.beginPath(); g.moveTo(64, 64); g.lineTo(64 + Math.cos(a) * l, 64 + Math.sin(a) * l); g.stroke(); } g.lineWidth = 1; for (const r of [14, 26]) { g.beginPath(); for (let i = 0; i <= 12; i++) { const a = (i / 12) * 6.283; g.lineTo(64 + Math.cos(a) * r * (0.8 + R() * 0.4), 64 + Math.sin(a) * r * (0.8 + R() * 0.4)); } g.stroke(); } blob(4, 7, 'rgba(5,6,8,1)', 9); }
+    else if (kind === 'scorch') {          // blast seat: a burnt centre, soot thinning outwards in streaks, pale scoured ground in between
+      const soot = g.createRadialGradient(64, 64, 0, 64, 64, 62); soot.addColorStop(0, 'rgba(8,7,6,0.95)'); soot.addColorStop(0.16, 'rgba(14,12,10,0.86)'); soot.addColorStop(0.42, 'rgba(26,22,18,0.42)'); soot.addColorStop(0.75, 'rgba(34,29,24,0.14)'); soot.addColorStop(1, 'rgba(34,29,24,0)');
+      g.fillStyle = soot; g.fillRect(0, 0, w, w);
+      g.filter = 'blur(1.2px)';
+      for (let i = 0; i < 46; i++) { const a = R() * 6.283, r0 = 6 + R() * 12, r1 = 26 + R() * 36, wd = 0.03 + R() * 0.07; g.fillStyle = `rgba(10,9,8,${0.18 + R() * 0.32})`; g.beginPath(); g.moveTo(64 + Math.cos(a - wd) * r0, 64 + Math.sin(a - wd) * r0); g.lineTo(64 + Math.cos(a) * r1, 64 + Math.sin(a) * r1); g.lineTo(64 + Math.cos(a + wd) * r0, 64 + Math.sin(a + wd) * r0); g.fill(); }
+      for (let i = 0; i < 14; i++) { const a = R() * 6.283, r0 = 10 + R() * 8, r1 = 24 + R() * 22; g.strokeStyle = `rgba(196,186,168,${0.1 + R() * 0.16})`; g.lineWidth = 0.8 + R() * 1.6; g.beginPath(); g.moveTo(64 + Math.cos(a) * r0, 64 + Math.sin(a) * r0); g.lineTo(64 + Math.cos(a) * r1, 64 + Math.sin(a) * r1); g.stroke(); }
+      g.filter = 'none';
+      for (let i = 0; i < 120; i++) { const a = R() * 6.283, r = 4 + R() * R() * 52; g.fillStyle = `rgba(6,5,5,${0.25 + R() * 0.5})`; g.fillRect(64 + Math.cos(a) * r, 64 + Math.sin(a) * r, 0.6 + R() * 1.6, 0.6 + R() * 1.6); }
+      blob(5, 10, 'rgba(4,4,4,0.9)', 12);
+    }
     else { g.filter = 'blur(3px)'; blob(22, 40, 'rgba(40,32,24,0.7)'); g.filter = 'none'; blob(5, 9, 'rgba(12,9,6,0.95)', 10); }
   });
 }
-const DECAL_OF = { plaster: 'stone', concrete: 'stone', brick: 'stone', metal: 'metal', wood: 'wood', glass: 'glass', dirt: 'dirt', fabric: 'dirt' };
+const DECAL_OF = { plaster: 'stone', concrete: 'stone', brick: 'stone', metal: 'metal', wood: 'wood', glass: 'glass', dirt: 'dirt', fabric: 'dirt', scorch: 'scorch' };
+export { DUST };
 const DUST = { plaster: [0.80, 0.76, 0.68], concrete: [0.68, 0.66, 0.62], brick: [0.66, 0.36, 0.26], wood: [0.62, 0.50, 0.36], dirt: [0.50, 0.42, 0.32], fabric: [0.62, 0.58, 0.50], metal: [0.5, 0.5, 0.5], glass: [0.85, 0.9, 0.92] };
 
 export class FX {
@@ -80,7 +91,7 @@ export class FX {
     // decals: one instanced quad per surface family
     this.decals = {};
     const quad = new THREE.PlaneGeometry(1, 1);
-    for (const kind of ['stone', 'metal', 'wood', 'glass', 'dirt']) {
+    for (const kind of ['stone', 'metal', 'wood', 'glass', 'dirt', 'scorch']) {
       const mat = new THREE.MeshStandardMaterial({ map: decalTex(kind), transparent: true, depthWrite: false, roughness: 0.9, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 });
       const im = new THREE.InstancedMesh(quad, R.setup(mat), MAX_DECALS);
       im.count = 0; im.frustumCulled = false; im.receiveShadow = true; im.userData.noAO = true; im.renderOrder = 3; scene.add(im);
@@ -93,7 +104,7 @@ export class FX {
     this.tracers = [];
     for (let i = 0; i < MAX_TRACERS; i++) {
       const g = new THREE.Group(); g.add(new THREE.Mesh(tg, this.tracerMat), new THREE.Mesh(tg2, this.tracerMat));
-      g.visible = false; g.traverse(o => { o.userData.noAO = true; o.frustumCulled = false; }); scene.add(g);
+      g.visible = false; g.traverse(o => { o.userData.noAO = true; o.frustumCulled = false; o.renderOrder = 9; }); scene.add(g);
       this.tracers.push({ g, from: V(), dir: V(), dist: 0, t: 0, len: 0, on: false });
     }
     // casings
@@ -140,6 +151,25 @@ export class FX {
     const chips = surf === 'fabric' ? 0 : surf === 'glass' ? 14 : 7;
     const cc = surf === 'glass' ? [1.6, 1.7, 1.8] : surf === 'wood' ? [0.5 * L, 0.38 * L, 0.24 * L] : [c[0] * 0.55, c[1] * 0.55, c[2] * 0.55];
     for (let i = 0; i < chips; i++) this.dust.add(p, rv(3.2, 1.5 + R() * 3), cc, 1, 0.012 + R() * 0.016, 0.5 + R() * 0.5, 9.8, 0.4, 0, p.y - 3);
+  }
+
+  // What a detonation throws off besides fire and smoke: a two-frame core, burning filler and hot steel as streaks,
+  // earth and chips lobbed up to fall back. (The fireball, smoke and dust skirt are lit volumes: see smoke.js.)
+  blast(p, floorY, lit = 1, surf = 'concrete') {
+    const R = this.rnd, col = DUST[surf] || DUST.concrete, L = 0.5 + 0.7 * lit;
+    this.glow.add(p, V(0, 0, 0), [70, 60, 46], 1, 1.5, 0.06);
+    for (let i = 0; i < 90; i++) {
+      const a = R() * 6.283, e = Math.asin(R() * 1.25 - 0.25), sp = 14 + R() * R() * 60, ce = Math.cos(e);
+      this.glow.add(p, V(Math.cos(a) * ce * sp, Math.sin(e) * sp, Math.sin(a) * ce * sp), [11, 6.2 + R() * 2, 1.6 + R()], 1, 0.022 + R() * 0.03, 0.12 + R() * R() * 0.7, 9.8, 2.4 + R() * 2, 0, floorY);
+    }
+    for (let i = 0; i < 70; i++) {
+      const a = R() * 6.283, out = 1.5 + R() * 8.5, k = 0.3 + R() * 0.4;
+      this.dust.add(p, V(Math.cos(a) * out, 3.5 + R() * 11, Math.sin(a) * out), [col[0] * L * k, col[1] * L * k, col[2] * L * k], 1, 0.018 + R() * R() * 0.07, 1.4 + R() * 1.5, 9.8, 0.22, 0, floorY);
+    }
+    for (let i = 0; i < 40; i++) {
+      const a = R() * 6.283, out = 4 + R() * 14;
+      this.dust.add(p, V(Math.cos(a) * out, 0.6 + R() * 5, Math.sin(a) * out), [col[0] * L * 0.8, col[1] * L * 0.8, col[2] * L * 0.8], 0.7, 0.012 + R() * 0.02, 0.5 + R() * 0.8, 9.8, 1.6, 0, floorY);
+    }
   }
 
   muzzleSmoke(p, dir, heat) {

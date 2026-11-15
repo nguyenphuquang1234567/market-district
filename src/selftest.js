@@ -4,7 +4,7 @@ import { BOT_RELOAD_DURATION } from './weapon.js';
 
 export function selfTest(G) {
   const P = G.player, W = G.weapon, out = [], $ = id => document.getElementById(id), clamp1 = v => Math.max(-1, Math.min(1, v));
-  const check = (name, pass, detail = '') => out.push({ name, pass: !!pass, detail: String(detail) });
+  const t00 = performance.now(), check = (name, pass, detail = '') => out.push({ name, pass: !!pass, detail: String(detail), at: +((performance.now() - t00) / 1000).toFixed(2) });
   const run = (secs, dt = 1 / 60) => G.step(Math.round(secs / dt), dt);
   const park = () => { for (const b of G.bots.list) { b.alive = false; b.root.visible = false; b.gun.visible = false; b.respawnT = 1e9; } };
   const dummy = (i, x, z, yaw = Math.PI) => { const b = G.bots.list[i]; b.spawn({ x, z, yaw }); b.think = 1e9; b.wishDir = null; b.wishSpeed = 0; return b; };
@@ -109,6 +109,65 @@ export function selfTest(G) {
   check('a kill hands the body to a ragdoll that falls and comes to rest', !!rag && dropped && h0 > 0.9 && h1 < 0.45 && rsp < 0.6, `chest ${h0.toFixed(2)} m -> ${h1.toFixed(2)} m, still moving ${rsp.toFixed(2)} m/s, rifle dropped ${dropped}`);
   run(1.2);
   check('the body stays behind when the soldier respawns', dead.alive && !dead.rag && Rg.corpses.length === 1 && Rg.rags.length === 0, `corpses ${Rg.corpses.length}, live ragdolls ${Rg.rags.length}`);
+
+  // --- throwables: issue, the throw by hand, flight and bounce, fuze, blast by distance and cover, scoring, clutter,
+  //     soldiers getting out of the way, smoke and sight, a primed grenade dropped at death, restart
+  G.resetMatch(); G.playing = true; G.hud.show(null); park();
+  const T = G.throw, V3 = G.THREE.Vector3, Q4 = G.THREE.Quaternion, still = new V3(), away = (a, x, z) => Math.hypot(a.pos.x - x, a.pos.z - z);
+  check('both throwables are issued and shown on the HUD', T.count.frag === 2 && T.count.smoke === 2 && $('nFragN').textContent === '2' && $('nSmokeN').textContent === '2', `frag ${T.count.frag}, smoke ${T.count.smoke}`);
+  G.goto(0.6, -56, 0, 0); run(0.3);
+  T.select('frag'); run(0.5); const slung = W.stow > 0.9 && T.st === 'ready' && $('nFrag').classList.contains('sel'), shots0 = G.stats.shots;
+  P.sim.fire = true; run(0.7); const primed = T.st === 'hold'; P.sim.fire = false; run(0.2);
+  const nd = T.live[0];
+  check('the frag is drawn, primed and thrown by hand with the rifle slung, and one is used up', slung && primed && !!nd && T.count.frag === 1 && $('nFragN').textContent === '1' && G.stats.shots === shots0 && T.bits.length === 2,
+    `ready ${slung}, pin out and arm back ${primed}, left ${T.count.frag}, pin and lever on the ground ${T.bits.length}`);
+  let apex = 0, tFly = 0; while (nd && T.live.includes(nd) && tFly < 7) { apex = Math.max(apex, nd.item.body.translation().y); G.step(1); tFly += 1 / 60; }
+  const seat = T.lastBlast ? T.lastBlast.at : still, reach = seat.z + 56;
+  check('it flies an arc, bounces, rolls to rest and bursts when the fuze runs out, leaving a scorch', !!nd && apex > 1.7 && nd.bounces >= 2 && reach > 14 && reach < 32 && Math.abs(nd.t - nd.fuse) < 0.05 && nd.fuse > 3.7 && nd.fuse < 4.4 && seat.y < 0.5 && G.fx.decals.scorch.im.count >= 1,
+    `apex ${apex.toFixed(2)} m, ${nd ? nd.bounces : 0} knocks, burst ${reach.toFixed(1)} m out after ${nd ? nd.t.toFixed(2) : '-'} s`);
+  run(0.7); check('the rifle is back in the hands after the throw', W.stow < 0.1 && !T.busy && W.gun.visible, `stow ${W.stow.toFixed(2)}`);
+  G.goto(2.5, -40, -90, 0); run(0.2); T.select('frag'); run(0.5); P.sim.fire = true; run(0.7); P.sim.fire = false; run(0.2);
+  const nw = T.live[0]; let minX = 9; for (let i = 0; i < 80 && nw; i++) { G.step(1); minX = Math.min(minX, nw.item.body.translation().x); }
+  const backX = nw ? nw.item.body.translation().x : 0;
+  check('thrown hard at a wall it comes back off it, not through it', !!nw && minX > -6.3 && nw.bounces >= 1 && backX > minX + 0.5, `nearest the wall x ${minX.toFixed(2)}, came back to x ${backX.toFixed(2)}`);
+  if (nw) T.remove(nw);
+  park(); G.goto(0.6, -58, 0, 0); P.health = 100;
+  const close = dummy(3, 0.5, -37), far8 = dummy(4, 0.5, -32), behind = dummy(5, -29, -40), sc0 = G.score[0], k0 = P.kills;
+  const g1 = T.spawn('frag', new V3(0.5, 0.2, -40), still, still, new Q4(), P); g1.fuse = 0.3; run(0.6);
+  check('the burst kills at 3 m, wounds at 8 m, spares a soldier a street away, and scores for the thrower', !close.alive && far8.alive && far8.health < 85 && far8.health > 45 && behind.health === 100 && G.score[0] === sc0 + 1 && P.kills === k0 + 1 && !!document.querySelector('#feed .nadei') && P.health === 100,
+    `3 m: ${close.alive ? 'alive' : 'killed'}, 8 m: ${Math.round(100 - far8.health)} damage, behind buildings: ${Math.round(100 - behind.health)}, score ${G.score}`);
+  run(1.6); check('a soldier killed by the burst goes down as a ragdoll', !!close.rag && close.rag.height() < 0.5, `chest ${close.rag ? close.rag.height().toFixed(2) : '-'} m`);
+  park();
+  if (prop) {
+    const c0 = prop.body.translation(), px = c0.x, py = c0.y, pz = c0.z; G.goto(px > 0 ? -29 : 28.5, pz > 0 ? -61 : 61, 0);
+    const g2 = T.spawn('frag', new V3(px + 1.3, py + 0.2, pz), still, still, new Q4(), null); g2.fuse = 0.2; run(1.4);
+    const c1 = prop.body.translation(), thrown = Math.hypot(c1.x - px, c1.y - py, c1.z - pz);
+    check('the blast throws loose clutter about', thrown > 0.4, `${prop.name} moved ${thrown.toFixed(2)} m`);
+  }
+  const diff0 = G.settings.difficulty; G.settings.difficulty = 'hard'; G.goto(-29, -61, 0); P.health = 100;
+  const runner = G.bots.list[4]; runner.spawn({ x: 0.5, z: -36, yaw: Math.PI });
+  const g3 = T.spawn('frag', new V3(0.5, 0.5, -38), new V3(0, -1, 0), still, new Q4(), P); g3.fuse = 3.4; let fled = 0, ran = false;
+  for (let i = 0; i < 215; i++) { G.step(1); if (T.live.includes(g3)) { fled = away(runner, 0.5, -38); ran = ran || runner.state === 'evade'; } }
+  check('a soldier who sees a grenade land at his feet runs from it', ran && fled > 3.6 && runner.alive, `${fled.toFixed(1)} m away when it burst (from 2.0), health ${Math.round(runner.health)}`);
+  G.settings.difficulty = diff0; park();
+  G.goto(0.6, -56, 0, 0); P.health = 100; run(0.2); const eyeA = { x: 0.6, y: 1.5, z: -56 }, eyeB = { x: 0.6, y: 1.5, z: -30 };
+  const watcher = dummy(4, 0.6, -30, Math.PI); watcher.yaw = Math.PI; let tSee = 0; while (tSee < 2 && !(watcher.seen.get(P)?.vis)) { watcher.perceive(0.05, [P], G.world.colliders); tSee += 0.05; }
+  T.select('smoke'); run(0.5); P.sim.ads = true; run(0.7); P.sim.ads = false; run(0.3);
+  const sm = T.live[0], unlit = !!sm && !sm.lit; run(2.2);
+  const lob = sm ? sm.item.body.translation().z + 56 : 0, popped = !!sm && sm.lit; run(7.5);
+  watcher.seen.clear(); for (let i = 0; i < 60; i++) watcher.perceive(0.05, [P], G.world.colliders);
+  const blind = watcher.seen.get(P)?.t || 0, billows = T.puffs.list.filter(q => q.body).length, thick = T.puffs.depth(eyeA, eyeB);
+  check('the smoke canister is lobbed underhand, pops after its delay and builds a screen an enemy cannot see through', tSee < 1.2 && T.count.smoke === 1 && unlit && popped && lob > 4 && lob < 16 && billows >= 20 && T.smoked(eyeA, eyeB) && blind < 0.01,
+    `seen in ${tSee.toFixed(2)} s before; lobbed ${lob.toFixed(1)} m; ${billows} billows 8 s after the pop, optical depth ${thick.toFixed(1)}; awareness through it ${blind.toFixed(2)}`);
+  for (let i = 0; i < 75 * 20; i++) T.update(1 / 20);                               // the canister burns out and the cloud drifts apart (the rest of the world held still)
+  watcher.seen.clear(); let tAgain = 0; while (tAgain < 2 && !(watcher.seen.get(P)?.vis)) { watcher.perceive(0.05, [P], G.world.colliders); tAgain += 0.05; }
+  check('the screen thins out and clears, and the enemy can see again', T.puffs.list.filter(q => q.body).length === 0 && !T.smoked(eyeA, eyeB) && tAgain < 1.2, `seen again in ${tAgain.toFixed(2)} s`);
+  park(); T.restock(); G.goto(0, -45, 0); run(0.2); T.select('frag'); run(0.5); P.sim.fire = true; run(0.7); P.damage(500, { x: 5, z: -45 }, null, 'body'); P.sim.fire = false; run(0.1);
+  const fell = T.live.length === 1 && !T.busy && T.live[0].kind === 'frag'; P.respawnT = 9; run(4.6);
+  check('killed with the pin out, the grenade drops where the player stood and still goes off', fell && T.live.length === 0 && !!T.lastBlast && Math.hypot(T.lastBlast.at.x, T.lastBlast.at.z + 45) < 4, `dropped ${fell}, burst ${T.lastBlast ? Math.hypot(T.lastBlast.at.x, T.lastBlast.at.z + 45).toFixed(1) : '-'} m from the spot`);
+  T.select('smoke'); G.resetMatch(); G.playing = true; G.hud.show(null);
+  check('restart clears live grenades and smoke and restocks both', T.count.frag === 2 && T.count.smoke === 2 && T.live.length === 0 && T.puffs.list.length === 0 && Rg.nades.length === 0 && !T.busy && G.fx.decals.scorch.im.count === 0, `frag ${T.count.frag}, smoke ${T.count.smoke}, live ${T.live.length}, puffs ${T.puffs.list.length}`);
+  P.sim = { f: 0, s: 0 };
 
   // --- bot locomotion: pace changes within human limits, strides that match ground speed, boots that stay where they land,
   //     corners walked as arcs clear of the walls; then the rifle stays on target while the legs go elsewhere
@@ -294,6 +353,49 @@ export async function proof(G, w = 1536, h = 864) {
   G.goto(1, -4, 2, 0); run(0.8); await snap('10_enemy_encounter');
   P.damage(82, foe.pos, null, 'body'); run(0.35); await snap('11_critical_health');
   P.health = 100; P.hurtT = 9; P.flash = 0; G.matchLive = true; foe.damage(500, P.pos, P, 'body'); foe.respawnT = 1e9; run(0.32); await snap('13_ragdoll_falling'); run(2.2); await snap('14_ragdoll_at_rest');      // the body under physics, rifle dropped
+  park(); G.resetMatch(); G.playing = false; G.manual = false; G.auto = false; G.frozen = false; G.matchLive = false; G.hud.show('start');
+  return out;
+}
+
+// Capture set for the two throwables (posted to ./captures). In the console: await G.proofThrow()
+// Each item is shown in the hand, leaving it, in the air, at the moment of its effect and afterwards.
+export async function proofThrow(G, w = 1536, h = 864) {
+  const P = G.player, T = G.throw, out = [], V3 = G.THREE.Vector3;
+  const run = (secs, dt = 1 / 60) => G.step(Math.round(secs / dt), dt);
+  const park = () => { for (const b of G.bots.list) { b.alive = false; b.root.visible = false; b.gun.visible = false; b.respawnT = 1e9; } };
+  const stand = (i, x, z, yaw) => { const b = G.bots.list[i]; b.spawn({ x, z, yaw }); b.think = 1e9; b.wishDir = null; b.wishSpeed = 0; b.state = 'combat'; b.aim = 1; b.wantYaw = yaw; return b; };
+  const snap = async name => out.push(await G.capture(name, w, h));
+  const wait = secs => { const r = G.R.render; G.R.render = () => {}; try { run(secs - 0.6); } finally { G.R.render = r; } run(0.6); };      // long waits are stepped without drawing; the last moments are drawn so exposure has settled
+  const at = n => { const t = n.item.body.translation(); return new V3(t.x, t.y, t.z); };
+  G.manual = true; G.auto = true; G.frozen = true; G.resetMatch(); G.playing = true; G.hud.show(null); park();
+  // ---- fragmentation grenade, thrown overhand down the main street
+  G.goto(0.6, -56, 0, -15); run(0.8);
+  T.select('frag'); run(0.7); await snap('throw_frag_1_in_hand');
+  P.sim.fire = true; run(0.21); await snap('throw_frag_2_pin_out');
+  run(0.6); P.sim.fire = false; run(0.135); await snap('throw_frag_3_release');
+  const fr = T.live[0]; run(0.3); await snap('throw_frag_4_in_flight');
+  while (T.live.includes(fr) && fr.t < fr.fuse - 0.45) G.step(1);
+  const seat = at(fr), yaw = Math.atan2(P.pos.x - seat.x, P.pos.z - seat.z);
+  stand(4, seat.x - 1.8, seat.z + 2.2, yaw); stand(5, seat.x + 2.6, seat.z + 6.5, yaw);          // two of the other side caught near it
+  run(0.3); await snap('throw_frag_5_about_to_burst');
+  while (T.live.includes(fr)) G.step(1);
+  G.step(1); await snap('throw_frag_6_burst');
+  G.step(5); await snap('throw_frag_7_fireball');
+  run(0.55); await snap('throw_frag_8_smoke_and_dust');
+  wait(5.5); await snap('throw_frag_9_aftermath');
+  // ---- smoke canister, lobbed underhand to screen the street
+  park(); G.resetMatch(); G.playing = true; G.hud.show(null); park();
+  G.goto(0.6, -56, 0, -2); run(0.8);
+  stand(4, -1.6, -31, Math.PI); stand(5, 2.4, -28, Math.PI); stand(6, 0.4, -35, Math.PI);          // three of them up the street, in plain view
+  T.select('smoke'); run(0.7); await snap('throw_smoke_1_in_hand');
+  P.sim.ads = true; run(0.8); P.sim.ads = false; run(0.15); await snap('throw_smoke_2_lob');
+  const sm = T.live[0]; run(0.35); await snap('throw_smoke_3_in_flight');
+  while (!sm.lit && sm.t < 5) G.step(1);
+  run(0.35); await snap('throw_smoke_4_pop');
+  run(2.6); await snap('throw_smoke_5_building');
+  G.goto(0.6, -63, 0, 1); wait(8); await snap('throw_smoke_6_screen');
+  G.goto(-4.4, -45, 62, 2); run(0.6); await snap('throw_smoke_7_from_the_side');
+  G.goto(0.6, -63, 0, 1); wait(24); await snap('throw_smoke_8_thinning');
   park(); G.resetMatch(); G.playing = false; G.manual = false; G.auto = false; G.frozen = false; G.matchLive = false; G.hud.show('start');
   return out;
 }

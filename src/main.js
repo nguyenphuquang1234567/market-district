@@ -11,8 +11,9 @@ import { Player } from './player.js';
 import { Bots, CARRY } from './bots.js';
 import { Rigid } from './rigid.js';
 import { HUD } from './hud.js';
+import { Throwables } from './throwables.js';
 import { clamp, damp } from './util.js';
-import { selfTest, proof, demoDriver } from './selftest.js';
+import { selfTest, proof, proofThrow, demoDriver } from './selftest.js';
 import { losClear, rayBoxes } from './physics.js';
 import { setupGI } from './gi.js';
 
@@ -21,7 +22,7 @@ const $ = id => document.getElementById(id);
 const canvas = $('view');
 const DEFAULTS = {
   sensitivity: 1, fov: 60, adsSens: 1, invertY: false, quality: 'high', difficulty: 'normal', blur: 'low', shake: true, vignette: true, grain: true, chroma: true, bob: true,
-  binds: { forward: 'KeyW', back: 'KeyS', left: 'KeyA', right: 'KeyD', sprint: 'ShiftLeft', crouch: 'KeyC', jump: 'Space', reload: 'KeyR', mode: 'KeyB', inspect: 'KeyF' },
+  binds: { forward: 'KeyW', back: 'KeyS', left: 'KeyA', right: 'KeyD', sprint: 'ShiftLeft', crouch: 'KeyC', jump: 'Space', reload: 'KeyR', mode: 'KeyB', inspect: 'KeyF', frag: 'KeyG', smoke: 'KeyQ' },
 };
 const MATCH = { time: 600, score: 30 };
 
@@ -59,8 +60,10 @@ async function start() {
   G.rigid = await Rigid.create(G, world.dynamic);
   G.bots = new Bots(G, 4); G.carry = CARRY;
   for (const a of [G.player, ...G.bots.list]) G.rigid.addPusher(a);
-  G.rigid.onImpact = (it, speed, p, other) => {
+  G.throw = new Throwables(G);
+  G.rigid.onImpact = (it, speed, p, other, surf) => {
     const pos = { x: p.x, y: p.y, z: p.z };
+    if (it.kind === 'nade') { G.throw.bounce(it, speed, p, other ? (other.kind === 'rag' ? 'fabric' : other.mat === 'wood' || other.mat === 'wicker' || other.mat === 'cardboard' ? 'wood' : other.mat === 'bag' || other.mat === 'rubber' ? 'fabric' : 'metal') : surf); return; }
     if (it.kind === 'rag') G.audio.bodyfall(pos, speed, it.key); else G.audio.clatter(it.mat, pos, speed, it.mass);
     if (it.kind !== 'rag' && speed > 2.5) G.bots.hear(p, 9, -1);
   };
@@ -75,16 +78,17 @@ async function start() {
   applySettings();
 
   // ---- match flow ------------------------------------------------------------------------------------------------------
-  G.onKill = (killer, victim, head) => {
+  G.onKill = (killer, victim, head, how) => {
     if (!G.matchLive) return;
-    if (killer && killer !== victim) { if (killer.team !== victim.team) G.score[killer.team]++; killer.kills++; } else G.score[1 - victim.team]++;
-    G.hud.kill(killer, victim, head);
-    if (killer === G.player) { G.hud.banner(head); G.audio.ui('kill'); } else G.audio.ui('score');
+    const own = killer && killer !== victim && killer.team === victim.team;      // a blast can catch one's own side: no point to anyone, no credit
+    if (killer && killer !== victim) { if (!own) { G.score[killer.team]++; killer.kills++; } } else G.score[1 - victim.team]++;
+    G.hud.kill(killer, victim, head, how);
+    if (killer === G.player && !own && victim !== G.player) { G.hud.banner(head); G.audio.ui('kill'); } else G.audio.ui('score');
     if (Math.max(...G.score) >= MATCH.score) endMatch('Score limit reached');
   };
   function resetMatch() {
     G.score = [0, 0]; G.timeLeft = MATCH.time; G.time = 0; G.stats = { shots: 0, hits: 0 };
-    G.fx.reset(); G.bots.reset(); G.rigid.reset(); G.player.kills = G.player.deaths = 0;
+    G.fx.reset(); G.bots.reset(); G.throw.reset(); G.rigid.reset(); G.player.kills = G.player.deaths = 0;
     $('feed').innerHTML = ''; G.hud.feed = []; G.hud.pings.clear();
     G.player.spawn(world.spawns[0][1]);
     G.matchLive = true;
@@ -201,6 +205,7 @@ async function start() {
     if (G.demo) G.demo(dt);
     G.player.update(dt);
     G.bots.update(dt);
+    G.throw.update(dt);
     G.rigid.step(dt);
     G.fx.update(dt, R.camera, (p, v) => G.audio.casing({ x: p.x, y: p.y, z: p.z }, v));
     G.hud.update(dt);
@@ -263,7 +268,7 @@ async function start() {
       locked: document.pointerLockElement === canvas, noLock: !!G.noLock, playing: G.playing, matchLive: G.matchLive, time: +G.time.toFixed(1), score: G.score,
       pacing: G.pacing(), pacing10s: G.pacing(10), audio: G.audio.stats(), input: P.inputCount,
       player: { pos: [+P.pos.x.toFixed(2), +P.pos.y.toFixed(2), +P.pos.z.toFixed(2)], yaw: +(P.yaw * 180 / Math.PI).toFixed(1), pitch: +(P.pitch * 180 / Math.PI).toFixed(1), health: Math.round(P.health), alive: P.alive, kills: P.kills, deaths: P.deaths },
-      weapon: { ammo: G.weapon.ammo, reserve: G.weapon.reserve, mode: G.weapon.mode, ads: +G.weapon.ads.toFixed(2), reloading: G.weapon.reloading }, stats: G.stats,
+      weapon: { ammo: G.weapon.ammo, reserve: G.weapon.reserve, mode: G.weapon.mode, ads: +G.weapon.ads.toFixed(2), reloading: G.weapon.reloading }, throwables: { ...G.throw.count, selected: G.throw.sel, thrown: G.throw.thrown }, stats: G.stats,
       draws: R.renderer.info.render.calls, tris: R.renderer.info.render.triangles };
     await fetch('/__capture/' + name + '.json', { method: 'POST', body: JSON.stringify(data, null, 1) });
     return data;
@@ -275,6 +280,7 @@ async function start() {
   if (params.get('live')) setInterval(() => G.report('live'), 3000);
   G.selfTest = () => { const r = selfTest(G); console.table(r); return r; };
   G.proof = (w, h) => proof(G, w, h);
+  G.proofThrow = (w, h) => proofThrow(G, w, h);
   G.autoStart = () => { G.auto = true; G.frozen = true; resetMatch(); G.playing = true; G.hud.show(null); };
   G.goto = (x, z, yawDeg = 0, pitchDeg = 0) => { const P = G.player; P.pos.set(x, 0, z); P.vel.set(0, 0, 0); P.yaw = yawDeg * Math.PI / 180; P.pitch = pitchDeg * Math.PI / 180; P.camY = 1.62; P.sim = { f: 0, s: 0, yaw: P.yaw, pitch: P.pitch }; };
   // Synchronous benchmark: simulate + render n frames, waiting on the GPU each time (independent of display vsync / tab throttling).
@@ -284,7 +290,7 @@ async function start() {
     G.manual = false; last = performance.now();
     ts.splice(0, Math.min(20, ts.length - 1)); ts.sort((a, b) => a - b);
     const avg = ts.reduce((a, b) => a + b, 0) / ts.length, i = R.renderer.info.render, c = R.renderer.domElement;
-    return `frames ${ts.length} | mean ${avg.toFixed(2)} ms (${(1000 / avg).toFixed(0)} fps) | p95 ${ts[Math.floor(ts.length * 0.95)].toFixed(2)} | worst ${ts[ts.length - 1].toFixed(2)} | calls ${i.calls} | tris ${Math.round(i.triangles / 1000)}k | ${c.width}x${c.height} | particles ${G.fx.dust.n + G.fx.glow.n}`;
+    return `frames ${ts.length} | mean ${avg.toFixed(2)} ms (${(1000 / avg).toFixed(0)} fps) | p95 ${ts[Math.floor(ts.length * 0.95)].toFixed(2)} | worst ${ts[ts.length - 1].toFixed(2)} | calls ${i.calls} | tris ${Math.round(i.triangles / 1000)}k | ${c.width}x${c.height} | particles ${G.fx.dust.n + G.fx.glow.n} | puffs ${G.throw.puffs.list.length}`;
   };
   G.perf = async (n = 90) => {
     const t0 = performance.now(); let k = 0;
@@ -296,12 +302,14 @@ async function start() {
   $('bootText').textContent = 'Compiling shaders'; $('bootBar').style.width = '94%';
   await new Promise(r => setTimeout(r, 30));
   G.weapon.root.visible = true; for (const b of G.bots.list) { b.root.visible = true; b.gun.visible = true; }
+  G.throw.warm(true);
   try { await R.renderer.compileAsync(R.scene, R.camera); } catch (e) { console.warn(e); }
   R.render(0.016, 0);                                  // warm every pipeline before the first interactive frame
   G.weapon.root.visible = false; for (const b of G.bots.list) { b.root.visible = false; b.gun.visible = false; }
+  G.throw.warm(false); G.throw.puffs.reset();
   $('boot').remove();
   G.hud.show('start');
-  G.los = (a, b) => losClear(a, b, world.colliders);
+  G.los = (a, b) => losClear(a, b, world.colliders) && !G.throw.smoked(a, b);
   if (params.get('auto') || params.get('demo')) G.autoStart();
   if (params.get('demo')) { G.demo = demoDriver(G); G.frozen = false; G.audio.start(); }
   requestAnimationFrame(frame);

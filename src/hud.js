@@ -16,7 +16,7 @@ export class HUD {
     this.markRay = new Raycaster(); this.markRay.firstHitOnly = true;
     this.markPoint = new Vector3(); this.markDirection = new Vector3(); this.aimDirection = new Vector3();
     this.headPoint = new Vector3(); this.bodyPoint = new Vector3();
-    this.markHits = []; this.focusedMark = null;
+    this.markHits = []; this.focusedMark = null; this.smokeEnd = new Vector3();
   }
   set(id, v) { if (this.last[id] !== v) { this.last[id] = v; $(id).textContent = v; } }
   cls(id, name, on) { const k = id + '.' + name; if (this.last[k] !== on) { this.last[k] = on; $(id).classList.toggle(name, on); } }
@@ -24,9 +24,10 @@ export class HUD {
   hitmarker(kind) { const e = $('hit'); e.className = 'on ' + kind; this.hitT = kind === 'kill' ? 0.32 : 0.16; }
   damageFrom(angle) { const e = $('dmg'); e.style.transform = `translate(-50%,-50%) rotate(${(-angle * 180 / Math.PI).toFixed(1)}deg)`; e.style.opacity = 1; this.dmgT = 1.1; }
   banner(head) { $('bannerB').textContent = head ? 'HEADSHOT  +150 XP' : '+100 XP'; $('banner').classList.add('on'); this.bannerT = 1.9; }
-  kill(killer, victim, head) {
+  kill(killer, victim, head, how) {
     const row = document.createElement('div'); row.className = 'row';
-    const icon = `<svg viewBox="0 0 44 12" class="gun"><path d="M0 4h9l2-2h17v2h14v2H30l-1 2h-6l-2 4h-4l1-4H9L7 6H0z"/></svg>`;
+    const icon = how === 'blast' ? `<svg viewBox="0 0 16 18" class="nadei"><path d="M6 0h5v2h3v2h-3v1.2a6.2 6.2 0 1 1-5 0V4H5V2h1z"/></svg>`
+      : `<svg viewBox="0 0 44 12" class="gun"><path d="M0 4h9l2-2h17v2h14v2H30l-1 2h-6l-2 4h-4l1-4H9L7 6H0z"/></svg>`;
     row.innerHTML = `<span style="color:${TEAM[killer ? killer.team : 1 - victim.team]}">${killer ? killer.name : '—'}</span>${icon}${head ? '<b class="hs">◎</b>' : ''}<span style="color:${TEAM[victim.team]}">${victim.name}</span>`;
     const f = $('feed'); f.prepend(row); this.feed.unshift({ row, t: 6 }); while (this.feed.length > 5) this.feed.pop().row.remove();
   }
@@ -39,12 +40,16 @@ export class HUD {
     if (this.last.hpSeg !== Math.ceil(hp / 10)) { this.last.hpSeg = Math.ceil(hp / 10); [...$('hpbar').children].forEach((e, i) => e.classList.toggle('on', i < this.last.hpSeg)); }
     this.set('mag', W.ammo); this.set('res', W.reserve); this.set('fmode', W.mode === 'auto' ? 'AUTO' : 'SEMI'); this.cls('ammo', 'low', W.ammo <= 8); this.cls('ammo', 'reload', W.reloading);
     if (this.last.ammoSeg !== W.ammo) { this.last.ammoSeg = W.ammo; [...$('abar').children].forEach((e, i) => e.classList.toggle('on', i < W.ammo)); }
+    const T = G.throw;
+    this.set('nFragN', T.count.frag); this.set('nSmokeN', T.count.smoke);
+    this.cls('nFrag', 'none', T.count.frag <= 0); this.cls('nSmoke', 'none', T.count.smoke <= 0); this.cls('nFrag', 'sel', T.sel === 'frag'); this.cls('nSmoke', 'sel', T.sel === 'smoke');
+    this.set('wlabel', T.sel === 'frag' ? 'K-22 Frag' : T.sel === 'smoke' ? 'V-8 Smoke' : 'MK4 Carbine');
     this.set('s0', G.score[0]); this.set('s1', G.score[1]);
     const tl = Math.max(0, Math.ceil(G.timeLeft)); this.set('timer', `${Math.floor(tl / 60)}:${String(tl % 60).padStart(2, '0')}`);
     // Project the next shot's spread to CSS pixels. Keep the center legible at low spread.
     const pixelsPerSlope = G.R.renderer.domElement.clientHeight * 0.5 * G.R.camera.projectionMatrix.elements[5];
     const gap = Math.max(5, W.nextShotSpread * pixelsPerSlope);
-    const c = $('cross'); c.style.setProperty('--g', gap.toFixed(1) + 'px'); c.style.opacity = P.alive && !W.reloading ? Math.max(0, 1 - W.ads * 2.2).toFixed(2) : 0;
+    const c = $('cross'); c.style.setProperty('--g', (T.busy ? 9 : gap).toFixed(1) + 'px'); c.style.opacity = P.alive && !W.reloading ? Math.max(0, 1 - W.ads * 2.2).toFixed(2) : 0;
     if (this.hitT > 0) { this.hitT -= dt; if (this.hitT <= 0) $('hit').className = ''; }
     if (this.dmgT > 0) { this.dmgT -= dt; $('dmg').style.opacity = Math.max(0, this.dmgT).toFixed(2); }
     if (this.bannerT > 0) { this.bannerT -= dt; if (this.bannerT <= 0) $('banner').classList.remove('on'); }
@@ -112,7 +117,7 @@ export class HUD {
     ray.far = far;
     hits.length = 0;
     ray.intersectObjects(world.rayMeshes, false, hits);
-    return hits.length > 0 || !!rigid.ray(origin, direction, far);
+    return hits.length > 0 || !!rigid.ray(origin, direction, far) || this.G.throw.smoked(origin, this.smokeEnd.copy(origin).addScaledVector(direction, far));      // smoke hides a soldier as a wall does
   }
 
   minimap() {

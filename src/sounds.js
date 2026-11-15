@@ -148,6 +148,69 @@ export function bakeSounds(SR = 48000, seed = 9001) {
   S.bodyfall = many(3, () => { const x = new Float32Array(N(0.6)); sweep(x, 100, 60, 0.08, 0.6, 0, 0.05); add(x, burst(0.3, 'lp', 280, 0.8, 0.07), 0.9); add(x, burst(0.2, 'bp', 430, 0.8, 0.055), 1.0); add(x, burst(0.15, 'bp', 950, 0.8, 0.035), 0.5); add(x, burst(0.25, 'bp', 1700, 0.7, 0.07, 0.02), 0.3); ticks(x, 6, 0.02, 0.2, 2400, 5000, 0.25, 0.5); fade(x, 0.05); return norm(x); });
   S.heart = one(() => { const x = new Float32Array(N(0.5)); for (const [at, f, g] of [[0, 58, 1], [0.17, 47, 0.75]]) { sweep(x, f * 1.35, f, 0.05, g, at, 0.03); add(x, burst(0.08, 'bp', 170, 0.9, 0.03), g * 0.8, at); } sat(x, 2.2); fade(x, 0.05); return norm(x, 0.9); });
 
+  // ---- thrown ordnance ------------------------------------------------------------------------------------------------------------
+  // Handling: the pin dragged out through its hole, the lever thrown off by the striker spring with the primer's snap
+  // under it, the arm going through the air, small steel parts landing.
+  S.pinpull = many(2, () => { const v = rr(0.94, 1.06), x = new Float32Array(N(0.28)); add(x, burst(0.07, 'bp', 3400 * v, 2.5, 0.022, 0.012), 0.6); ticks(x, 7, 0, 0.06, 2800, 5200, 0.5, 0.4); add(x, burst(0.006, 'hp', 3600, 0.7, 0.001), 0.9, 0.062); modes(x, [[4700 * v, 0.045, 1], [7350 * v, 0.03, 0.6], [10900 * v, 0.016, 0.3]], 0.42, 0.064); fade(x); return norm(x, 0.7); });
+  S.spoon = many(3, () => {
+    const v = rr(0.92, 1.08), x = new Float32Array(N(0.42));
+    add(x, burst(0.008, 'hp', 2800, 0.7, 0.0014), 1); modes(x, [[1750 * v, 0.03, 1], [2960 * v, 0.05, 0.9], [4480 * v, 0.04, 0.6], [6900 * v, 0.022, 0.4]], 0.5);      // lever springs away
+    add(x, burst(0.012, 'hp', 1800, 0.7, 0.0022), 0.9, 0.011); pulse(x.subarray(N(0.012)), 0.00016, 0.5); add(x, burst(0.05, 'bp', 1300, 0.8, 0.012), 0.5, 0.012);     // striker onto the primer
+    add(x, env(biq(white(N(0.3)), 'bp', 5200, 0.8), 0.09, 0.02), 0.07, 0.03);                                                                                           // delay element taking
+    fade(x, 0.04); return norm(x, 0.8);
+  });
+  S.tink = many(4, () => { const v = rr(0.85, 1.2), x = new Float32Array(N(0.3)); for (const [at, g] of [[0, 1], [rr(0.05, 0.09), 0.5], [rr(0.12, 0.17), 0.28]]) { add(x, burst(0.004, 'hp', 3500, 0.7, 0.0008), 0.6 * g, at); modes(x, [[2650 * v, 0.03, 1], [4300 * v, 0.026, 0.8], [7150 * v, 0.016, 0.5], [9800 * v, 0.01, 0.3]], 0.4 * g, at); } fade(x); return norm(x, 0.6); });
+  S.whoosh = many(3, () => { const n = N(0.34), x = white(n); let lp = 0; for (let i = 0; i < n; i++) { const u = i / n, f = 500 + 2600 * Math.sin(Math.PI * Math.min(1, u * 1.5)) ** 2, a = 1 - Math.exp(-TAU * f / SR); lp += (x[i] - lp) * a; x[i] = lp * Math.sin(Math.PI * u) ** 2.2; } add(x, burst(0.2, 'bp', 1500, 0.6, 0.06, 0.05), 0.25, 0.04); fade(x, 0.05); return norm(x, 0.7); });
+  // A pound of steel and filler meeting the ground, and a thin steel can doing the same.
+  S.prop_frag = many(4, () => { const v = rr(0.9, 1.12), x = new Float32Array(N(0.34)); add(x, burst(0.012, 'hp', 1700, 0.7, 0.0026), 1); modes(x, [[1040 * v, 0.014, 1], [2180 * v, 0.02, 0.8], [3650 * v, 0.016, 0.55], [5700 * v, 0.01, 0.3]], 0.42); add(x, burst(0.12, 'lp', 340, 0.8, 0.03), 2.4); add(x, burst(0.07, 'bp', 760 * v, 1.2, 0.02), 1.6); modes(x, [[3900 * v, 0.03, 1], [6100 * v, 0.02, 0.5]], 0.05, rr(0.02, 0.04)); fade(x); return norm(x, 0.9); });
+  S.prop_canister = many(4, () => { const v = rr(0.88, 1.14), x = new Float32Array(N(0.6)); add(x, burst(0.014, 'hp', 1900, 0.7, 0.003), 0.9); modes(x, [[640 * v, 0.07, 1], [1210 * v, 0.085, 0.9], [1990 * v, 0.07, 0.7], [3150 * v, 0.05, 0.5], [4800 * v, 0.03, 0.35], [7100 * v, 0.018, 0.2]], 0.36); add(x, burst(0.09, 'lp', 300, 0.8, 0.02), 0.7); add(x, burst(0.06, 'bp', 1500 * v, 1.4, 0.02), 0.35, 0.004); fade(x, 0.05); return norm(x, 0.9); });
+  S.nade_soft = many(3, () => { const x = new Float32Array(N(0.3)); add(x, burst(0.2, 'lp', 240, 0.8, 0.045), 1); add(x, burst(0.1, 'bp', 520, 0.8, 0.03), 0.5); ticks(x, 9, 0.01, 0.2, 1800, 5200, 0.1, 1.2); fade(x); return norm(x, 0.85); });
+  // High explosive from close by: the pressure front, a hard crack, the body of the blast, earth and grit coming back down.
+  S.boom = many(3, () => {
+    const v = rr(0.93, 1.07), n = N(3.0), core = new Float32Array(n);
+    pulse(core, 0.0012, 1.1); sweep(core, 105 * v, 31, 0.2, 0.42, 0, 0.055); sweep(core, 58 * v, 26, 0.34, 0.16, 0.01, 0.12);
+    add(core, burst(0.07, 'hp', 1900, 0.7, 0.013), 2.6); add(core, burst(0.03, 'hp', 5200, 0.7, 0.006), 1.5);
+    const side = () => {
+      const x = new Float32Array(n);
+      add(x, burst(0.6, 'bp', 150 * v, 0.6, 0.13), 0.7); add(x, burst(0.5, 'bp', 400 * v, 0.6, 0.085), 1.5); add(x, burst(0.35, 'bp', 1050 * v, 0.6, 0.06), 1.9); add(x, burst(0.2, 'bp', 2700 * v, 0.7, 0.034), 1.7); add(x, burst(0.12, 'bp', 5600 * v, 0.7, 0.02), 1.0);
+      add(x, env(biq(white(N(1.8)), 'lp', 260, 0.7), 0.42, 0.03), 0.3); add(x, env(biq(white(N(1.6)), 'bp', 900, 0.5), 0.3, 0.05), 0.34, 0.05);
+      ticks(x, 70, 0.3, 2.6, 1300, 6400, 0.07, 1.1); add(x, env(biq(white(N(1.9)), 'bp', 3300, 0.6), 0.5, 0.35), 0.035, 0.35);                    // debris and grit raining back
+      for (let k = 0; k < 5; k++) add(x, burst(0.1, 'lp', rr(180, 420), 0.8, 0.03), rr(0.08, 0.2), rr(0.45, 1.6));                                   // heavier clods
+      return x;
+    };
+    const L = side(), Rt = side();
+    for (const ch of [L, Rt]) { add(ch, core); const g = biq(ch.slice(), 'lp', 2400, 0.6); add(ch, g, -0.32, 0.0058); sat(ch, 1.35); biq(ch, 'lp', 12000, 0.6); fade(ch, 0.2); }      // ground bounce a few ms behind
+    return norm([L, Rt], 0.97);
+  });
+  // The same charge down the street: no crack left, a heavy slam and its slap off the house fronts.
+  S.boomMid = many(3, () => {
+    const v = rr(0.92, 1.08), x = new Float32Array(N(2.6));
+    pulse(x, 0.0017, 0.8); sweep(x, 88 * v, 30, 0.22, 0.34, 0, 0.07); add(x, burst(0.08, 'hp', 900, 0.7, 0.014), 1.3);
+    add(x, burst(0.6, 'bp', 135 * v, 0.6, 0.14), 0.7); add(x, burst(0.5, 'bp', 340 * v, 0.6, 0.09), 1.5); add(x, burst(0.3, 'bp', 820 * v, 0.6, 0.06), 1.5); add(x, burst(0.2, 'bp', 1900 * v, 0.7, 0.035), 0.9);
+    const e = biq(x.slice(0, N(0.5)), 'lp', 1100, 0.6); let g = 0.42;
+    for (let k = 0, at = rr(0.07, 0.12); k < 5; k++) { add(x, e, g * rr(0.6, 1), at); at += rr(0.07, 0.2); g *= 0.6; }
+    add(x, env(biq(white(N(2.4)), 'lp', 500, 0.6), 0.5, 0.03), 0.16); add(x, env(biq(white(N(2.0)), 'bp', 700, 0.5), 0.35, 0.04), 0.3);
+    sat(x, 1.25); biq(x, 'lp', 5200, 0.6); fade(x, 0.2); return norm(x, 0.97);
+  });
+  // And blocks away: a dull thud that the city passes around for a second or two.
+  S.boomFar = many(3, () => {
+    const v = rr(0.9, 1.1), x = new Float32Array(N(3.4));
+    sweep(x, 72 * v, 28, 0.3, 0.3, 0, 0.1); add(x, burst(0.7, 'bp', 110 * v, 0.6, 0.17), 0.7); add(x, burst(0.5, 'bp', 270 * v, 0.6, 0.11), 1.6); add(x, burst(0.3, 'bp', 600 * v, 0.6, 0.07), 1.2); add(x, burst(0.2, 'bp', 1200 * v, 0.7, 0.04), 0.5);
+    const e = biq(x.slice(0, N(0.7)), 'lp', 600, 0.6); let g = 0.55;
+    for (let k = 0, at = rr(0.12, 0.2); k < 6; k++) { add(x, e, g * rr(0.6, 1), at); at += rr(0.1, 0.32); g *= 0.64; }
+    add(x, env(biq(white(N(3.2)), 'lp', 380, 0.6), 0.8, 0.05), 0.12); add(x, env(biq(white(N(3.0)), 'bp', 420, 0.5), 0.6, 0.06), 0.3);
+    biq(x, 'lp', 2200, 0.6); fade(x, 0.3); return norm(x, 0.97);
+  });
+  S.debris = many(3, () => { const x = new Float32Array(N(1.9)); ticks(x, 90, 0, 1.7, 1200, 6800, 0.5, 1.3); for (let k = 0; k < 9; k++) add(x, burst(0.09, 'lp', rr(200, 520), 0.8, 0.025), rr(0.2, 0.7), rr(0, 1.2) * rr(0.3, 1)); add(x, env(biq(white(N(1.8)), 'bp', 2800, 0.5), 0.45, 0.1), 0.16); fade(x, 0.2); return norm(x, 0.7); });
+  // Smoke: the fuze fires and the filling catches, then burns with a steady rushing hiss until it is spent.
+  S.smokepop = many(2, () => { const v = rr(0.92, 1.08), x = new Float32Array(N(0.7)); pulse(x, 0.00028, 0.8); add(x, burst(0.03, 'hp', 2200, 0.7, 0.004), 1); add(x, burst(0.12, 'bp', 1300 * v, 0.9, 0.03), 0.9); sweep(x, 260 * v, 120, 0.04, 0.5, 0, 0.03); modes(x, [[1210 * v, 0.06, 1], [3150 * v, 0.03, 0.5]], 0.12, 0.004); add(x, env(biq(white(N(0.6)), 'bp', 4800, 0.6), 0.5, 0.08), 0.3, 0.03); fade(x, 0.1); return norm(x, 0.9); });
+  S.hiss = one(() => {
+    const n = N(3.2), x = biq(biq(white(n), 'hp', 1700, 0.7), 'lp', 9500, 0.6), y = biq(white(n), 'bp', 3900, 1.3), z = biq(white(n), 'lp', 420, 0.7), w = biq(white(n), 'lp', 14, 0.7);
+    let m = 1e-9; for (let i = 0; i < n; i++) m = Math.max(m, Math.abs(w[i]));
+    for (let i = 0; i < n; i++) { const t = i / SR, fl = 0.78 + 0.22 * (w[i] / m) + 0.06 * Math.sin(TAU * 37 * t) * Math.sin(TAU * 0.9 * t); x[i] = (x[i] * 0.9 + y[i] * 1.5 + z[i] * 0.5) * fl; }
+    return norm(loopable(x, N(0.5)), 0.6);
+  });
+
   // ---- the district itself ------------------------------------------------------------------------------------------------------
   S.bird = many(4, i => {         // sparrow-like phrases: a run of short chirps, each a quick upward or downward sweep
     const x = new Float32Array(N(1.1)), count = 3 + (R() * 5 | 0); let at = 0;

@@ -1,6 +1,7 @@
 # Market District
 
-A compact tactical FPS slice in three.js: one sunlit market-district map, one carbine, 4 v 4 team deathmatch against bots.
+A compact tactical FPS slice in three.js: one sunlit market-district map, one carbine, a fragmentation grenade and a smoke
+canister, 4 v 4 team deathmatch against bots.
 It is a deliberately lean take on `Tactical FPS Master Prompt.md` — effort went into the image first.
 
 ## Run
@@ -43,12 +44,14 @@ open "build/Market District.app" --args "http://localhost:5173/"
 | Jump, mantle low cover | `Space` |
 | Fire / aim | left / right mouse |
 | Reload / fire mode / inspect | `R` / `B` / `F` |
+| Fragmentation grenade / smoke canister | `G` / `Q` takes one in the hands (the rifle hangs on its sling). The same key again, or `R`, puts it away |
+| Throw / lob | with one in the hands: hold left mouse to pull the pin and bring the arm back, release to throw overhand (about 20 m flat, 35 m lofted); right mouse does the same underhand for a short lob (about 9 m) |
 | Pause | `Esc` |
 | Frame-stats overlay / write a session report | `F3` / `F4` |
 
 The menu has sensitivity, FOV, ADS sensitivity, invert-Y, quality preset, difficulty, and toggles for motion blur, camera shake,
 vignette, grain, chromatic fringe and view bob. Settings persist in `localStorage`.
-Key bindings live in the same saved settings object (`binds`); there is no rebinding screen.
+Key bindings live in the same saved settings object (`binds`, including `frag` and `smoke`); there is no rebinding screen.
 
 ## What is in it
 
@@ -115,6 +118,42 @@ Key bindings live in the same saved settings object (`binds`); there is no rebin
   body rises on its legs as the trailing boot comes up, and the pelvis gives a little if a boot's place is out of reach,
   so no knee locks straight and snaps free. When the barrel approaches a wall, the soldier tucks the rifle closer to
   the chest.
+- **Throwables** — you carry two K-22 fragmentation grenades and two V-8 smoke canisters (both fictional), restocked
+  each life and counted on the HUD beside the ammunition. Each is a modelled object (pressed steel ball or rolled can,
+  fuze, safety lever, pin and ring, stencilled paint with chips and dust) held in a gloved right hand shaped to it while
+  the left index finger hooks the ring. Holding the mouse button draws the pin straight out, the left hand lets it
+  fall, and the arm goes back; releasing throws. The lever springs off as the hand opens and the fuze starts only
+  then, so there is no cooking: 4 s for the grenade, about 1.6 s for the canister. Pin and lever fall and ring on the
+  ground. Dying with the pin out drops the grenade live at your feet.
+  In flight each is a rigid body with continuous collision (a ball or a can with the fuze standing proud, so it kicks
+  off line, wobbles and stops on its side): it comes back off walls, cover, clutter and soldiers, skips along the road,
+  is braked by rolling and comes to rest, with a knock at every contact that depends on what it struck.
+- **The grenade** — a two-frame flash that lights walls and smoke, a fireball that is soot within a tenth of a second,
+  sparks, a dust skirt scoured off the ground, a dark column that climbs and drifts with the wind, earth and chips
+  lobbed up to rain back, a scorch on the road (and on a wall it burst against), and some fifty fragments traced as
+  rays that chip and mark whatever they reach and knock loose things about. Exposure dips for the flash on its own.
+  The sound arrives late by distance: a crack and slam with debris falling close by, the street's slap further off, a
+  dull thud blocks away; close and in the open it deafens for seconds and leaves a ringing. Fictional damage: 175 at
+  the seat, falling to nothing at 11.5 m, scaled by how much of a soldier (head, chest, shins) the burst can see, so
+  it kills inside about 4 m in the open, wounds at 8 m and does nothing behind a wall. It hurts whoever threw it
+  just the same, and your own side at 40 %. Kills score for the thrower and show a grenade in the kill feed. The
+  dead are thrown down as ragdolls; chairs, crates and cans within 8 m are flung by mass; a second grenade lying
+  beside it goes off too.
+- **The smoke canister** — the fuze pops, the starter mix spits sparks and the jet shoves the can about, then it burns
+  for 17 s with a hiss that follows it and is muffled by walls. The smoke is some fifty billows simulated on the CPU
+  (jet, buoyancy, a wandering turbulence, wind along the cloud drift, kept out of walls and under ceilings, spreading
+  to fill the street) and drawn as lit volumes: sun from its true direction with each billow's lumps picked out, the
+  cloud's own shadow through itself, the buildings' shadows on it (sampled by rays), the baked bounce light where it
+  drifts into shade, a glow at thin edges against the sun, the blast light of a grenade, fog with distance, and a soft
+  shadow on the road. It fades into whatever it touches (using the previous frame's depth) and ambient occlusion is
+  held off it. The screen is solid after about five seconds, hangs for half a minute and thins from its edges.
+- **What soldiers do about them** — smoke stands in the way of sight like a wall: a soldier with smoke between him and
+  his target loses it, fires into the cloud where it was for a couple of seconds, then works round one side instead
+  of walking in. Team markers and the aim label on the HUD are hidden by it too. A grenade that lands where a
+  soldier is looking, or close enough to hear it strike, is noticed after a reaction time (and missed by some, more
+  often on Easy): he runs to cover that would hide a crouching man if he can reach it in time, otherwise straight
+  away from it, gets down, and afterwards goes looking for where it came from. Bursts are heard across the district,
+  leave soldiers nearby dazed (slower to pick out a target, wilder shooting) and keep heads down. Bots do not throw.
 - **Physics** — a rigid-body world (Rapier) built from the district's collision boxes. 160-odd pieces of loose clutter
   (chairs, crates, cans, bins, tyres, pots, baskets, gas bottles, hand trucks…) rest as dressed until disturbed, then can be
   shoved by walking into them and knocked about by bullets, with material-dependent mass, friction and bounce; light
@@ -124,10 +163,11 @@ Key bindings live in the same saved settings object (`binds`); there is no rebin
   elbows with anatomical limits, limited ball joints with a little muscle tone elsewhere, a shove from the round that
   killed. The rifle drops as its own body. Bodies react to further hits, and when the soldier respawns the body and rifle
   are left behind as a static mesh (the six most recent).
-- **Audio** — every sound is modelled, not recorded: 46 sounds in 134 takes are computed at boot from physical ingredients
+- **Audio** — every sound is modelled, not recorded: 59 sounds in 172 takes are computed at boot from physical ingredients
   (blast pulse, filtered turbulence, modal ringing, grain scatter) — rifle from behind the sights, the same rifle at middle
   and long range, supersonic cracks, ricochets, strikes on eight materials, boots on six surfaces, rifle handling, brass,
-  eleven prop materials, body falls. The engine then places them: speed-of-sound delay, air absorption, muffling by walls
+  eleven prop materials, body falls, pin and lever, grenade and canister knocks, bursts at three ranges, falling debris,
+  the canister's pop and hiss. The engine then places them: speed-of-sound delay, air absorption, muffling by walls
   (three rays, so partly hidden sources still come over and around), HRTF panning, six early reflections whose delays, levels
   and directions are traced from the walls actually around you, three reverberant spaces (street, narrow passage, room)
   crossfaded by the same rays, hearing that dips for a moment after each of your own shots, humming air-conditioning units
@@ -138,8 +178,8 @@ Key bindings live in the same saved settings object (`binds`); there is no rebin
 
 ## Left out on purpose
 
-Throwables, a key-rebinding screen, heat shimmer, and a recorded gameplay clip. No reference video was supplied, so nothing
-was matched against one.
+A key-rebinding screen, heat shimmer, and a recorded gameplay clip. No reference video was supplied, so nothing
+was matched against one. Bots do not throw grenades or smoke.
 
 ## Quality presets
 
@@ -194,7 +234,12 @@ In the browser console, with the dev server running:
   props shoved and shot, a ragdoll falling to rest and the body staying behind, bot acceleration and stride length,
   planted-sole drift walking, running and strafing, a street corner taken at a run (sideways load, braking, wall
   contact), a kerb stepped up and down without the legs being thrown about, head and shoulders steady at a walk, the
-  bot magazine reload, sound arrival delay, wall muffling, and echoes.
+  bot magazine reload, sound arrival delay, wall muffling, and echoes. For the throwables: issue and HUD count, the
+  throw by hand with the rifle slung, arc, bounces and the fuze, a hard throw coming back off a wall, burst damage at
+  3 m and 8 m and behind buildings with the score and kill feed, the ragdoll, clutter thrown by the blast, a soldier
+  running from a grenade at his feet, an underhand smoke lob that blinds an enemy and then clears, a primed grenade
+  dropped at death, and restart. (One check fails and did before the throwables were added: the empty-magazine reload
+  is sampled 0.13 s before the reload finishes.)
 - `tools/locomotion-probe.js` — measures how the soldiers move over minutes of play (see the top of the file):
   `probe.patrol(G, 150)` reports acceleration, turn rates, sole drift, wall clearance, stops and wall contacts;
   `probe.posture(G)` how far pelvis, shoulders, head and rifle swing over a stride; `probe.steps(G)` how hard the legs
@@ -208,6 +253,8 @@ In the browser console, with the dev server running:
   the boot turned, tipped or rolled on the ankle further than an ankle goes, the thigh wrung round in the hip.
   `probe.shapeBattery(G)` gives the peaks over the same 22 moves, `probe.matchShapes(G, 120)` counts the frames past
   the limits in a real match and `probe.clipShape(G)` says what the authored clips themselves reach.
+- `await G.proofThrow()` — writes seventeen frames of the two throwables to `captures/throw_frag_*.jpg` and
+  `captures/throw_smoke_*.jpg`: in the hand, pin out, release, in flight, the burst or the pop, and what is left.
 - `await G.proof()` — writes fourteen fixed-bookmark screenshots at 1920×1080 to `captures/`; `await G.proof(1754, 864)` does
   the same at 2192×1080 (`*_uw.jpg`).
 - `G.bench()` — the GPU frame-time benchmark above. `G.report()` — the on-screen pacing, audio-level and input snapshot.
@@ -245,7 +292,9 @@ src/soldier-gait.js   directional gait keyframes and blend
 src/bot-rifle.js      low-ready, aim and hand placement on the bot rifle
 src/physics.js        box collision, rays, navigation grid + A* with wall clearance and lanes
 src/rigid.js          rigid-body world: loose props, pushing, bullets, ragdolls, dropped rifles, corpses
-src/fx.js             particles, decals, tracers, casings
+src/fx.js             particles, decals, tracers, casings, blast sparks and debris
+src/throwables.js     grenade and smoke canister: models, hands, throw, fuzes, burst, damage, fragments
+src/smoke.js          lit smoke / dust / fire volumes, the smoke-screen simulation, sight through smoke
 src/sounds.js         modelled sound library (pure JS, computed at boot)
 src/audio.js          audio engine: propagation, occlusion, reflections, reverbs, mix
 src/hud.js            HUD and menus

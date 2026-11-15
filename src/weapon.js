@@ -134,7 +134,7 @@ export function gunMaterials() {
 }
 
 // box-projected UVs in object space so roughness detail has the same scale on every part
-function projUV(g, k = 9) {
+export function projUV(g, k = 9) {
   const p = g.attributes.position, n = g.attributes.normal, uv = new Float32Array(p.count * 2);
   for (let i = 0; i < p.count; i++) {
     const ax = Math.abs(n.getX(i)), ay = Math.abs(n.getY(i)), az = Math.abs(n.getZ(i));
@@ -235,7 +235,7 @@ function buildMag() {
 // ---- hands ---------------------------------------------------------------------------------------------------------------
 // Gloved hand as one smooth distance-field surface. Hand-local frame: +Y towards the fingertips, +Z out of the palm,
 // thumb on +X (side = 1) or -X (side = -1). curls = per-finger joint bends (radians), thumbPts = thumb joint positions.
-function buildHand(side, curls, thumbPts, indexYaw = 0, wd = [0, -1, 0]) {      // wd = direction from the wrist to the elbow
+export function buildHand(side, curls, thumbPts, indexYaw = 0, wd = [0, -1, 0]) {      // wd = direction from the wrist to the elbow
   const S = side, fabric = [], palm = [], rubber = [], strap = [];
   const wp = (x, s) => [S * x + wd[0] * s, wd[1] * s + (s ? 0 : 0.004), wd[2] * s];
   fabric.push(cap(wp(-0.008, 0), wp(-0.008, 0.058), 0.0245, 0.0235), cap(wp(0.009, 0), wp(0.009, 0.058), 0.0245, 0.0235));   // wrist
@@ -272,7 +272,7 @@ function buildHand(side, curls, thumbPts, indexYaw = 0, wd = [0, -1, 0]) {      
   return projUV(polygonise(f, lo, hi, 0.0025), 6);
 }
 // Jacket sleeve: tapered tube with bunched folds, wrist end at y = 0, running down -Y to the elbow.
-function sleeveGeom(len = 0.36) {
+export function sleeveGeom(len = 0.36) {
   const g = new THREE.CylinderGeometry(0.0315, 0.049, len, 30, 34, false), p = g.attributes.position;
   for (let i = 0; i < p.count; i++) {
     const x = p.getX(i), y = p.getY(i), z = p.getZ(i), a = Math.atan2(z, x), t = (len / 2 - y) / len;      // t = 0 at the wrist
@@ -284,7 +284,7 @@ function sleeveGeom(len = 0.36) {
   const uv = g.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * 0.5, uv.getY(i) * 0.8);
   return g;
 }
-const basis = (X, Y, Z, O) => new THREE.Matrix4().makeBasis(X, Y, Z).setPosition(O);
+export const basis = (X, Y, Z, O) => new THREE.Matrix4().makeBasis(X, Y, Z).setPosition(O);
 
 // ---- red-dot lens: a collimated reticle (stays on the bore line as the eye moves) with tint, edge shading and smudges ------
 function reticleMaterial() {
@@ -381,9 +381,9 @@ export class Weapon {
     this.bolt = mk(projUV(rbox(0.0009, 0.016, 0.056, 0.0184, -0.078, 0.05, 0.0003)), M.bare);
     // optic glass
     const lens = new THREE.CircleGeometry(0.0122, 32);
-    this.lensFront = mk(lens.clone().translate(0, 0, -0.060), M.lensFront); this.lensFront.castShadow = false; this.lensFront.userData.noAO = true; this.lensFront.renderOrder = 5;
+    this.lensFront = mk(lens.clone().translate(0, 0, -0.060), M.lensFront); this.lensFront.castShadow = false; this.lensFront.userData.noAO = true; this.lensFront.renderOrder = 10;
     this.reticle = reticleMaterial();
-    this.lensRear = mk(lens.clone().translate(0, 0, -0.004), this.reticle); this.lensRear.castShadow = false; this.lensRear.userData.noAO = true; this.lensRear.renderOrder = 6;
+    this.lensRear = mk(lens.clone().translate(0, 0, -0.004), this.reticle); this.lensRear.castShadow = false; this.lensRear.userData.noAO = true; this.lensRear.renderOrder = 11;
     // hands
     const rh = buildHand(1, [[0.2, 0.3, 0.25], [1.25, 1.35, 0.9], [1.3, 1.4, 0.95], [1.35, 1.45, 1.0]], [[0.047, 0.05, 0.012], [0.05, 0.076, 0.036], [0.044, 0.098, 0.052]], 0.42);
     const rY = V(0, -0.42, -0.908).normalize(), rZ = V(-1, 0, 0), rX = rY.clone().cross(rZ), rO = V(0.031, -0.136, 0.108);
@@ -408,7 +408,7 @@ export class Weapon {
     const ft = flashTexture();
     this.flash = new THREE.Group(); this.flash.position.copy(MUZZLE); gun.add(this.flash);
     const fm = new THREE.MeshBasicMaterial({ map: ft, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, color: new THREE.Color(7, 5.2, 3.2), fog: false, toneMapped: false });
-    for (let i = 0; i < 3; i++) { const q = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), fm); if (i === 1) q.rotation.y = Math.PI / 2; if (i === 2) { q.rotation.y = Math.PI / 2; q.rotation.x = Math.PI / 2; } q.userData.noAO = true; q.frustumCulled = false; this.flash.add(q); }
+    for (let i = 0; i < 3; i++) { const q = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), fm); if (i === 1) q.rotation.y = Math.PI / 2; if (i === 2) { q.rotation.y = Math.PI / 2; q.rotation.x = Math.PI / 2; } q.userData.noAO = true; q.frustumCulled = false; q.renderOrder = 12; this.flash.add(q); }
     this.flash.visible = false; this.flash.userData.noAO = true;
     this.light = new THREE.PointLight(new THREE.Color(1, 0.72, 0.42), 0, 14, 2); this.light.position.copy(MUZZLE).add(V(0, 0.02, -0.12)); gun.add(this.light);
     R.setupTree(root);
@@ -418,18 +418,24 @@ export class Weapon {
     this.cool = 0; this.shots = 0; this.sinceShot = 9; this.heat = 0; this.triggerHeld = false;
     this.ads = 0; this.sprint = 0; this.nextShotSpread = 0; this.reloadT = -1; this.reloadLen = 0; this.reloadEmpty = false; this.reloaded = false; this.inspectT = -1;
     this.kick = 0; this.kickV = 0; this.kickRot = V(0, 0, 0); this.sway = V(0, 0, 0); this.bobT = 0; this.land = 0; this.wall = 0; this.flashT = 0; this.boltT = 1; this.time = 0;
-    this.stage = 0;
+    this.stage = 0; this.away = false; this.stow = 0;
   }
 
-  reset() { this.ammo = this.magSize; this.reserve = 120; this.reloadT = -1; this.inspectT = -1; this.heat = 0; this.shots = 0; this.mag.position.set(0, 0, 0); this.lh.position.copy(this.lhGrip); this.lh.quaternion.identity(); }
+  reset() { this.away = false; this.stow = 0; this.gun.visible = true; this.ammo = this.magSize; this.reserve = 120; this.reloadT = -1; this.inspectT = -1; this.heat = 0; this.shots = 0; this.mag.position.set(0, 0, 0); this.lh.position.copy(this.lhGrip); this.lh.quaternion.identity(); }
   get reloading() { return this.reloadT >= 0; }
   toggleMode() { this.mode = this.mode === 'auto' ? 'semi' : 'auto'; this.cb.sound('select'); }
   startReload() {
-    if (this.reloading || this.ammo >= this.magSize || this.reserve <= 0) return;
+    if (this.away || this.reloading || this.ammo >= this.magSize || this.reserve <= 0) return;
     this.reloadEmpty = this.ammo === 0; this.reloadT = 0; this.reloaded = false; this.stage = 0; this.inspectT = -1;
     this.reloadLen = 2.0;
   }
-  inspect() { if (!this.reloading && this.inspectT < 0) this.inspectT = 0; }
+  inspect() { if (!this.away && !this.reloading && this.inspectT < 0) this.inspectT = 0; }
+  // Rifle let down on its sling so both hands are free (throwing). Whatever the hands were doing with it stops.
+  holster(on) {
+    this.away = on; if (!on) return;
+    if (this.reloading) { this.reloadT = -1; this.lh.position.copy(this.lhGrip); this.lh.quaternion.identity(); this.mag.position.set(0, 0, 0); this.mag.visible = true; }
+    this.inspectT = -1; this.autoReload = 0;
+  }
 
   shotSpread(inp) {
     const shots = Math.floor(this.shots);
@@ -444,6 +450,8 @@ export class Weapon {
   // input: { fire, ads, sprinting, moving (0..1), speed, crouch, grounded, lookDX, lookDY, wallDist }
   update(dt, inp) {
     this.time += dt; this.cool -= dt; this.sinceShot += dt;
+    if (this.away) inp = { ...inp, fire: false, ads: false };
+    this.stow = damp(this.stow, this.away ? 1 : 0, this.away ? 12 : 9, dt); this.gun.visible = this.stow < 0.97;
     const canAds = !this.reloading && !inp.sprinting && this.inspectT < 0;
     this.ads = damp(this.ads, inp.ads && canAds ? 1 : 0, 16, dt);
     const hipKick = inp.ads ? 0 : 1 - this.ads;
@@ -496,6 +504,8 @@ export class Weapon {
     // sprint carry, wall lowering, landing dip
     p.x += -0.035 * this.sprint; p.y += -0.035 * this.sprint - 0.05 * this.wall - this.land * 0.03; p.z += 0.03 * this.sprint + 0.09 * this.wall;
     r.y += 0.62 * this.sprint; r.x += -0.2 * this.sprint - 0.62 * this.wall; r.z += 0.2 * this.sprint;
+    // slung: down and across the body, muzzle low
+    { const s = smooth(this.stow); p.x += 0.05 * s; p.y += -0.36 * s; p.z += 0.12 * s; r.x += -0.85 * s; r.y += 0.35 * s; r.z += 0.55 * s; }
     // recoil
     p.z += this.kick; r.x += this.kickRot.x; r.y += this.kickRot.y; r.z += this.kickRot.z;
 

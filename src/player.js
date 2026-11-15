@@ -52,8 +52,10 @@ export class Player {
 
   onKey(code) {
     if (!this.active) return;
-    const W = this.G.weapon, B = this.G.settings.binds;
-    if (code === B.reload) W.startReload();
+    const W = this.G.weapon, B = this.G.settings.binds, T = this.G.throw;
+    if (code === B.frag) T.select('frag');
+    else if (code === B.smoke) T.select('smoke');
+    else if (code === B.reload) { if (T.busy) T.putAway(); else W.startReload(); }
     else if (code === B.mode) W.toggleMode();
     else if (code === B.inspect) W.inspect();
     else if (code === B.jump) this.tryJump();
@@ -62,7 +64,7 @@ export class Player {
   spawn(sp) {
     this.pos.set(sp.x, 0, sp.z); this.vel.set(0, 0, 0); this.yaw = sp.yaw; this.pitch = 0; this.health = 100; this.alive = true; this.crouch = 0; this.crouching = false;
     this.recoilY = this.hipRecoilPitch = this.punchP = this.punchR = 0; this.camY = this.pos.y + 1.62; this.mantle = null; this.hurtT = 9;
-    this.G.weapon.reset(); this.G.weapon.root.visible = true;
+    this.G.weapon.reset(); this.G.weapon.root.visible = true; this.G.throw?.restock();
   }
 
   damage(amount, from, attacker, zone) {
@@ -73,7 +75,8 @@ export class Player {
     G.hud.damageFrom(ang); this.punchP += 0.03 + amount * 0.0012; this.punchR += (this.rnd() - 0.5) * 0.06; this.flash = Math.min(1, (this.flash || 0) + 0.45 + amount / 80);
     if (this.health <= 0) {
       this.health = 0; this.alive = false; this.deadT = 0; this.respawnT = 4; this.deaths++;
-      G.weapon.root.visible = false; G.onKill(attacker, this, zone === 'head');
+      G.throw.dropHeld();
+      G.weapon.root.visible = false; G.onKill(attacker, this, zone === 'head', zone);
       return true;
     }
     return false;
@@ -223,7 +226,9 @@ export class Player {
     cam.fov = damp(cam.fov, fov, 14, dt); cam.updateProjectionMatrix();
     // ---- weapon
     const dir = cam.getWorldDirection(tmp), wallDist = rayBoxes(this.pos.x, this.camY, this.pos.z, dir.x, dir.y, dir.z, 1.4, cols, null);
-    W.update(dt, { fire: !!input.fire, ads: !!input.ads, sprinting, moving: Math.min(1, speed / 4.3), speed, crouch: this.crouching, grounded: this.grounded, lookDX: ldx / Math.max(dt, 1e-3) * 0.016, lookDY: ldy / Math.max(dt, 1e-3) * 0.016, wallDist, inSun: this.inSun });
+    const T = G.throw, hands = T.busy;                      // with a grenade in the hands the buttons belong to it
+    T.hands(dt, { fire: !!input.fire, alt: !!input.ads, speed, grounded: this.grounded, wallDist });
+    W.update(dt, { fire: !hands && !!input.fire, ads: !hands && !!input.ads, sprinting, moving: Math.min(1, speed / 4.3), speed, crouch: this.crouching, grounded: this.grounded, lookDX: ldx / Math.max(dt, 1e-3) * 0.016, lookDY: ldy / Math.max(dt, 1e-3) * 0.016, wallDist, inSun: this.inSun });
     if (W.heat > 0.25 && W.sinceShot > 0.1 && W.sinceShot < 2.2 && this.rnd() < dt * 22) G.fx.barrelSmoke(W.muzzleWorld(V()), W.heat);
   }
 }

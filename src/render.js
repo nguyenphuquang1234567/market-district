@@ -282,6 +282,17 @@ export function createRenderer(canvas, skyTex, presetName) {
     gtao.updateGtaoMaterial({ radius: 0.6, distanceExponent: 1.2, thickness: 1.4, scale: 1.2, samples: Q.aoSamples, distanceFallOff: 1.0, screenSpaceRadius: false });
     gtao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: Q.aoSamples >= 16 ? 12 : 8 });
     gtao.blendIntensity = 0.85;
+    // Smoke is drawn into the scene with its alpha channel holding what is still visible through it (see smoke.js).
+    // The stock blend multiplies occlusion onto everything; this one lets it through only as far as the smoke does,
+    // so the creases of the street behind a cloud are not printed on the cloud.
+    gtao.blendMaterial = new THREE.ShaderMaterial({
+      uniforms: { tDiffuse: { value: null }, tScene: { value: null }, intensity: { value: 1 } }, depthTest: false, depthWrite: false,
+      vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
+      fragmentShader: `uniform sampler2D tDiffuse, tScene; uniform float intensity; varying vec2 vUv;
+        void main(){ vec4 s = texture2D(tScene, vUv); gl_FragColor = vec4(s.rgb * mix(vec3(1.0), texture2D(tDiffuse, vUv).rgb, intensity * clamp(s.a, 0.0, 1.0)), 1.0); }`,
+    });
+    const aoRender = gtao.render.bind(gtao);
+    gtao.render = (r, writeBuffer, readBuffer, ...rest) => { gtao.blendMaterial.uniforms.tScene.value = readBuffer.texture; aoRender(r, writeBuffer, readBuffer, ...rest); };
     composer.addPass(gtao);
   }
   if (Q.bloom) {
@@ -299,7 +310,7 @@ export function createRenderer(canvas, skyTex, presetName) {
   const saveStep = () => { try { localStorage.setItem(stepKey, step); } catch { /* private mode */ } };
   try { const v = +localStorage.getItem(stepKey); if (v > 0 && v < STEPS.length) step = Math.floor(v); } catch { /* ignore */ }
   const api = {
-    renderer, scene, camera, composer, csm, setup, setupTree, sky, sunDir: sky.sunDir, sunColor, sunIntensity, haze, Q, final: final.uniforms,
+    renderer, scene, camera, composer, csm, setup, setupTree, sky, sunDir: sky.sunDir, sunColor, sunIntensity, haze, Q, final: final.uniforms, sceneDepth: sceneRT.depthTexture, wind,
     exposureTarget: 0.85, baseExposure: 0.85, renderScale: STEPS[step], adaptive: true, meter, autoExposure: true, keyLum: 0.125, exposure: 0.85,
     resize() {
       const w = canvas.clientWidth || window.innerWidth, h = canvas.clientHeight || window.innerHeight;
