@@ -583,13 +583,15 @@ export function buildWorld(R, M) {
   const meshes = B.build(M), rayMeshes = [], clothMeshes = [];      // rayMeshes: what stops a bullet's ray. clothMeshes: awnings, laundry, rugs: a round goes through, a thrown object does not
   const group = new THREE.Group(); group.name = 'world';
   for (const m of meshes) {
-    m.castShadow = !m.name.startsWith('d_') && !['ground', 'cable', 'dark', 'glass', 'matte', 'paint', 'sign', 'bulb'].includes(m.name) && !m.userData.noShadow; m.receiveShadow = true;    // (paint and signs lie flat on walls: nothing to cast)
+    const water = m.name.startsWith('water');               // (the fountain's water: it neither casts shadows nor stops anything)
+    m.castShadow = !m.name.startsWith('d_') && !water && !['ground', 'cable', 'dark', 'glass', 'matte', 'paint', 'sign', 'bulb'].includes(m.name) && !m.userData.noShadow; m.receiveShadow = true;    // (paint and signs lie flat on walls: nothing to cast)
     const lod = lodRange(m); if (lod) m.userData.lod = lod;
     m.matrixAutoUpdate = false;
-    if (m.name === 'frond' || m.name === 'leaves' || m.name === 'flowers' || m.name.startsWith('d_')) m.userData.noAO = true;
+    if (m.name === 'frond' || m.name === 'leaves' || m.name === 'flowers' || m.name.startsWith('d_') || water) m.userData.noAO = true;
+    if (water) m.renderOrder = m.name === 'water' ? 1 : m.name === 'water_foam' ? 2 : 3;   // the surface, then the foam on it, then the falls
     if (m.name.startsWith('d_')) m.renderOrder = 2;
     if (!m.material.userData.noBVH && !m.userData.noBVH && !m.name.startsWith('d_')) { m.geometry.computeBoundsTree({ maxLeafTris: 8 }); rayMeshes.push(m); }
-    else if (m.material.userData.noBVH && m.name !== 'frond' && m.name !== 'leaves' && m.name !== 'flowers' && !m.name.startsWith('d_')) { m.geometry.computeBoundsTree({ maxLeafTris: 8 }); m.userData.cloth = true; clothMeshes.push(m); }
+    else if (m.material.userData.noBVH && !water && m.name !== 'frond' && m.name !== 'leaves' && m.name !== 'flowers' && !m.name.startsWith('d_')) { m.geometry.computeBoundsTree({ maxLeafTris: 8 }); m.userData.cloth = true; clothMeshes.push(m); }
     group.add(m);
   }
   R.scene.add(group); R.setupTree(group);

@@ -299,6 +299,65 @@ corner('corner_a', [])
 corner('corner_b', [(0.42, 0.095, 0.11), (0.78, 0.07, 0.09)])
 corner('corner_c', [(0.24, 0.13, 0.13), (0.6, 0.09, 0.11), (0.86, 0.07, 0.08)])
 
+# Plaza fountain (fuente): placed by its centre, ground at z = 0, the octagon's flats facing the axes. All one stone
+# (trim); the game lays talavera into the sunk panels and over the inside of the basin, and draws the water.
+def oct_prism(name, ap, z0, z1, material):
+    """Octagonal prism, apothem ap (centre to a flat), flats facing +-x, +-y and the diagonals."""
+    R = ap / math.cos(math.pi / 8); bm = bmesh.new()
+    lo = [bm.verts.new((R * math.cos(math.pi / 8 + k * math.pi / 4), R * math.sin(math.pi / 8 + k * math.pi / 4), z0)) for k in range(8)]
+    hi = [bm.verts.new((v.co.x, v.co.y, z1)) for v in lo]
+    poly(bm, lo[::-1]); poly(bm, hi)
+    for k in range(8): j = (k + 1) % 8; poly(bm, (lo[k], lo[j], hi[j], hi[k]))
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
+    return to_obj(name, bm, material)
+
+def lathe(name, prof, segs, material):
+    """A solid of revolution about z: prof is [(r, z)] from the axis round the outline back to the axis."""
+    bm = bmesh.new(); vs = [bm.verts.new((r, 0.0, z)) for r, z in prof]
+    es = [bm.edges.new((vs[i], vs[i + 1])) for i in range(len(vs) - 1)]
+    bmesh.ops.spin(bm, geom=vs + es, cent=(0, 0, 0), axis=(0, 0, 1), angle=2 * math.pi, steps=segs, use_merge=True)
+    bmesh.ops.remove_doubles(bm, verts=bm.verts[:], dist=1e-5)
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
+    return to_obj(name, bm, material)
+
+FOUNTAIN = dict(plinth=2.32, body=2.18, inner=1.75, coping_out=2.25, coping_in=1.68, floor=0.18, rim0=0.52, rim1=0.64)
+def fountain_basin():
+    F = FOUNTAIN
+    plinth = bevel(oct_prism('_pl', F['plinth'], 0.0, 0.10, TRIM), 0.018, 2, 30)               # a step round the foot
+    body = oct_prism('_body', F['body'], 0.08, F['rim0'], TRIM)
+    cut(body, oct_prism('_hollow', F['inner'], F['floor'], 1.0, TRIM))                          # the basin, its floor at 0.18
+    side = 2 * F['body'] * math.tan(math.pi / 8)
+    for k in range(8):                                                                          # a sunk panel in every face
+        a = k * math.pi / 4
+        p = box('_pn', -side / 2 + 0.17, side / 2 - 0.17, -0.03, 0.03, 0.17, 0.43, TRIM)
+        p.rotation_euler = (0, 0, a + math.pi / 2); p.location = ((F['body'] + 0.005) * math.cos(a), (F['body'] + 0.005) * math.sin(a), 0)
+        only(p); bpy.ops.object.transform_apply(location=True, rotation=True); cut(body, p)
+    bevel(body, 0.008, 1, 30)                                                                   # worn arrises
+    cop = oct_prism('_cop', F['coping_out'], F['rim0'], F['rim1'], TRIM)                       # the coping, overhanging both faces
+    cut(cop, oct_prism('_ch', F['coping_in'], 0.3, 1.0, TRIM)); bevel(cop, 0.035, 3, 30)
+    return keep(join('fountain_basin', [body, plinth, cop]), sm=30)
+fountain_basin()
+
+# The tazza in the middle: an octagonal pedestal, a turned baluster, a wide bowl with a rolled lip, a little stem and
+# bowl above it and a finial with the spout. Profile (radius, height) from the axis at the pedestal's top.
+TAZZA = [(0.0, 0.42), (0.32, 0.42), (0.32, 0.45), (0.28, 0.455)] + arc(0.28, 0.495, 0.04, -math.pi / 2, math.pi / 2, 6)[1:] + \
+        [(0.22, 0.545), (0.195, 0.575), (0.17, 0.62), (0.155, 0.68), (0.16, 0.74), (0.195, 0.80), (0.222, 0.87), (0.218, 0.94),
+         (0.19, 1.0), (0.15, 1.04), (0.125, 1.075), (0.12, 1.10), (0.165, 1.115), (0.172, 1.14), (0.15, 1.16), (0.13, 1.17)] + \
+        [(0.2, 1.19), (0.32, 1.215), (0.46, 1.245), (0.6, 1.28), (0.72, 1.32), (0.81, 1.36), (0.855, 1.39)] + \
+        [(0.88, 1.405), (0.887, 1.425), (0.877, 1.443), (0.856, 1.452), (0.835, 1.446), (0.8, 1.427)] + \
+        [(0.66, 1.4), (0.48, 1.38), (0.3, 1.37), (0.16, 1.366), (0.12, 1.372)] + \
+        [(0.11, 1.4), (0.13, 1.42), (0.115, 1.45), (0.085, 1.52), (0.075, 1.6), (0.085, 1.66), (0.11, 1.7), (0.105, 1.74), (0.08, 1.77),
+         (0.07, 1.8), (0.09, 1.83)] + \
+        [(0.16, 1.85), (0.25, 1.88), (0.33, 1.915), (0.385, 1.95), (0.405, 1.966), (0.407, 1.985), (0.392, 1.996), (0.37, 1.99)] + \
+        [(0.3, 1.976), (0.18, 1.966), (0.08, 1.962), (0.06, 1.97), (0.055, 2.0), (0.07, 2.03), (0.095, 2.07), (0.1, 2.1), (0.09, 2.14),
+         (0.06, 2.18), (0.035, 2.21), (0.03, 2.24), (0.02, 2.26), (0.0, 2.265)]
+def fountain_tazza():
+    ped = bevel(oct_prism('_ped', 0.46, FOUNTAIN['floor'] - 0.02, 0.42, TRIM), 0.02, 2, 30)
+    band = oct_prism('_pb', 0.6, 0.26, 0.34, TRIM); cut(band, oct_prism('_pbi', 0.44, 0.0, 1.0, TRIM)); cut(ped, band)   # a sunk band round it
+    t = lathe('_tz', TAZZA, 40, TRIM)
+    return keep(join('fountain_tazza', [t, ped]), sm=34)
+fountain_tazza()
+
 # ---------------------------------------------------------------------------------------------------- export ---------
 for ob in pieces: ob.location = (0, 0, 0)
 summary = ', '.join(f'{ob.name} {tri_count(ob)}' for ob in pieces)

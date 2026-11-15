@@ -22,6 +22,8 @@ export const VIEWS = {
   street_corner: [-2.4, -60.6, -45, 9],           // a street corner: the house corner, its two facades
   door_close: [-3.0, -31.2, -90, 6],              // a doorway on the main street, close up
   street_corner2: [-2.6, 19.4, -45, 8],           // another house corner, on the north cross street
+  fountain: [-10.6, -7.2, -7, -9],                // the plaza fountain from the sandbags, as a player comes on it
+  fountain_close: [-13.6, -3.4, 30, -15],         // close to the basin, looking across the water at the bowls
   // ---- the market quarter
   gate_north: [28.4, 20, 90, 2],
   calle_mercado: [49, -45, 0, 4],

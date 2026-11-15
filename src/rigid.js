@@ -12,6 +12,7 @@ const H = 1 / 60, G_STATIC = 1, G_PROP = 2, G_RAG = 4, G_CHAR = 8;
 // before. (A heavy capsule whose speed is reset every step, like a kinematic one, carries more momentum into the chair
 // than the solver can hand on to the wall in its few iterations, so the chair was pressed into the wall instead.)
 const PUSHER_MASS = 8, PUSH_SPEED = 9, PUSH_ACCEL = 25, ZERO = { x: 0, y: 0, z: 0 };
+const UPRIGHT = { x: 0, y: 0, z: 0, w: 1 };
 const grp = (member, filter) => ((member << 16) | filter) >>> 0;
 const V = (x, y, z) => new THREE.Vector3(x, y, z), UP = V(0, 1, 0);
 const FEEL = [[0.33, 0], [-0.33, 0], [0.66, 0], [-0.66, 0], [0.95, 0], [-0.95, 0], [0, 0.8], [0, -0.8]];      // where a thrown object feels ahead, across and above/below its centre, in radii
@@ -139,6 +140,29 @@ export class Rigid {
     const col = this.world.createCollider(RAPIER.ColliderDesc.capsule(0.4, 0.31).setMass(PUSHER_MASS).setCollisionGroups(grp(G_CHAR, G_PROP)).setFriction(0.3), body);
     this.pushers.push({ actor, body, col, on: false, ghost: false });
     if (!this.capsule) this.capsule = new RAPIER.Capsule(0.4, 0.31);
+    // The sweep stops the player just inside the wider pusher's reach, so contact still pushes clutter.
+    if (actor.isPlayer) this.playerPropShape = new RAPIER.Capsule(0.4, 0.27);
+  }
+
+  movePlayerPastProps(pos, dx, dz) {
+    const start = { x: pos.x, y: pos.y + 0.91, z: pos.z };
+    const delta = { x: dx, y: 0, z: dz };
+    const blocks = col => this.items.get(col.handle)?.kind === 'prop';
+    for (let pass = 0; pass < 2 && Math.hypot(delta.x, delta.z) > 1e-5; pass++) {
+      const hit = this.world.castShape(start, UPRIGHT, delta, this.playerPropShape, 0, 1, false,
+        undefined, grp(G_CHAR, G_PROP), undefined, undefined, blocks);
+      const t = hit ? hit.time_of_impact : 1;
+      start.x += delta.x * t;
+      start.z += delta.z * t;
+      if (!hit) break;
+      const { x, z } = hit.normal1, lengthSq = x * x + z * z;
+      if (lengthSq < 1e-6) break;
+      const inward = Math.min(0, (delta.x * x + delta.z * z) / lengthSq);
+      delta.x = (delta.x - x * inward) * (1 - t);
+      delta.z = (delta.z - z * inward) * (1 - t);
+    }
+    pos.x = start.x;
+    pos.z = start.z;
   }
   // Moved straight onto its soldier (spawn, or left far behind), it may land inside a prop: it then passes through
   // clutter until it is clear of all of it, instead of blasting what it landed in out of the way.

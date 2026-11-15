@@ -5,7 +5,7 @@ import { rng, clamp } from './util.js';
 import { bakeSounds } from './sounds.js';
 
 const IMP = { concrete: 'concrete', plaster: 'concrete', brick: 'concrete', tile: 'concrete', dirt: 'dirt', wood: 'wood', metal: 'metal', fabric: 'fabric', glass: 'glass', flesh: 'flesh', plastic: 'plastic' };
-const STEP = { concrete: 'step_concrete', plaster: 'step_concrete', brick: 'step_concrete', dirt: 'step_dirt', wood: 'step_wood', metal: 'step_metal', tile: 'step_tile', fabric: 'step_fabric' };
+const STEP = { concrete: 'step_concrete', plaster: 'step_concrete', brick: 'step_concrete', dirt: 'step_dirt', wood: 'step_wood', metal: 'step_metal', tile: 'step_tile', fabric: 'step_fabric', water: 'step_water' };
 const PROP = { plastic: 'prop_plastic', wood: 'prop_wood', bin: 'prop_bin', can: 'prop_can', tank: 'prop_tank', clay: 'prop_clay', cardboard: 'prop_cardboard', rubber: 'prop_rubber', bag: 'prop_bag', wicker: 'prop_wicker', gun: 'prop_gun', frag: 'prop_frag', canister: 'prop_canister' };
 const C = 343;      // speed of sound, m/s
 
@@ -311,15 +311,15 @@ export class Audio {
       tap.lp.frequency.setTargetAtTime(7500 * Math.exp(-dist / 45) + 900, t, 0.1);
     }
   }
-  // Machinery that hums where it stands (air-conditioning units): the nearest few are switched on as the listener approaches.
+  // Things that sound where they stand (air-conditioning units humming, the plaza fountain): the nearest few are switched on as the listener approaches.
   _hums(t) {
     const l = this.lpos, want = this.emitters.map(e => ({ e, d: Math.hypot(e.x - l.x, e.y - l.y, e.z - l.z) })).filter(o => o.d < 28).sort((a, b) => a.d - b.d).slice(0, 3).map(o => o.e);
     for (const a of [...this.active]) if (!want.includes(a.e)) { a.g.gain.setTargetAtTime(0, t, 0.3); a.src.stop(t + 2); this.active.splice(this.active.indexOf(a), 1); }
     for (const e of want) {
       if (this.active.some(a => a.e === e)) continue;
-      const ctx = this.ctx, src = ctx.createBufferSource(); src.buffer = this.S.hum[0]; src.loop = true; src.playbackRate.value = 0.94 + (Math.abs(e.x * 7 + e.z * 3) % 1) * 0.12;
-      const g = ctx.createGain(); g.gain.value = 0; g.gain.setTargetAtTime(0.5, t, 0.5);
-      const pn = ctx.createPanner(); pn.panningModel = 'HRTF'; pn.distanceModel = 'inverse'; pn.refDistance = 1.4; pn.rolloffFactor = 1.5; pn.positionX.value = e.x; pn.positionY.value = e.y; pn.positionZ.value = e.z;
+      const ctx = this.ctx, src = ctx.createBufferSource(), wet = e.kind === 'water'; src.buffer = (wet ? this.S.fountain : this.S.hum)[0]; src.loop = true; src.playbackRate.value = 0.94 + (Math.abs(e.x * 7 + e.z * 3) % 1) * 0.12;
+      const g = ctx.createGain(); g.gain.value = 0; g.gain.setTargetAtTime(wet ? 0.7 : 0.5, t, 0.5);
+      const pn = ctx.createPanner(); pn.panningModel = 'HRTF'; pn.distanceModel = 'inverse'; pn.refDistance = wet ? 2.4 : 1.4; pn.rolloffFactor = 1.5; pn.positionX.value = e.x; pn.positionY.value = e.y; pn.positionZ.value = e.z;
       src.connect(g); g.connect(pn); pn.connect(this.bus.amb); src.start(t, this.rnd() * 1.5);
       this.active.push({ e, src, g });
     }

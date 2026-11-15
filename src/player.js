@@ -196,7 +196,8 @@ export class Player {
         const dvx = tx - this.vel.x, dvz = tz - this.vel.z, dl = Math.hypot(dvx, dvz), st = (this.grounded || wl > 0 ? acc : 0) * h;
         if (dl <= st) { this.vel.x = tx; this.vel.z = tz; } else { this.vel.x += (dvx / dl) * st; this.vel.z += (dvz / dl) * st; }
         this.vel.y -= 21 * h;
-        this.pos.x += this.vel.x * h; this.pos.z += this.vel.z * h; this.pos.y += this.vel.y * h;
+        this.pos.y += this.vel.y * h;
+        G.rigid.movePlayerPastProps(this.pos, this.vel.x * h, this.vel.z * h);
         resolveXZ(this.pos, 0.34, this.height, rails, 0);   // railings stop the body outright (no stepping over the top rail) and are no floor
         resolveXZ(this.pos, 0.34, this.height, cols);
         const g = groundAt(this.pos.x, this.pos.z, this.pos.y, 0.34, cols);

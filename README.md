@@ -92,7 +92,11 @@ Key bindings live in the same saved settings object (`binds`, including `frag` a
   routes are unchanged. Near the camera (30 m from a 24 m cell, scaled by the quality preset) the detailed pieces are
   drawn over the flat stand-ins that were there before (painted frames, box sills, plain doors); further off only the
   stand-ins and a corrugated low-detail version of the tiles are drawn, and the detail stays out of the farthest shadow
-  cascade.
+  cascade. The plaza fountain is two kit pieces as well: an octagonal cantera basin on a step, with sunk panels and a
+  rounded coping, and a turned tazza with two bowls and a finial. The game lays talavera into the panels and over the
+  inside of the basin, and draws the water: standing in the basin and both bowls with two layers of ripples drifting
+  across each other, spilling over each lip as a sheet that breaks into strands, and foaming where it lands. It can be
+  heard from across the plaza, and a soldier can wade in the basin (soldiers' routes keep round it).
 - **The market quarter** — a second district (x 46…111, about 65 × 160 m; west on the in-game compass, behind the
   covered market lane) reached through four passages cut in the ring of houses behind the lane, which carry on the two
   spawn streets and the two cross streets. Cobbled streets: *Calle del Mercado* along the ring, *Calle Sur* and *Calle

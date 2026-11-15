@@ -423,16 +423,60 @@ export function dress(ctx) {
   car(13, 60.4, Math.PI / 2 - 0.04); barrier(-8, 59.2, -0.15, true); crates(-18, 61.4, -0.3, 3); sandbags(21, 58.7, 3, 4, -0.1); drums(-22.5, 61.6, 2);
   rubble(-23, 60.5, 1.3, 0.55); rubble(24, -61, 1.5, 0.6);
 
+  // =========================================== the plaza fountain ===========================================================
+  // A cantera basin on a step, sunk panels of talavera round it and talavera lining it, a turned tazza with two bowls
+  // (the kit's fountain_basin and fountain_tazza, modelled in tools/blender/kit.py), and water: standing in the basin
+  // and both bowls, spilling over each lip in a sheet that breaks into strands, foaming where it lands. Its sizes are
+  // the kit's (FOUNTAIN in kit.py). A soldier can wade in the basin; soldiers' routes keep round it.
+  function fountain(cx, cz) {
+    const at = (x, y, z) => V(cx + x, y, cz + z), stone = { tile: 2.6, color: [1.0, 0.94, 0.88] };
+    B.kit('fountain_basin', mat4(at(0, 0, 0)), { trim: 'cantera' }, { slot: { trim: stone } });
+    B.kit('fountain_tazza', mat4(at(0, 0, 0)), { trim: 'cantera' }, { slot: { trim: stone } });
+    const T8 = Math.tan(Math.PI / 8), tile = 0.52;                            // talavera: 13 cm tiles, four to the texture
+    for (let k = 0; k < 8; k++) {
+      const a = k * Math.PI / 4, n = V(Math.cos(a), 0, Math.sin(a));
+      const face = (ap, w, y0, y1, inward) => {                               // a panel of tiles on a face of the octagon
+        const m = inward ? -1 : 1, nn = n.clone().multiplyScalar(m), tt = V(nn.z, 0, -nn.x), c = at(n.x * ap, 0, n.z * ap);
+        const uo = -((c.x * nn.z - c.z * nn.x) / tile) + 0.5, vo = -y0 / tile;
+        B.quad('talavera', c.clone().addScaledVector(tt, -w).setY(y0), c.clone().addScaledVector(tt, w).setY(y0), c.clone().addScaledVector(tt, w).setY(y1), c.clone().addScaledVector(tt, -w).setY(y1), { tile, uo, vo, color: inward ? [0.86, 0.95, 1.0] : [1, 1, 1] });
+      };
+      face(2.157, 2.18 * T8 - 0.17, 0.17, 0.43, false);                      // in the sunk panel of each outer face
+      face(1.748, 1.75 * T8, 0.18, 0.52, true);                              // lining the basin
+    }
+    const disc = (r, segs, y, key, us, rot = 0) => { const g = new THREE.CircleGeometry(r, segs); g.rotateX(-Math.PI / 2); B.geom(key, g, mat4(at(0, y, 0), rot), { uvScale: us }); };
+    { const ap = 1.748, h = ap * T8, y = 0.181, o = { tile, uo: -cx / tile, vo: cz / tile, color: [0.86, 0.95, 1.0] };   // the basin's tiled floor (three quads)
+      B.quad('talavera', at(-ap, y, h), at(ap, y, h), at(ap, y, -h), at(-ap, y, -h), o);
+      B.quad('talavera', at(-h, y, ap), at(h, y, ap), at(ap, y, h), at(-ap, y, h), o);
+      B.quad('talavera', at(-ap, y, -h), at(ap, y, -h), at(h, y, -ap), at(-h, y, -ap), o); }
+    disc(1.75 / Math.cos(Math.PI / 8), 8, 0.47, 'water', 2.4, Math.PI / 8);   // the water: in the basin, and in each bowl
+    disc(0.8, 40, 1.43, 'water', 1.1); disc(0.375, 32, 1.988, 'water', 0.5);
+    // a ring of quads round the axis: rv(v) = [radius, height] for v from 0 to 1, u running `around` times round
+    const ring = (key, segs, rows, around, rv, up) => {
+      const pos = [], nor = [], uv = [], idx = [];
+      for (let j = 0; j <= rows; j++) for (let i = 0; i <= segs; i++) {
+        const v = j / rows, a = i / segs * Math.PI * 2, [r, y] = rv(v);
+        pos.push(Math.cos(a) * r, y, Math.sin(a) * r); if (up) nor.push(0, 1, 0); else nor.push(Math.cos(a), 0, Math.sin(a)); uv.push(i / segs * around, v);
+      }
+      for (let j = 0; j < rows; j++) for (let i = 0; i < segs; i++) { const p = j * (segs + 1) + i, q = p + segs + 1; idx.push(p, p + 1, q, p + 1, q + 1, q); }
+      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setIndex(idx);
+      B.geom(key, g, mat4(at(0, 0, 0)));
+    };
+    ring('water_fall', 48, 6, 7, v => [0.89 + 0.13 * v * v, 1.43 - 0.96 * v], false);        // over the big bowl's lip into the basin
+    ring('water_fall', 32, 4, 3, v => [0.41 + 0.07 * v * v, 1.99 - 0.56 * v], false);        // over the small bowl's lip into the big one
+    ring('water_foam', 48, 2, 5, v => [0.95 + 0.38 * v, 0.474], true);
+    ring('water_foam', 32, 2, 2, v => [0.45 + 0.17 * v, 1.433], true);
+    // collision: the step, the rim (a soldier can sit, stand or step over it), the basin floor under the water (wading;
+    // high enough to keep the soldiers' routes outside), the tazza and its big bowl
+    const oct = (ap, y0, y1, surf) => { for (let k = 0; k < 4; k++) B.collide(cx, (y0 + y1) / 2, cz, ap * 2, y1 - y0, 2 * ap * T8, k * Math.PI / 4, surf); };
+    oct(2.32, 0, 0.1, 'concrete'); oct(1.75, 0, 0.26, 'water'); oct(0.46, 0, 1.2, 'concrete'); oct(0.89, 1.19, 1.46, 'concrete');
+    for (let k = 0; k < 8; k++) { const a = k * Math.PI / 4, r = (1.68 + 2.25) / 2; B.collide(cx + Math.cos(a) * r, 0.32, cz + Math.sin(a) * r, 2 * 2.25 * T8 + 0.02, 0.64, 0.57, Math.PI / 2 - a, 'concrete'); }
+    B.emitters.push({ kind: 'water', x: cx, y: 1.0, z: cz });                // (audio: the splash of it)
+  }
+
   // =========================================== plaza ======================================================================
   {
     const st = { color: [1.0, 0.95, 0.86], tile: 2.2 };
-    const basin = [[0, 0.18], [1.75, 0.18], [1.75, 0.58], [1.86, 0.62], [2.12, 0.62], [2.18, 0.5], [2.18, 0.1], [2.3, 0.1], [2.3, 0]].map(([a, b]) => new THREE.Vector2(a, b));
-    B.geom('concrete', new THREE.LatheGeometry(basin, 8), mat4(V(-11.5, 0, 0), Math.PI / 8), { ...st, uvScale: 4 });
-    const col = [[0, 1.5], [0.5, 1.5], [0.62, 1.38], [0.2, 1.2], [0.16, 0.55], [0.3, 0.4], [0.34, 0.18]].map(([a, b]) => new THREE.Vector2(a, b));
-    B.geom('concrete', new THREE.LatheGeometry(col, 12), mat4(V(-11.5, 0, 0)), { ...st, uvScale: 2 });
-    B.collide(-11.5, 0.31, 0, 3.9, 0.62, 3.9, Math.PI / 8, 'concrete'); B.collide(-11.5, 0.75, 0, 0.7, 1.5, 0.7, 0, 'concrete');
-    const leaves = new THREE.CircleGeometry(1.7, 8); leaves.rotateX(-Math.PI / 2);
-    B.geom('rubble', leaves, mat4(V(-11.5, 0.2, 0), Math.PI / 8), { uvScale: 2.5, color: [0.7, 0.62, 0.5] });
+    fountain(-11.5, 0);
     // broken perimeter wall towards the street
     for (const [za, zb, h] of [[-16.6, -11.2, 1.05], [-11.2, -9.4, 0.6], [-4.5, 1.0, 1.1], [1.0, 2.3, 0.45], [7.4, 12.6, 1.0]]) {
       B.box('w_brick', -6.25, h / 2, (za + zb) / 2, 0.42, h, zb - za, { tile: 2.0 }); B.box('concrete', -6.25, h + 0.04, (za + zb) / 2, 0.5, 0.08, zb - za + 0.04, st);

@@ -177,7 +177,11 @@ export class Builder {
     const pr = assets.proto[name];
     if (this.mute) return pr.size;
     if (name === 'ac' || name === 'ac_rust') this.emitters.push({ kind: 'hum', x, y: y + 0.3, z });      // these hum (audio)
-    if (DYNAMIC[name] && !this._sorted && !fixed) { this.dynCand.push({ name, x, y, z, rot, scale, tilt, solid }); return pr.size; }      // decided in build()
+    if (DYNAMIC[name] && !this._sorted && !fixed) {
+      if (name === 'chair') solid ??= { surf: 'plastic', shrink: 0.92 };
+      this.dynCand.push({ name, x, y, z, rot, scale, tilt, solid });
+      return pr.size;
+    }
     const m = new THREE.Matrix4().compose(V(x, y, z),
       new THREE.Quaternion().setFromEuler(new THREE.Euler(tilt ? tilt[0] : 0, rot, tilt ? tilt[1] : 0, 'YXZ')), V(scale, scale, scale));
     const chunk = this.cell(x, z) * 2 + ((pr.small && scale < 1.6) || /^(weed|bush|shelves|basket)/.test(name) ? 1 : 0);   // odd = too small to cast shadows

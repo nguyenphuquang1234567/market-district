@@ -220,5 +220,18 @@ export function bakeSounds(SR = 48000, seed = 9001) {
   S.flap = many(3, () => { const x = new Float32Array(N(0.6)); for (let k = 0, at = 0; k < 2 + (R() * 3 | 0); k++) { add(x, burst(0.14, 'lp', rr(350, 700), 0.8, 0.035, 0.012), rr(0.5, 1), at); add(x, burst(0.1, 'bp', 1800, 0.7, 0.03, 0.01), 0.15, at); at += rr(0.09, 0.2); } fade(x, 0.05); return norm(x, 0.7); });
   S.cicada = one(() => { const n = N(4.4), x = biq(biq(white(n), 'bp', 5600, 4), 'hp', 3500, 0.7); for (let i = 0; i < n; i++) { const t = i / SR; x[i] *= (0.5 + 0.5 * Math.sin(TAU * 47 * t)) ** 2 * (0.65 + 0.35 * Math.sin(TAU * 0.23 * t + 1)); } return norm(loopable(x, N(0.4)), 0.5); });
   S.hum = one(() => { const n = N(2.4), x = biq(white(n), 'bp', 780, 0.9); for (let i = 0; i < n; i++) { const t = i / SR; x[i] = x[i] * 0.5 + 0.5 * Math.sin(TAU * 100 * t) + 0.3 * Math.sin(TAU * 200 * t + 1) + 0.16 * Math.sin(TAU * 300 * t + 2) + 0.2 * Math.sin(TAU * 49.5 * t) * (1 + 0.2 * Math.sin(TAU * 11 * t)); } return norm(loopable(x, N(0.4)), 0.5); });
+  // ---- the plaza fountain: water falling into water, and wading through it -----------------------------------------------------
+  S.fountain = one(() => {
+    const n = N(3.6), x = biq(white(n), 'bp', 1250, 0.55), hi = biq(white(n), 'bp', 3800, 0.9);
+    for (let i = 0; i < n; i++) { const t = i / SR; x[i] = x[i] * (0.75 + 0.25 * Math.sin(TAU * 0.83 * t) * Math.sin(TAU * 0.31 * t + 1)) + hi[i] * 0.3; }
+    for (let k = 0; k < 230; k++) sweep(x, rr(380, 900), rr(900, 2600), rr(0.006, 0.02), rr(0.04, 0.16), rr(0, 3.5), 0.008);    // drops: little rising plinks
+    return norm(loopable(x, N(0.5)), 0.5);
+  });
+  S.step_water = many(4, () => {
+    const x = new Float32Array(N(0.5)), v = rr(0.85, 1.15);
+    add(x, burst(0.22, 'bp', 900 * v, 0.6, 0.06, 0.006), 1); add(x, burst(0.16, 'hp', 2400 * v, 0.7, 0.045, 0.01), 0.45, 0.02);
+    for (let k = 0; k < 7; k++) sweep(x, rr(420, 800), rr(1100, 2300), rr(0.008, 0.02), rr(0.1, 0.25), rr(0.01, 0.2), 0.008);
+    fade(x); return norm(x, 0.8);
+  });
   return S;
 }

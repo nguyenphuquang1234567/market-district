@@ -157,6 +157,94 @@ function frondTexture() {
   });
 }
 
+// ---- water (the plaza fountain) ----------------------------------------------------------------------------------------
+// A tileable ripple normal map: a sum of waves whose frequencies are whole numbers of cycles across the tile.
+function rippleNormal(N = 256) {
+  const R = rng(77), h = new Float32Array(N * N), waves = [];
+  while (waves.length < 26) { const kx = Math.round((R() - 0.5) * 18), ky = Math.round((R() - 0.5) * 18); if (kx || ky) waves.push([kx, ky, (0.3 + R()) / Math.hypot(kx, ky), R() * 6.283]); }
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) { let v = 0; for (const [kx, ky, a, ph] of waves) v += a * Math.sin(6.2832 * (kx * x + ky * y) / N + ph); h[y * N + x] = v; }
+  return canvasTexture(N, N, g => {
+    const img = g.createImageData(N, N), at = (x, y) => h[((y + N) % N) * N + ((x + N) % N)];
+    for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+      const dx = (at(x + 1, y) - at(x - 1, y)) * 0.9, dy = (at(x, y + 1) - at(x, y - 1)) * 0.9, l = Math.hypot(dx, dy, 1), o = (y * N + x) * 4;
+      img.data[o] = (-dx / l * 0.5 + 0.5) * 255; img.data[o + 1] = (dy / l * 0.5 + 0.5) * 255; img.data[o + 2] = (1 / l * 0.5 + 0.5) * 255; img.data[o + 3] = 255;
+    }
+    g.putImageData(img, 0, 0);
+  }, false);
+}
+// Strands of falling water (alpha), drawn wrapped so the texture tiles both ways.
+function strandTexture(w = 64, h = 256, count = 150, seed = 91, len = [30, 220]) {
+  return canvasTexture(w, h, g => {
+    const R = rng(seed); g.clearRect(0, 0, w, h);
+    for (let i = 0; i < count; i++) {
+      const x = R() * w, wd = 0.5 + R() * 1.3, y0 = R() * h, l = len[0] + R() * (len[1] - len[0]);
+      g.fillStyle = `rgba(255,255,255,${(0.1 + R() * 0.4).toFixed(3)})`;
+      for (const ox of [-w, 0, w]) for (const oy of [-h, 0, h]) g.fillRect(x + ox, y0 + oy, wd, l);
+    }
+  });
+}
+// Foam: soft blots of white (alpha), wrapped.
+function foamTexture(n = 128) {
+  return canvasTexture(n, n, g => {
+    const R = rng(33); g.clearRect(0, 0, n, n);
+    for (let i = 0; i < 520; i++) {
+      const x = R() * n, y = R() * n, r = 0.5 + R() * 2.2; g.fillStyle = `rgba(255,255,255,${(0.05 + R() * 0.22).toFixed(3)})`;
+      for (const ox of [-n, 0, n]) for (const oy of [-n, 0, n]) { g.beginPath(); g.arc(x + ox, y + oy, r, 0, 6.2832); g.fill(); }
+    }
+  });
+}
+const timed = (m, key, frag) => {
+  m.userData.patchKey = key;
+  m.userData.patch = shader => {
+    shader.uniforms.uTime = windUniforms.uTime;
+    shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\nuniform float uTime;');
+    frag(shader);
+  };
+  m.userData.noBVH = true;                                  // rounds and thrown things go through to the stone underneath
+  return m;
+};
+// Standing water: clear and dark over the tiles, two layers of ripples drifting across each other.
+function waterMaterial() {
+  const tex = rippleNormal(); tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  const m = new THREE.MeshStandardMaterial({ color: 0x0b2427, roughness: 0.04, metalness: 0, normalMap: tex, normalScale: new THREE.Vector2(0.2, 0.2), transparent: true, opacity: 0.8, envMapIntensity: 1.0 });
+  return timed(m, 'water', shader => {
+    shader.fragmentShader = shader.fragmentShader.replace('#include <normal_fragment_maps>', `{
+      vec2 r1 = texture2D(normalMap, vNormalMapUv + vec2(uTime * 0.031, uTime * 0.017)).xy * 2.0 - 1.0;
+      vec2 r2 = texture2D(normalMap, vNormalMapUv * 1.73 + vec2(-uTime * 0.023, uTime * 0.029)).xy * 2.0 - 1.0;
+      normal = normalize(tbn * vec3((r1 + r2) * normalScale, 1.0));
+    }`);
+  });
+}
+// Water spilling over a bowl's lip: a clear sheet at the lip that breaks into strands as it falls (v: 0 at the lip,
+// 1 where it meets the water below).
+function fallMaterial() {
+  const tex = strandTexture(); tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  const m = new THREE.MeshStandardMaterial({ map: tex, color: 0xc4dadd, roughness: 0.06, metalness: 0, transparent: true, depthWrite: false, side: THREE.DoubleSide, envMapIntensity: 1.5 });
+  return timed(m, 'fall', shader => {
+    shader.fragmentShader = shader.fragmentShader.replace('#include <map_fragment>', `{
+      float v = vMapUv.y;
+      float s1 = texture2D(map, vec2(vMapUv.x, v * 0.55 - uTime * 1.6)).a, s2 = texture2D(map, vec2(vMapUv.x * 1.37 + 0.31, v * 0.85 - uTime * 2.2)).a;
+      float tongues = 0.5 + 0.5 * sin(vMapUv.x * 6.2832 + 1.3) * sin(vMapUv.x * 2.3 + 0.4);     // thicker and thinner falls round the lip
+      float sheet = (1.0 - smoothstep(0.0, 0.3, v)) * 0.16;
+      diffuseColor.a *= clamp((sheet + (s1 + s2) * 0.34 * mix(0.75, 1.0, v)) * (0.35 + 0.65 * tongues), 0.0, 0.55) * (1.0 - smoothstep(0.8, 1.0, v));
+    }`);
+  });
+}
+// White water where a fall lands: foam drifting outwards over a ring (v: 0 at the fall, 1 at the ring's edge).
+function foamMaterial() {
+  const tex = foamTexture(); tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  const m = new THREE.MeshStandardMaterial({ map: tex, color: 0xeef5f2, roughness: 0.55, metalness: 0, transparent: true, depthWrite: false, envMapIntensity: 0.6, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+  return timed(m, 'foam', shader => {
+    shader.fragmentShader = shader.fragmentShader.replace('#include <map_fragment>', `{
+      float v = vMapUv.y;
+      float f = texture2D(map, vec2(vMapUv.x, v * 0.5 - uTime * 0.32)).a + texture2D(map, vec2(vMapUv.x * 0.71 + 0.5, v * 0.8 - uTime * 0.19)).a;
+      diffuseColor.a *= clamp(f * 0.8, 0.0, 0.8) * (1.0 - smoothstep(0.15, 1.0, v)) * smoothstep(0.0, 0.08, v);
+    }`);
+  });
+}
+
+const repeat = t => { t.wrapS = t.wrapT = THREE.RepeatWrapping; return t; };
+
 export function createMaterials() {
   const flat = (color, rough, metal = 0, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: metal, vertexColors: true, ...extra });
   const decal = kind => new THREE.MeshStandardMaterial({
@@ -195,7 +283,7 @@ export function createMaterials() {
     shutter_paint: weather(pbr('painted_metal_shutter', { metal: true }), 0.5, 0.6),      // painted roll-up shutters (cortinas)
     roof_tin: pbr('worn_corrugated_iron', { side: THREE.DoubleSide }),                    // corrugated roofing, seen from below too (painted and rusted: no bare metal, so it takes the bounce light)
     sign: new THREE.MeshStandardMaterial({ map: signAtlas(), roughness: 0.78, vertexColors: true }),
-    talavera: new THREE.MeshStandardMaterial({ map: talaveraTexture(), roughness: 0.22, vertexColors: true, envMapIntensity: 1.2 }),
+    talavera: new THREE.MeshStandardMaterial({ map: repeat(talaveraTexture()), roughness: 0.22, vertexColors: true, envMapIntensity: 1.2 }),
     cloth_papel: windy(new THREE.MeshStandardMaterial({ map: papelTexture(), alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.85, vertexColors: true }), 0.12, 0.9),
     cloth_tarp: windy(new THREE.MeshStandardMaterial({ map: tarpTexture(), normalMap: assets.tex.cotton_jersey.nor, normalScale: new THREE.Vector2(0.5, 0.5), roughness: 0.55, side: THREE.DoubleSide, vertexColors: true }), 0.05, 0.7),
     leaves: windy(new THREE.MeshStandardMaterial({ map: leavesTexture(), alphaTest: 0.45, side: THREE.DoubleSide, roughness: 0.68, vertexColors: true }), 0.035, 0.45),
@@ -204,6 +292,7 @@ export function createMaterials() {
     glossy: flat(0xffffff, 0.32),                                                         // chiles, piñata foil
     paint: weather(flat(0xcfcfcf, 0.86), 0.9, 1),                                         // a flat painted band (base, window surround), tinted per building (as bright as the plaster it is painted on)
     teja: weather(pbr('red_sandstone_wall', { normalScale: 0.7 }), 0.25, 0.6),           // fired clay roof tiles (the kit's barrel tiles), shaded tile by tile through vertex colours
+    water: waterMaterial(), water_fall: fallMaterial(), water_foam: foamMaterial(),       // the plaza fountain
   };
   M.glass.roughnessMap = null; M.glass.roughness = 0.09;
   for (const k of ['frond', 'cloth_red', 'cloth_green', 'cloth_plain', 'rug', 'cloth_papel', 'cloth_tarp', 'leaves', 'flowers']) M[k].userData.noBVH = true;
