@@ -19,10 +19,10 @@ async function api(path, method = 'GET') {
 async function currentProduction() {
   const project = await api(`/v9/projects/${projectId}`);
   const current = project.targets?.production;
-  if (project.id !== projectId || project.name !== 'market-district' || !id(current ?? {}) || current.readyState !== 'READY') {
-    throw new Error('Cannot verify a ready Market District production deployment');
+  if (project.id !== projectId || project.name !== 'market-district') {
+    throw new Error('Unexpected Vercel project returned during cleanup');
   }
-  return current;
+  return current && id(current) && (current.readyState ?? current.state) === 'READY' ? current : null;
 }
 
 async function listProduction() {
@@ -49,11 +49,13 @@ async function main() {
   let current;
   for (let attempt = 0; attempt < 20; attempt++) {
     current = await currentProduction();
-    if (!expectedCommit || current.meta?.githubCommitSha === expectedCommit) break;
+    if (current && (!expectedCommit || current.meta?.githubCommitSha === expectedCommit)) break;
     if (attempt === 19) {
+      if (!current) throw new Error('Cannot verify a ready Market District production deployment after waiting');
       console.log('This commit did not become production. Scheduled cleanup will check the live deployment.');
       return;
     }
+    if (attempt === 0) console.log('Waiting for Vercel to finish promoting production.');
     await new Promise(resolve => setTimeout(resolve, 15000));
   }
   const currentId = id(current);
@@ -84,7 +86,8 @@ async function main() {
     eligible++;
     console.log(`${dryRun ? 'Would delete' : 'Deleting'} ${deploymentId}`);
     if (dryRun) continue;
-    if (id(await currentProduction()) !== currentId) throw new Error('Production changed during cleanup');
+    const active = await currentProduction();
+    if (!active || id(active) !== currentId) throw new Error('Production changed during cleanup');
     await api(`/v13/deployments/${deploymentId}`, 'DELETE');
     removed++;
   }
