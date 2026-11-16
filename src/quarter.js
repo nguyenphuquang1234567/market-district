@@ -357,11 +357,14 @@ export function buildQuarter({ B, M, buildings, anchors, ghosts, gates, architec
   // A street vendor's cart: a painted box on bicycle wheels with a little tin roof (corn, fruit cups, ice).
   function cart(x, z, rot) {
     const c = Math.cos(rot), s = Math.sin(rot), L = (lx, ly, lz) => V(x + lx * c + lz * s, ly, z - lx * s + lz * c), col = rnd.pick([[0.95, 0.75, 0.2], [0.2, 0.55, 0.85], [0.9, 0.3, 0.25], [0.3, 0.7, 0.4]]);
-    const bx = L(0, 0.75, 0); B.box('metal_white', bx.x, bx.y, bx.z, 1.5, 0.7, 0.8, { rot, color: col, tile: 1 });
-    const tp = L(0, 1.12, 0); B.box('metal_plate', tp.x, tp.y, tp.z, 1.56, 0.04, 0.86, { rot, tile: 1 });
-    for (const [lx, lz] of [[-0.55, -0.42], [-0.55, 0.42], [0.6, 0]]) { const w = new THREE.TorusGeometry(0.28, 0.025, 6, 18); const m = mat4(L(lx, 0.3, lz), rot); B.geom('cable', w, m); }
-    for (const [lx, lz] of [[-0.7, -0.38], [0.7, -0.38], [-0.7, 0.38], [0.7, 0.38]]) rod(L(lx, 1.12, lz), L(lx, 2.0, lz), 0.015, 'iron');
-    const rf = L(0, 2.05, 0); B.box('corrugated', rf.x, rf.y, rf.z, 1.8, 0.03, 1.05, { rot, tile: 1.2, color: [0.9, 0.9, 0.9] });
+    B.swap('cart', () => {                                                       // far off, a painted box on rings; near, the modelled cart (tools/blender/props.py)
+      const bx = L(0, 0.75, 0); B.box('metal_white', bx.x, bx.y, bx.z, 1.5, 0.7, 0.8, { rot, color: col, tile: 1 });
+      const tp = L(0, 1.12, 0); B.box('metal_plate', tp.x, tp.y, tp.z, 1.56, 0.04, 0.86, { rot, tile: 1 });
+      for (const [lx, lz] of [[-0.55, -0.42], [-0.55, 0.42], [0.6, 0]]) { const w = new THREE.TorusGeometry(0.28, 0.025, 6, 18); const m = mat4(L(lx, 0.3, lz), rot); B.geom('cable', w, m); }
+      for (const [lx, lz] of [[-0.7, -0.38], [0.7, -0.38], [-0.7, 0.38], [0.7, 0.38]]) rod(L(lx, 1.12, lz), L(lx, 2.0, lz), 0.015, 'iron');
+      const rf = L(0, 2.05, 0); B.box('corrugated', rf.x, rf.y, rf.z, 1.8, 0.03, 1.05, { rot, tile: 1.2, color: [0.9, 0.9, 0.9] });
+    }, () => B.kit('cart', mat4(V(x, 0, z), rot), { body: 'metal_white', steel: 'metal_plate', tin: 'roof_tin', iron: 'iron', rubber: 'cable', bottle: 'metal_white', plastic: 'plastic', pot: 'glossy' },
+      { lod: 'near', slot: { body: { color: col, tile: 1 }, steel: { tile: 1 }, tin: { tile: 1.2, color: [0.9, 0.9, 0.9] }, iron: {}, rubber: {}, bottle: { color: [0.72, 0.74, 0.72], tile: 0.6 }, plastic: { color: [0.92, 0.94, 0.96] }, pot: { color: [0.78, 0.8, 0.82] } } }));
     B.collide(x, 0.6, z, 1.5, 1.2, 0.8, rot, 'metal');
     const si = rnd.pick([11, 12, 28, 25]), q = (u, v) => L(u, 0.48 + v, 0.405 + 0.012);
     B.quad('sign', q(-0.6, 0), q(0.6, 0), q(0.6, 0.6), q(-0.6, 0.6), { uv: signUV(si) });

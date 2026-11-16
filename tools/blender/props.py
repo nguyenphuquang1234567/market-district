@@ -25,7 +25,9 @@ scene = bpy.context.scene
 
 # slot -> the colour it shows in the preview renders (the game's materials replace them)
 SHOW = {'stone': (0.62, 0.6, 0.56), 'burlap': (0.62, 0.5, 0.34), 'spice': (0.8, 0.45, 0.15), 'concrete': (0.66, 0.65, 0.62),
-        'brick': (0.62, 0.3, 0.2), 'plaster': (0.86, 0.82, 0.72), 'iron': (0.3, 0.16, 0.1), 'gravel': (0.55, 0.52, 0.47)}
+        'brick': (0.62, 0.3, 0.2), 'plaster': (0.86, 0.82, 0.72), 'iron': (0.3, 0.16, 0.1), 'gravel': (0.55, 0.52, 0.47),
+        'body': (0.9, 0.7, 0.2), 'steel': (0.75, 0.76, 0.78), 'tin': (0.6, 0.62, 0.6), 'rubber': (0.08, 0.08, 0.08), 'bottle': (0.7, 0.72, 0.7),
+        'glass': (0.55, 0.7, 0.75), 'plastic': (0.9, 0.9, 0.88), 'pot': (0.78, 0.8, 0.82)}
 MATS = {}
 def mat(name):
     if name not in MATS:
@@ -62,8 +64,8 @@ class Piece:
         return f
 
     def merge(self, bm, slot, col=None, uv=None, matrix=None):
-        """Copy a finished bmesh in, placed by matrix. col(co, normal) -> rgba and uv(co, normal) -> (u, v) are asked per
-        corner, in the bmesh's own frame (before the matrix)."""
+        """Copy a finished bmesh in, placed by matrix. col: one rgba for all, or col(co, normal) -> rgba asked per corner;
+        uv(co, normal) -> (u, v); both see the bmesh's own frame (before the matrix)."""
         vs = [self.vert(matrix @ v.co if matrix else v.co) for v in bm.verts]
         bm.verts.index_update()
         for f in bm.faces:
@@ -71,7 +73,7 @@ class Piece:
             cs = [v.co for v in f.verts]
             self.face([vs[v.index] for v in f.verts], slot,
                       [uv(c, f.normal) for c in cs] if uv else None,
-                      [col(c, f.normal) for c in cs] if col else None)
+                      [col(c, f.normal) for c in cs] if callable(col) else col)
 
     def build(self, smooth=40):
         me = bpy.data.meshes.new(self.name)
@@ -95,10 +97,11 @@ def piece(fn):
         ob = fn(name, *a); pieces.append(ob); return ob
     return run
 
-def revolve(P, prof, segs, slot, disp=None, col=None, slots=None, uv=None):
+def revolve(P, prof, segs, slot, disp=None, col=None, slots=None, uv=None, matrix=None):
     """A surface of revolution about z into piece P. prof: [(r, z)] from the bottom up (r = 0 ends close to the axis).
     disp(a, i, r, z) -> (dr, dz) bends each ring vertex (a = angle, i = profile index); col(a, i, co) -> rgba;
-    slots(i) -> the slot of the band between profile points i and i + 1 (default: slot); uv(a, i, co) -> (u, v)."""
+    slots(i) -> the slot of the band between profile points i and i + 1 (default: slot); uv(a, i, co) -> (u, v);
+    matrix places the result (col and uv see it unplaced)."""
     rings = []
     for i, (r0, z0) in enumerate(prof):
         ring = []
@@ -108,7 +111,9 @@ def revolve(P, prof, segs, slot, disp=None, col=None, slots=None, uv=None):
             r = max(0.0, r0 + dr) if r0 > 0 else 0.0
             ring.append(Vector((r * math.cos(a), r * math.sin(a), z0 + dz)))
         rings.append(ring)
-    vs = [[P.vert(c) for c in ring] if prof[i][0] > 0 else [P.vert(sum(ring, Vector()) / segs)] for i, ring in enumerate(rings)]
+    M = matrix or Matrix.Identity(4)
+    vs = [[P.vert(M @ c) for c in ring] if prof[i][0] > 0 else [P.vert(M @ (sum(ring, Vector()) / segs))] for i, ring in enumerate(rings)]
+    local = {id(v): c for ring, cs in zip(vs, rings) for v, c in zip(ring, cs if len(ring) > 1 else [sum(cs, Vector()) / segs])}
     for i in range(len(prof) - 1):
         A, Bv, s = vs[i], vs[i + 1], slots(i) if slots else slot
         for j in range(segs):
@@ -119,9 +124,66 @@ def revolve(P, prof, segs, slot, disp=None, col=None, slots=None, uv=None):
                 v = ring[0] if len(ring) == 1 else ring[idx]
                 if not any(v is q[0] for q in quad): quad.append((v, a, ii))     # (a point on the axis is used once)
             if len(quad) < 3: continue
-            P.face([q[0] for q in quad], s, [uv(q[1], q[2], q[0].co) for q in quad] if uv else None,
-                   [col(q[1], q[2], q[0].co) for q in quad] if col else None)
+            P.face([q[0] for q in quad], s, [uv(q[1], q[2], local[id(q[0])]) for q in quad] if uv else None,
+                   [col(q[1], q[2], local[id(q[0])]) for q in quad] if col else None)
     return vs
+
+def prism(pts, z0, z1, jitter=None):
+    """A slab: the polygon pts [(x, y)] (anticlockwise) from z0 up to z1; jitter(i) -> dz lifts each top corner."""
+    bm = bmesh.new()
+    lo = [bm.verts.new((x, y, z0)) for x, y in pts]; hi = [bm.verts.new((x, y, z1 + (jitter(i) if jitter else 0))) for i, (x, y) in enumerate(pts)]
+    bm.faces.new(lo[::-1]); bm.faces.new(hi)
+    for i in range(len(pts)): j = (i + 1) % len(pts); bm.faces.new((lo[i], lo[j], hi[j], hi[i]))
+    return bm
+
+def blob(r, size, sub=1, rough=0.25):
+    """A small stone: an icosahedron (20 faces) or, sub 2, an 80-face icosphere, roughened."""
+    bm = bmesh.new(); bmesh.ops.create_icosphere(bm, subdivisions=sub, radius=size)
+    for v in bm.verts: v.co *= 1 + rough * r.uniform(-1, 1)
+    return bm
+
+def tube(P, pts, rad, sides, slot, col=None):
+    """A bar along the polyline pts (Vectors) into piece P, capped at both ends."""
+    rings = []
+    for i, p in enumerate(pts):
+        t = (pts[min(i + 1, len(pts) - 1)] - pts[max(i - 1, 0)]).normalized()
+        u = t.cross(Vector((0, 0, 1))); u = u.normalized() if u.length > 1e-6 else Vector((1, 0, 0)); w = t.cross(u)
+        rings.append([P.vert(p + (u * math.cos(2 * math.pi * k / sides) + w * math.sin(2 * math.pi * k / sides)) * rad) for k in range(sides)])
+    for i in range(len(rings) - 1):
+        for k in range(sides): P.face((rings[i][k], rings[i][(k + 1) % sides], rings[i + 1][(k + 1) % sides], rings[i + 1][k]), slot, cols=col)
+    P.face(rings[0][::-1], slot, cols=col); P.face(rings[-1], slot, cols=col)
+
+def cube(lo, hi):
+    """A box from corner lo to corner hi, as a bmesh."""
+    bm = bmesh.new(); bmesh.ops.create_cube(bm, size=1.0)
+    for v in bm.verts: v.co = Vector(((lo[a] + hi[a]) / 2 + v.co[a] * (hi[a] - lo[a]) for a in range(3)))
+    return bm
+
+def rrect(hx, hy, rad, z, n=4, cx=0.0, cy=0.0):
+    """A closed rounded rectangle path at height z (first point repeated at the end)."""
+    pts = []
+    for qx, qy, a0 in ((hx - rad, hy - rad, 0), (-hx + rad, hy - rad, 90), (-hx + rad, -hy + rad, 180), (hx - rad, -hy + rad, 270)):
+        for k in range(n + 1):
+            a = math.radians(a0 + 90 * k / n); pts.append(Vector((cx + qx + rad * math.cos(a), cy + qy + rad * math.sin(a), z)))
+    return pts + [pts[0]]
+
+def rivet(P, c, n, slot, rad=0.006, h=0.004, col=None):
+    """A round rivet head (a low six-sided cone) on a surface at c facing n."""
+    n = n.normalized(); u = n.cross(Vector((0, 0, 1)) if abs(n.z) < 0.9 else Vector((1, 0, 0))).normalized(); w = n.cross(u)
+    ring = [P.vert(c + (u * math.cos(k * math.pi / 3) + w * math.sin(k * math.pi / 3)) * rad) for k in range(6)]; tip = P.vert(c + n * h)
+    for k in range(6): P.face((ring[k], ring[(k + 1) % 6], tip), slot, cols=col)
+
+def torus(P, c, axis, R, rs, segs, sides, slot, col=None, bump=None):
+    """A ring of radius R about the axis through c, its section a circle of radius rs (sides corners); bump(a) -> extra
+    radius on the outside (a tyre's tread)."""
+    axis = axis.normalized(); u = axis.cross(Vector((0, 0, 1)) if abs(axis.z) < 0.9 else Vector((1, 0, 0))).normalized(); w = axis.cross(u)
+    rings = []
+    for i in range(segs):
+        a = 2 * math.pi * i / segs; d = u * math.cos(a) + w * math.sin(a); o = c + d * R
+        rings.append([P.vert(o + (d * math.cos(2 * math.pi * k / sides) + axis * math.sin(2 * math.pi * k / sides)) * (rs + (bump(a) if bump and math.cos(2 * math.pi * k / sides) > 0.3 else 0))) for k in range(sides)])
+    for i in range(segs):
+        A, B = rings[i], rings[(i + 1) % segs]
+        for k in range(sides): P.face((A[k], A[(k + 1) % sides], B[(k + 1) % sides], B[k]), slot, cols=col)
 
 def fit_box(bm, lo, hi):
     """Scale and move a bmesh, each axis on its own, so its bounds are exactly lo..hi."""
@@ -192,6 +254,82 @@ def sack(name):
 
 for k in SACKS: sack(k)
 
+# ---------------------------------------------------------------------------------------------------- street carts -----
+# A street vendor's push cart (quarter.js cart(), four of them): origin on the ground under its middle, X along it, the
+# side the game paints its sign on towards -y (three.js +Z). The body keeps the old box (x +-0.75, y +-0.4, z 0.4-1.1),
+# its front flat at 0.405 m behind the sign, and the game tints it with each cart's colour: painted sheet metal with
+# rounded corners, rolled edges and rivets, a service door at the back. A stainless counter with a rail, a pot and two
+# plastic tubs on it; a corrugated tin roof on four posts; two bicycle wheels on an axle (28 spokes, hub, treaded tyre), a caster at
+# the front, a push bar with rubber grips at the back, a gas bottle on a wire shelf under the body.
+# Slots: body, steel, tin, iron, rubber, bottle, plastic, pot.
+@piece
+def cart(name):
+    r = stream(name); P = Piece(name); W = (1.0, 1.0, 1.0, 1.0)
+    bm = cube((-0.75, -0.4, 0.4), (0.75, 0.4, 1.1))                              # the body
+    bmesh.ops.bevel(bm, geom=[e for e in bm.edges if abs(e.verts[0].co.z - e.verts[1].co.z) > 0.5], offset=0.025, segments=3, profile=0.5, affect='EDGES')
+    P.merge(bm, 'body', col=lambda c, n: (*(0.78 + 0.22 * min(1.0, (c.z - 0.4) / 0.3),) * 3, 1.0)); bm.free()
+    for z in (1.1, 0.4): tube(P, rrect(0.75, 0.4, 0.025, z), 0.009, 6, 'body', W)                 # rolled edges
+    for y, ny in ((-0.4, -1), (0.4, 1)):                                                         # rivets along the seams
+        for z in (0.43, 1.07):
+            for k in range(15): rivet(P, Vector((-0.7 + k * 0.1, y, z)), Vector((0, ny, 0)), 'body', col=W)
+    for x, nx in ((-0.75, -1), (0.75, 1)):
+        for z in (0.43, 1.07):
+            for k in range(7): rivet(P, Vector((x, -0.3 + k * 0.1, z)), Vector((nx, 0, 0)), 'body', col=W)
+    door = [Vector((-0.45, 0.403, 0.5)), Vector((0.25, 0.403, 0.5)), Vector((0.25, 0.403, 1.0)), Vector((-0.45, 0.403, 1.0)), Vector((-0.45, 0.403, 0.5))]
+    tube(P, door, 0.005, 4, 'body', W)                                                            # the service door at the back
+    P.merge(cube((0.12, 0.403, 0.72), (0.2, 0.42, 0.74)), 'steel', col=W)                          # its handle
+    bm = cube((-0.78, -0.43, 1.105), (0.78, 0.43, 1.13))                                         # the stainless counter
+    bmesh.ops.bevel(bm, geom=[e for e in bm.edges if abs(e.verts[0].co.z - e.verts[1].co.z) > 0.01], offset=0.03, segments=2, profile=0.5, affect='EDGES')
+    P.merge(bm, 'steel', col=W); bm.free()
+    rail = [Vector((-0.74, -0.39, 1.17)), Vector((-0.74, 0.39, 1.17)), Vector((0.74, 0.39, 1.17)), Vector((0.74, -0.39, 1.17))]
+    tube(P, rail, 0.007, 6, 'steel', W)
+    for v in rail: tube(P, [Vector((v.x, v.y, 1.13)), v], 0.006, 6, 'steel', W)
+    revolve(P, [(0.0, 0.0), (0.2, 0.0), (0.215, 0.01), (0.22, 0.04), (0.22, 0.27), (0.228, 0.28), (0.23, 0.29), (0.215, 0.292), (0.205, 0.3),
+                (0.12, 0.33), (0.03, 0.34), (0.03, 0.36), (0.0, 0.36)], 28, 'pot', matrix=Matrix.Translation((-0.42, 0.02, 1.13)))   # an aluminium pot, its lid on
+    for y in (-0.25, 0.29): tube(P, [Vector((-0.42 - 0.06, 0.02 + y * 0.92, 1.37)), Vector((-0.42 - 0.05, 0.02 + y, 1.37)), Vector((-0.42 + 0.05, 0.02 + y, 1.37)), Vector((-0.42 + 0.06, 0.02 + y * 0.92, 1.37))], 0.007, 6, 'pot', W)
+    for x0, shade in ((0.0, 1.0), (0.3, 0.86)):                                                  # two plastic tubs
+        bm = cube((x0, -0.2, 1.13), (x0 + 0.24, 0.12, 1.29))
+        bmesh.ops.bevel(bm, geom=[e for e in bm.edges if abs(e.verts[0].co.z - e.verts[1].co.z) > 0.05], offset=0.03, segments=2, profile=0.5, affect='EDGES')
+        P.merge(bm, 'plastic', col=(shade, shade, shade, 1.0)); bm.free()
+        tube(P, rrect(0.122, 0.162, 0.03, 1.29, cx=x0 + 0.12, cy=-0.04), 0.007, 4, 'plastic', (shade, shade, shade, 1.0))   # rolled rim
+    for x, y in ((-0.7, -0.38), (0.7, -0.38), (-0.7, 0.38), (0.7, 0.38)):                        # roof posts and rafters
+        tube(P, [Vector((x, y, 1.13)), Vector((x, y, 2.03))], 0.015, 8, 'iron', W)
+    for y in (-0.38, 0.38): tube(P, [Vector((-0.72, y, 2.025)), Vector((0.72, y, 2.025))], 0.012, 6, 'iron', W)
+    nx, ny = 96, 6                                                                                # the roof: corrugated tin, a little arched
+    roof = [[P.vert((-0.9 + 1.8 * i / nx, -0.525 + 1.05 * j / ny, 2.045 + 0.022 * (1 - ((-0.525 + 1.05 * j / ny) / 0.525) ** 2) + 0.009 * math.sin(2 * math.pi * i / 4))) for j in range(ny + 1)] for i in range(nx + 1)]
+    for i in range(nx):
+        for j in range(ny):
+            P.face((roof[i][j], roof[i + 1][j], roof[i + 1][j + 1], roof[i][j + 1]), 'tin', cols=(r.uniform(0.92, 1.0),) * 3 + (1.0,))
+    def wheel(c, R, spokes=True, side=1):
+        ax = Vector((0, 1, 0))
+        torus(P, c, ax, R - 0.022, 0.022, 48, 8, 'rubber', W, bump=lambda a: 0.003 if math.sin(a * 36) > 0 else 0.0)   # tyre and tread
+        if spokes:
+            torus(P, c, ax, R - 0.05, 0.011, 48, 4, 'iron', W)                                      # rim
+            for k in range(28):                                                                    # spokes, crossed, from both flanges
+                a = 2 * math.pi * k / 28; f = 1 if k % 2 else -1
+                hub = c + Vector((0.035 * math.cos(a + 0.4 * f), 0.022 * f, 0.035 * math.sin(a + 0.4 * f)))
+                tube(P, [hub, c + Vector(((R - 0.055) * math.cos(a), 0, (R - 0.055) * math.sin(a)))], 0.0015, 3, 'iron', W)
+            for yy in (-0.022, 0.022): torus(P, c + Vector((0, yy, 0)), ax, 0.028, 0.008, 10, 4, 'steel', W)   # flanges
+        tube(P, [c + Vector((0, -0.04, 0)), c + Vector((0, 0.04, 0))], 0.018 if spokes else 0.014, 8, 'steel', W)      # hub
+    for y in (-0.42, 0.42): wheel(Vector((-0.55, y, 0.3)), 0.28)
+    tube(P, [Vector((-0.55, -0.47, 0.3)), Vector((-0.55, 0.47, 0.3))], 0.011, 8, 'steel', W)        # axle
+    for y in (-0.36, 0.36): tube(P, [Vector((-0.62, y, 0.405)), Vector((-0.55, y, 0.3)), Vector((-0.48, y, 0.405))], 0.008, 4, 'iron', W)
+    wheel(Vector((0.6, 0.0, 0.11)), 0.11, spokes=False)                                            # the caster at the front
+    for y in (-0.03, 0.03): tube(P, [Vector((0.6, y, 0.4)), Vector((0.6, y, 0.11))], 0.007, 4, 'iron', W)
+    for y in (-0.36, 0.36):                                                                        # the push bar
+        tube(P, [Vector((-0.74, y, 0.98)), Vector((-0.86, y, 1.02)), Vector((-0.895, y, 1.04))], 0.013, 8, 'steel', W)
+    tube(P, [Vector((-0.895, -0.36, 1.04)), Vector((-0.895, 0.36, 1.04))], 0.013, 8, 'steel', W)
+    for y0, y1 in ((-0.36, -0.22), (0.22, 0.36)): tube(P, [Vector((-0.895, y0, 1.04)), Vector((-0.895, y1, 1.04))], 0.017, 8, 'rubber', W)
+    shelf = rrect(0.42, 0.3, 0.02, 0.16)                                                           # a wire shelf under the body...
+    tube(P, shelf, 0.005, 4, 'iron', W)
+    for k in range(7): x = -0.36 + k * 0.12; tube(P, [Vector((x, -0.3, 0.16)), Vector((x, 0.3, 0.16))], 0.003, 3, 'iron', W)
+    for x, y in ((-0.4, -0.28), (0.4, -0.28), (-0.4, 0.28), (0.4, 0.28)): tube(P, [Vector((x, y, 0.16)), Vector((x, y, 0.4))], 0.005, 4, 'iron', W)
+    revolve(P, [(0.0, 0.0), (0.09, 0.0), (0.105, 0.012), (0.11, 0.03), (0.11, 0.15), (0.1, 0.18), (0.075, 0.2), (0.04, 0.208), (0.04, 0.215),
+                (0.02, 0.215), (0.02, 0.235), (0.0, 0.235)], 20, 'bottle', matrix=Matrix.Translation((0.12, 0.0, 0.165)))   # ...and its gas bottle
+    return P.build(smooth=40)
+
+cart('cart')
+
 # ---------------------------------------------------------------------------------------------------- rubble heaps -----
 # A heap of broken masonry (dressing.js rubble(), eight of them). Built for a nominal heap 1.5 m in radius and 0.62 m
 # high, then scaled into a unit heap (radius 1, height 1, base on the ground at the origin) that the game stretches to
@@ -218,31 +356,6 @@ class HeightField:
         return max((self.h[i][j] for i, j in self._cells(x, y, rad)), default=0.0)
     def lay(self, x, y, rad, z):
         for i, j in self._cells(x, y, rad): self.h[i][j] = max(self.h[i][j], z)
-
-def prism(pts, z0, z1, jitter=None):
-    """A slab: the polygon pts [(x, y)] (anticlockwise) from z0 up to z1; jitter(i) -> dz lifts each top corner."""
-    bm = bmesh.new()
-    lo = [bm.verts.new((x, y, z0)) for x, y in pts]; hi = [bm.verts.new((x, y, z1 + (jitter(i) if jitter else 0))) for i, (x, y) in enumerate(pts)]
-    bm.faces.new(lo[::-1]); bm.faces.new(hi)
-    for i in range(len(pts)): j = (i + 1) % len(pts); bm.faces.new((lo[i], lo[j], hi[j], hi[i]))
-    return bm
-
-def blob(r, size, sub=1, rough=0.25):
-    """A small stone: an icosahedron (20 faces) or, sub 2, an 80-face icosphere, roughened."""
-    bm = bmesh.new(); bmesh.ops.create_icosphere(bm, subdivisions=sub, radius=size)
-    for v in bm.verts: v.co *= 1 + rough * r.uniform(-1, 1)
-    return bm
-
-def tube(P, pts, rad, sides, slot, col=None):
-    """A bar along the polyline pts (Vectors) into piece P, capped at both ends."""
-    rings = []
-    for i, p in enumerate(pts):
-        t = (pts[min(i + 1, len(pts) - 1)] - pts[max(i - 1, 0)]).normalized()
-        u = t.cross(Vector((0, 0, 1))); u = u.normalized() if u.length > 1e-6 else Vector((1, 0, 0)); w = t.cross(u)
-        rings.append([P.vert(p + (u * math.cos(2 * math.pi * k / sides) + w * math.sin(2 * math.pi * k / sides)) * rad) for k in range(sides)])
-    for i in range(len(rings) - 1):
-        for k in range(sides): P.face((rings[i][k], rings[i][(k + 1) % sides], rings[i + 1][(k + 1) % sides], rings[i + 1][k]), slot, cols=col)
-    P.face(rings[0][::-1], slot, cols=col); P.face(rings[-1], slot, cols=col)
 
 @piece
 def rubble(name, mix):

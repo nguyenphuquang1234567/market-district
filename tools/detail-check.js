@@ -23,6 +23,14 @@ add(['sack_a', 'sack_b'], { cap: 2500, box: [[-0.28, 0, -0.28], [0.28, 0.52, 0.2
 // rubble heaps (dressing.js rubble()): a unit heap, stretched by the game to each heap's radius and height; inside the
 // old keep-out (1.25 r) and under 1.15 h
 add(['rubble_a', 'rubble_b', 'rubble_c'], { cap: 12000, box: [[-1.25, 0, -1.25], [1.25, 1.15, 1.25]], slots: ['concrete', 'brick', 'gravel'] });
+// street carts (quarter.js cart()): X along the cart, Z towards the painted sign, which the game draws at z 0.417 over
+// x -0.6...0.6, y 0.48...1.08: the body's front must stay flat behind it (a wheel may stand in front, as the old one did)
+const flatFront = parts => {
+  let bad = 0;
+  for (const p of parts) { if (p.slot !== 'body') continue; const a = p.geometry.attributes.position; for (let i = 0; i < a.count; i++) if (Math.abs(a.getX(i)) < 0.62 && a.getY(i) > 0.45 && a.getY(i) < 1.1 && a.getZ(i) > 0.41) bad++; }
+  return bad ? `${bad} body vertices in front of the sign's panel` : null;
+};
+add(['cart'], { cap: 15000, box: [[-0.92, 0, -0.53], [0.92, 2.1, 0.53]], slots: ['body', 'steel', 'tin', 'iron', 'rubber'], check: flatFront });
 // name -> () => [triangles, cap], for things drawn as several pieces
 export const TOTALS = {};
 
