@@ -2,6 +2,7 @@
 // (pressure pulses, filtered turbulence, modal ringing, grain scatter) with several variations each. Pure JS, no WebAudio,
 // so the same code can be run and measured outside the browser.
 import { rng } from './util.js';
+import { saltlineRifle } from './saltline-rifle.js';
 
 export function bakeSounds(SR = 48000, seed = 9001) {
   const R = rng(seed), rr = (a, b) => a + (b - a) * R(), TAU = Math.PI * 2, N = s => Math.ceil(s * SR);
@@ -46,22 +47,12 @@ export function bakeSounds(SR = 48000, seed = 9001) {
   const loopable = (x, xf) => { const n = x.length - xf, y = x.slice(0, n); for (let i = 0; i < xf; i++) { const k = i / xf; y[i] = y[i] * k + x[n + i] * (1 - k); } return y; };
   const S = {};
 
-  // ---- rifle, from behind the sights: blast pulse, crack, bark, chest thump, action cycling, ground bounce ---------------------
-  S.shot = many(6, () => {
-    const v = rr(0.94, 1.06), n = N(0.85), core = new Float32Array(n);
-    pulse(core, 0.00042, 0.9);
-    sweep(core, 175 * v, 72, 0.042, 0.3, 0, 0.02);
-    add(core, burst(0.06, 'hp', 1500, 0.7, 0.007), 1.0);
-    for (const [at, g] of [[0.031, 0.2], [0.066, 0.26]]) {           // bolt carrier to the rear, then home into battery
-      add(core, burst(0.02, 'hp', 2600, 0.7, 0.0028), g, at);
-      modes(core, [[2150 * v, 0.012, 1], [3420 * v, 0.016, 0.7], [5300 * v, 0.009, 0.5]], g * 0.32, at);
-    }
-    sweep(core, 430 * v, 390, 0.05, 0.035, 0.07, 0.2);              // buffer spring
-    const side = () => { const x = new Float32Array(n); add(x, burst(0.22, 'bp', 640 * v, 0.6, 0.036), 0.9); add(x, burst(0.2, 'bp', 1500 * v, 0.6, 0.026), 1.0); add(x, burst(0.15, 'bp', 3300 * v, 0.7, 0.014), 0.9); add(x, burst(0.8, 'bp', 1800, 0.5, 0.13), 0.22); return x; };
-    const L = side(), Rt = side();
-    for (const ch of [L, Rt]) { add(ch, core); const g = biq(ch.slice(), 'lp', 3500, 0.6); add(ch, g, -0.3, 0.0031); sat(ch, 1.25); biq(ch, 'lp', 13000, 0.6); fade(ch, 0.05); }
-    return norm([L, Rt], 0.95);
-  });
+  // ---- rifle, from behind the sights: Saltline's rifle (saltline-rifle.js), its four rounds as dual-mono pairs, and the
+  // report rolling away outdoors or blooming in a room. It draws on its own seeds, not on this library's.
+  const rifle = saltlineRifle(SR);
+  S.shot = rifle.shot.map(x => [x, x]);
+  S.tail_out = rifle.tailOut; S.tail_in = rifle.tailIn;
+  S.shot_other = rifle.shotOther;                                              // another man's rifle close by: the same round without the action
   // the same rifle 15-60 m away: no mechanism, softer edge, the street already rolling it off
   S.shotMid = many(5, () => {
     const v = rr(0.92, 1.08), x = new Float32Array(N(1.1));
@@ -78,13 +69,6 @@ export function bakeSounds(SR = 48000, seed = 9001) {
     for (let k = 0, at = rr(0.09, 0.16); k < 5; k++) { add(x, e, g * rr(0.6, 1), at); at += rr(0.08, 0.26); g *= 0.62; }
     add(x, env(biq(white(N(1.8)), 'lp', 700, 0.6), 0.45, 0.03), 0.16);
     biq(x, 'lp', 3200, 0.6); fade(x, 0.1); return norm(x, 0.95);
-  });
-  // outdoor tail for the player's own shots: the report rolling away down the streets
-  S.tail = many(3, () => {
-    const x = new Float32Array(N(1.7)), e = env(biq(white(N(0.25)), 'bp', rr(420, 620), 0.5), 0.05); let g = 1;
-    for (let k = 0, at = rr(0.07, 0.11); k < 7; k++) { add(x, e, g * rr(0.5, 1), at); at += rr(0.06, 0.2); g *= 0.66; }
-    add(x, env(biq(white(N(1.6)), 'lp', 900, 0.6), 0.4, 0.05), 0.35);
-    biq(x, 'lp', 2800, 0.6); fade(x, 0.15); return norm(x, 0.9);
   });
   // a supersonic round going past: the N-wave snap, then the air closing behind it
   S.crack = many(4, () => {

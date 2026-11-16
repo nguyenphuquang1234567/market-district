@@ -272,9 +272,12 @@ Key bindings live in the same saved settings object (`binds`, including `frag` a
   elbows with anatomical limits, limited ball joints with a little muscle tone elsewhere, a shove from the round that
   killed. The rifle drops as its own body. Bodies react to further hits, and when the soldier respawns the body and rifle
   are left behind as a static mesh (the six most recent).
-- **Audio** — almost every sound is modelled, not recorded: 94 sounds in 277 takes are computed at boot (about 0.3 s) from
-  physical ingredients (blast pulse, filtered turbulence, modal ringing, grain scatter) — rifle from behind the sights, the
-  same rifle at middle and long range, supersonic cracks, ricochets, strikes on eight materials, boots on six surfaces, rifle
+- **Audio** — almost every sound is modelled, not recorded: 96 sounds in 280 takes are computed at boot (about 0.3 s) from
+  physical ingredients (blast pulse, filtered turbulence, modal ringing, grain scatter) — the rifle from behind the sights
+  (Saltline's rifle, ported from that earlier game step for step and checked to come out sample-identical: crack, a thump
+  gliding down from 160 Hz, the report's body and bark, the bolt carrier back and home, with its own outdoor and indoor
+  tails, played at most once each 0.28 s through a burst), other soldiers' rifles (the same round without the action
+  within 20 m, then the reports at middle and long range), supersonic cracks, ricochets, strikes on eight materials, boots on six surfaces, rifle
   handling, brass, eleven prop materials, body falls, pin and lever, grenade and canister knocks, bursts at three ranges,
   falling debris, the canister's pop and hiss. A soldier going down has his own set: the round going into him (cloth and
   body, the plate in his vest, the helmet); his last sound, which is a real recording — 52 clips of men screaming, crying out,
@@ -519,6 +522,7 @@ src/fx.js             particles, decals, tracers, casings, blast sparks and debr
 src/throwables.js     grenade and smoke canister: models, hands, throw, fuzes, burst, damage, fragments
 src/smoke.js          lit smoke / dust / fire volumes, the smoke-screen simulation, sight through smoke
 src/sounds.js         modelled sound library (pure JS, computed at boot)
+src/saltline-rifle.js the rifle and its tails, ported from Saltline
 src/audio.js          audio engine: propagation, occlusion, reflections, reverbs, mix
 src/hud.js            HUD and menus
 src/selftest.js       scripted checks and capture set

@@ -14,8 +14,8 @@ const HELM = { concrete: 'helmet_hard', tile: 'helmet_hard', dirt: 'helmet_soft'
 // a dying man's voice, by kind: the recorded clips (vo_*), the modelled take used if the recordings did not load, how
 // loud it is and how far off it can still be made out (a scream carries)
 const VOICE = {
-  scream: { rec: 'vo_scream', model: 'die_scream', gain: 3.2, recGain: 4.2, reach: 130 }, die: { rec: 'vo_die', model: 'die_cry', gain: 2.9, recGain: 4, reach: 110 },
-  pain: { rec: 'vo_pain', model: 'die_yell', gain: 2.9, recGain: 3.8, reach: 100 }, groan: { rec: 'vo_groan', model: 'die_groan', gain: 1.7, recGain: 3, reach: 60 },
+  scream: { rec: 'vo_scream', model: 'die_scream', gain: 3.2, recGain: 4.2, reach: 130 }, die: { rec: 'vo_die', model: 'die_cry', gain: 2.9, recGain: 5.6, reach: 110 },
+  pain: { rec: 'vo_pain', model: 'die_yell', gain: 2.9, recGain: 5.4, reach: 100 }, groan: { rec: 'vo_groan', model: 'die_groan', gain: 1.7, recGain: 3, reach: 60 },
   head: { rec: 'vo_pain', model: 'die_head', gain: 1.8, recGain: 3.4, reach: 45 },
 };
 const C = 343;      // speed of sound, m/s
@@ -26,6 +26,7 @@ export class Audio {
     this.cast = null; this.blocked = null; this.emitters = []; this.active = []; this.env = { room: 0, narrow: 0, open: 1 }; this.lpos = { x: 0, y: 1.6, z: 0 }; this.envT = 0; this.emitT = 0; this.last = {}; this.foot = false; this.concuss = 0; this.hisses = [];
     this.fallen = new WeakMap();                                               // per falling body: how many of its knocks were heard, when its trunk last landed
     this.played = {};                                                          // how many times each sound has been started (in stats())
+    this.tailT = -9;                                                           // when one's own rifle last sent its report rolling away
     this.recorded = this._loadRecorded();                                      // (resolves to the number of recorded clips, or 0)
   }
 
@@ -153,17 +154,27 @@ export class Audio {
   }
 
   // ---- weapons ----------------------------------------------------------------------------------------------------------------
+  // One's own rifle — Saltline's, played as Saltline plays it: a round with a pitch nudge of ±1.2 %, and the report's tail at
+  // most every 0.28 s (a burst rolls away once instead of stacking a tail per round), rolling down the street or blooming
+  // in a room by how enclosed the shooter stands. The engine's own reflections from the walls around stay on it.
   shot() {
     if (!this.ctx) return; const E = this.env, t = this.now;
-    this._play('shot', { bus: this.bus.weapon, gain: 1, jitter: 0.05, er: 0.9, rev: 0.2 + E.room * 0.3 });
-    if (E.room < 0.6) this._play('tail', { bus: this.bus.weapon, gain: 0.32 * (1 - E.room) * (0.55 + 0.45 * E.open), delay: 0.03, jitter: 0.1, pan: (this.rnd() - 0.5) * 0.7 });     // the report rolling off down the streets
+    this._play('shot', { bus: this.bus.weapon, gain: 1, jitter: 0.024, er: 0.6, rev: 0.08 + E.room * 0.15 });
+    if (t - this.tailT > 0.28) {
+      this.tailT = t;
+      if (E.room < 0.95) this._play('tail_out', { bus: this.bus.weapon, gain: 1 - E.room, jitter: 0.06 });
+      if (E.room > 0.05) this._play('tail_in', { bus: this.bus.weapon, gain: E.room, jitter: 0.06 });
+    }
     const d = this.duck.gain; d.cancelScheduledValues(t); d.setTargetAtTime(0.42, t, 0.008); d.setTargetAtTime(1, t + 0.09, 0.45);
   }
-  // Someone else's rifle: heard late by its distance, duller the further off, muffled when walls stand between.
+  // Someone else's rifle: heard late by its distance, duller the further off, muffled when walls stand between. Within
+  // 20 m it is the same rifle as one's own (Saltline's round without the action), handing over to the distant reports by 45 m.
   shotAt(pos) {
     if (!this.ctx) return;
-    const o = { bus: this.bus.world, ref: 9, er: 0.25, rev: 0.25, jitter: 0.1 }, d = this._carry(pos, o), far = clamp((d - 35) / 60, 0, 1);
-    if (far < 1) this._play('shotMid', { ...o, gain: o.gain * 2.4 * (1 - far) });
+    const o = { bus: this.bus.world, ref: 9, er: 0.25, rev: 0.25, jitter: 0.1 }, d = this._carry(pos, o), far = clamp((d - 35) / 60, 0, 1), near = clamp((45 - d) / 25, 0, 1);
+    // (levelled to the report it replaces, as heard between 300 Hz and 4 kHz; the two cross over at equal power)
+    if (near > 0) this._play('shot_other', { ...o, gain: o.gain * 1.6 * Math.sqrt(near), jitter: 0.03 });
+    if (far < 1 && near < 1) this._play('shotMid', { ...o, gain: o.gain * 2.4 * (1 - far) * Math.sqrt(1 - near) });
     if (far > 0) this._play('shotFar', { ...o, gain: o.gain * 2.8 * far, ref: 14 });
   }
   whiz(pos) { if (this.ctx) this._play('crack', { pos, bus: this.bus.world, ref: 1.5, gain: 1.3, rev: 0.15, er: 0.3, jitter: 0.15 }); }
