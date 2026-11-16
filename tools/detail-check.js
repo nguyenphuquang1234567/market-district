@@ -40,6 +40,14 @@ const slim = parts => {
 };
 add(['pole_old'], { cap: 8000, box: [[-0.9, 0, -0.35], [0.9, 8.75, 0.35]], slots: ['wood', 'iron', 'tank', 'porcelain'], ownUV: ['wood'], check: slim });
 add(['pole_quarter'], { cap: 8000, box: [[-0.95, 0, -0.35], [0.95, 8.95, 0.35]], slots: ['wood', 'iron', 'tank', 'porcelain'], ownUV: ['wood'], check: slim });
+// piñatas (dressing.js pinata()): origin at the body's centre, scaled by the old s; the seven cones in the old directions;
+// every tissue slot mapped by its own texture coordinates, the streamers free in the wind
+const SEVEN = [0, 1, 2, 3, 4, 5, 6];
+add(['pinata'], { cap: 5000, box: [[-0.64, -0.85, -0.64], [0.64, 0.64, 0.64]], slots: ['body', ...SEVEN.map(k => 'c' + k), ...SEVEN.map(k => 'sa' + k), ...SEVEN.map(k => 'sb' + k)],
+  ownUV: ['body', ...SEVEN.map(k => 'c' + k), ...SEVEN.map(k => 'sa' + k), ...SEVEN.map(k => 'sb' + k)], wind: [...SEVEN.map(k => 'sa' + k), ...SEVEN.map(k => 'sb' + k)] });
+// ristras (dressing.js ristra()): a 0.096 m length of cord's worth of chiles (three), hanging from y = 0 (the game hangs
+// each length 5 cm above its first old chile: the old cones were centred on their points, these hang from the cord)
+add(['ristra_seg'], { cap: 300, box: [[-0.12, -0.2, -0.12], [0.12, 0.01, 0.12]], slots: ['chile', 'stem'] });
 // name -> () => [triangles, cap], for things drawn as several pieces
 export const TOTALS = {};
 

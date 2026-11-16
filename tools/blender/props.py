@@ -27,7 +27,7 @@ scene = bpy.context.scene
 SHOW = {'stone': (0.62, 0.6, 0.56), 'burlap': (0.62, 0.5, 0.34), 'spice': (0.8, 0.45, 0.15), 'concrete': (0.66, 0.65, 0.62),
         'brick': (0.62, 0.3, 0.2), 'plaster': (0.86, 0.82, 0.72), 'iron': (0.3, 0.16, 0.1), 'gravel': (0.55, 0.52, 0.47),
         'body': (0.9, 0.7, 0.2), 'steel': (0.75, 0.76, 0.78), 'tin': (0.6, 0.62, 0.6), 'rubber': (0.08, 0.08, 0.08), 'bottle': (0.7, 0.72, 0.7),
-        'glass': (0.55, 0.7, 0.75), 'plastic': (0.9, 0.9, 0.88), 'pot': (0.78, 0.8, 0.82), 'wood': (0.45, 0.4, 0.35), 'tank': (0.62, 0.64, 0.62), 'porcelain': (0.92, 0.93, 0.95)}
+        'glass': (0.55, 0.7, 0.75), 'plastic': (0.9, 0.9, 0.88), 'pot': (0.78, 0.8, 0.82), 'wood': (0.45, 0.4, 0.35), 'tank': (0.62, 0.64, 0.62), 'porcelain': (0.92, 0.93, 0.95), 'chile': (0.6, 0.06, 0.04), 'stem': (0.42, 0.4, 0.2)}
 MATS = {}
 def mat(name):
     if name not in MATS:
@@ -81,6 +81,7 @@ class Piece:
         self.bm.to_mesh(me); self.bm.free()
         for s in self.slots: me.materials.append(mat(s))
         me.color_attributes.active_color = me.color_attributes['Col']
+        me.color_attributes.render_color_index = me.color_attributes.active_color_index   # (the exporter takes the render colour: without it every colour is written as 1)
         ob = bpy.data.objects.new(self.name, me); scene.collection.objects.link(ob)
         only(ob); bpy.ops.object.shade_smooth_by_angle(angle=math.radians(smooth), keep_sharp_edges=True)
         return ob
@@ -185,6 +186,25 @@ def torus(P, c, axis, R, rs, segs, sides, slot, col=None, bump=None):
     for i in range(segs):
         A, B = rings[i], rings[(i + 1) % segs]
         for k in range(sides): P.face((A[k], A[(k + 1) % sides], B[(k + 1) % sides], B[k]), slot, cols=col)
+
+def frame(d):
+    """Two unit vectors square to d and to each other."""
+    d = d.normalized(); u = d.cross(Vector((0, 0, 1)) if abs(d.z) < 0.9 else Vector((1, 0, 0))).normalized(); return u, d.cross(u)
+
+def band(P, o, d, rings, segs, slot, urep=1.0, col=None):
+    """A ring band about the axis from o along d: rings [(t, radius, v, rgba)] (t along d); radius 0 closes to a point.
+    u runs round urep times (the seam's vertices are doubled, so it does not wrap)."""
+    d = d.normalized(); u, w = frame(d)
+    vs = []
+    for t, rad, v, c in rings:
+        if rad <= 0: vs.append([(P.vert(o + d * t), j / segs * urep, v, c) for j in range(segs + 1)]); continue
+        vs.append([(P.vert(o + d * t + (u * math.cos(2 * math.pi * j / segs) + w * math.sin(2 * math.pi * j / segs)) * rad), j / segs * urep, v, c) for j in range(segs + 1)])
+    for i in range(len(rings) - 1):
+        for j in range(segs):
+            q = [vs[i][j], vs[i][j + 1], vs[i + 1][j + 1], vs[i + 1][j]]
+            if rings[i + 1][1] <= 0: q = q[:3]
+            elif rings[i][1] <= 0: q = [q[0], q[2], q[3]]
+            P.face([e[0] for e in q], slot, uvs=[(e[1], e[2]) for e in q], cols=[e[3] for e in q])
 
 def fit_box(bm, lo, hi):
     """Scale and move a bmesh, each axis on its own, so its bounds are exactly lo..hi."""
@@ -415,6 +435,80 @@ def utility_pole(name, H, arm_z, arm_len, arm_yaw, tank):
 utility_pole('pole_old', 8.6, 8.0, 1.7, 0.3, 'box')
 utility_pole('pole_quarter', 8.8, 8.2, 1.8, 0.0, 'round')
 for k in ('pole_old', 'pole_quarter'): PREVIEW_FOCUS[k] = ((-0.9, -0.5, 6.1), (0.9, 0.5, 8.8))
+
+# ---------------------------------------------------------------------------------------------------- pinatas ----------
+# A seven-point star piñata (dressing.js pinata()): origin at the body's centre, placed unturned and scaled by the old s.
+# A round body wrapped in rows of fringed tissue, seven cones (in the old directions, from 0.15 to 0.56 m) each wrapped in
+# rows of fringe over a crêpe core, and two crêpe streamers hanging from every tip. The paper texture is cut by its own
+# alpha (the fringe); each part is its own slot so the game tints it with the piñata's colours (body; c0-c6 the cones in
+# the old order; sa0-sa6 and sb0-sb6 the streamers). Vertex alpha: the fringe's ends a little free, the streamers free.
+PINATA_DIRS = [(0, 0, 1), (0, 0, -1), (1, 0, 0.1), (-1, 0, 0.1), (0, -1, 0.1), (0, 1, 0.1), (0.6, -0.6, -0.4)]   # three.js's, in Blender axes
+FRINGE = lambda k: ((k % 6) + 1) * 0.125, lambda k: (k % 6) * 0.125              # a fringe row's top (where it hangs from) and bottom
+@piece
+def pinata(name):
+    r = stream(name); P = Piece(name)
+    CREPE = (0.8, 0.97)
+    c = lambda a: (1.0, 1.0, 1.0, a)
+    Rb = 0.19                                                             # the body: a crêpe-covered ball...
+    lat = [math.pi * k / 10 for k in range(11)]
+    band(P, Vector((0, 0, 0)), Vector((0, 0, -1)), [(-Rb * math.cos(t), Rb * math.sin(t), CREPE[0] + (CREPE[1] - CREPE[0]) * k / 10, c(0.0)) for k, t in enumerate(lat)], 20, 'body', 2)
+    for k, th in enumerate([math.radians(a) for a in (24, 50, 76, 102, 128, 154)]):   # ...wrapped in rows of fringe, each over the next
+        t0, r0 = Rb * math.cos(th), Rb * math.sin(th) + 0.007
+        t1, r1 = Rb * math.cos(th + math.radians(30)), Rb * math.sin(th + math.radians(30)) + 0.022
+        band(P, Vector((0, 0, 0)), Vector((0, 0, 1)), [(t0, r0, FRINGE[0](k), c(0.0)), (t1, r1, FRINGE[1](k), c(0.35))], 24, 'body', 3)
+    for k, d in enumerate(PINATA_DIRS):
+        d = Vector(d).normalized(); slot = 'c%d' % k
+        cone = lambda t: 0.078 * (0.56 - t) / 0.41                        # the cone's radius 0.15 ... 0.56 out
+        band(P, Vector((0, 0, 0)), d, [(0.15 + 0.41 * i / 5, cone(0.15 + 0.41 * i / 5), CREPE[0] + (CREPE[1] - CREPE[0]) * i / 5, c(0.0)) for i in range(6)], 12, slot, 1)
+        for i, ta in enumerate((0.52, 0.44, 0.36, 0.28, 0.2)):             # fringe rows, from the tip back, each hanging towards the body
+            tb = ta - 0.075
+            band(P, Vector((0, 0, 0)), d, [(ta, cone(ta) + 0.006, FRINGE[0](i + k), c(0.0)), (tb, cone(tb) + 0.02, FRINGE[1](i + k), c(0.3))], 12, slot, 1)
+        tip = d * 0.565
+        for sl, off in (('sa%d' % k, -0.012), ('sb%d' % k, 0.012)):        # two crêpe streamers from the tip
+            u, w = frame(Vector((0, 0, 1))); side = Vector((1, 0, 0)) if abs(d.x) < 0.7 else Vector((0, 1, 0))
+            L, n, ph = r.uniform(0.22, 0.28), 6, r.uniform(0, 6.283)
+            pts = [tip + side * off + Vector((0.02 * math.sin(ph + 3 * i / n), 0.02 * math.cos(ph + 2.5 * i / n), -L * i / n)) for i in range(n + 1)]
+            vs = [(P.vert(p - side * 0.015), P.vert(p + side * 0.015), i / n) for i, p in enumerate(pts)]
+            for i in range(n):
+                a, b = vs[i], vs[i + 1]
+                P.face((a[0], a[1], b[1], b[0]), sl, uvs=[(0.0, 0.76 + 0.22 * a[2]), (0.1, 0.76 + 0.22 * a[2]), (0.1, 0.76 + 0.22 * b[2]), (0.0, 0.76 + 0.22 * b[2])],
+                       cols=[c(a[2]), c(a[2]), c(b[2]), c(b[2])])
+    return P.build(smooth=60)
+
+pinata('pinata')
+
+# ---------------------------------------------------------------------------------------------------- ristras ----------
+# A ristra of dried chiles (dressing.js ristra()) is hung as a stack of these: 0.096 m of cord's worth (three chiles,
+# 0.032 m apart, the old spacing), from y = 0 down. Each chile curved and wrinkled, its green-brown stem and calyx tied to
+# the cord, spiralling round it. Slots: chile (tinted by the game with the old chiles' red), stem.
+@piece
+def ristra_seg(name):
+    r = stream(name); P = Piece(name)
+    for i in range(3):
+        a = i * 2.39996 + r.uniform(-0.2, 0.2); out = Vector((math.cos(a), math.sin(a), 0)); z0 = -0.032 * i
+        L, curl, tilt = r.uniform(0.085, 0.11), r.uniform(-0.25, 0.25), r.uniform(0.35, 0.65)
+        def spine(t):                                                     # out from the cord and down, the tip curling
+            return out * (0.012 + 0.03 * math.sin(tilt) * t + 0.01 * t * t) + Vector((0, 0, z0 - 0.01 - L * t * math.cos(tilt * (1 - 0.3 * t)))) + out.cross(Vector((0, 0, 1))) * curl * 0.03 * t * t
+        shade, ph = r.uniform(0.82, 1.12), r.uniform(0, 6.283)
+        rings = 6
+        cs = [spine(k / rings) for k in range(rings + 1)]
+        prof = lambda t: 0.017 * min(1.0, t / 0.15) ** 0.5 * (1 - t) ** 0.7 + 0.002
+        loops = []
+        for k in range(rings + 1):
+            t = k / rings; ax = (cs[min(k + 1, rings)] - cs[max(k - 1, 0)]).normalized(); u, w = frame(ax)
+            if k == rings: loops.append([P.vert(cs[k])]); continue
+            loops.append([P.vert(cs[k] + (u * math.cos(2 * math.pi * j / 6) + w * math.sin(2 * math.pi * j / 6)) * prof(t) * (1 + 0.16 * math.sin(3 * (2 * math.pi * j / 6) + ph + 9 * t))) for j in range(6)])
+        col = lambda t: (shade * (0.85 + 0.15 * t), shade * (0.85 + 0.15 * t), shade * (0.85 + 0.15 * t), 1.0)
+        for k in range(rings):
+            A, B = loops[k], loops[k + 1]
+            for j in range(6):
+                if len(B) == 1: P.face((A[j], A[(j + 1) % 6], B[0]), 'chile', cols=col(k / rings))
+                else: P.face((A[j], A[(j + 1) % 6], B[(j + 1) % 6], B[j]), 'chile', cols=col(k / rings))
+        P.face(loops[0][::-1], 'stem', cols=(1.0, 1.0, 1.0, 1.0))                                      # the calyx over the shoulder
+        tube(P, [Vector((0, 0, z0)) + out * 0.004, cs[0]], 0.0025, 3, 'stem', (0.9, 0.9, 0.9, 1.0))   # the stem, tied to the cord
+    return P.build(smooth=60)
+
+ristra_seg('ristra_seg')
 
 class HeightField:
     """The heap's top surface on a grid, raised as each piece settles, so pieces rest on the mound and on each other."""

@@ -351,25 +351,39 @@ export function dressKit({ B, M, rnd, buildings, anchors, low, rs = null }) {
   const PINATA = [[1.0, 0.22, 0.55], [1.0, 0.78, 0.12], [0.2, 0.68, 1.0], [0.6, 0.26, 0.86], [0.24, 0.8, 0.36], [1.0, 0.42, 0.12]];
   const pinata = (p, hang, R = rs) => {
     const s = R.range(0.8, 1.15), c0 = R.int(0, PINATA.length - 1);
-    B.geom('glossy', new THREE.IcosahedronGeometry(0.2 * s, 1), mat4(p), { color: PINATA[c0] });
-    const dirs = [[0, 1, 0], [0, -1, 0], [1, 0.1, 0], [-1, 0.1, 0], [0, 0.1, 1], [0, 0.1, -1], [0.6, -0.4, 0.6]];
-    dirs.forEach(([x, y, z], k) => {
-      const d = V(x, y, z).normalize(), cone = new THREE.ConeGeometry(0.075 * s, 0.4 * s, 8), q = new THREE.Quaternion().setFromUnitVectors(UP, d);
-      B.geom('glossy', cone, new THREE.Matrix4().compose(p.clone().addScaledVector(d, 0.36 * s), q, V(1, 1, 1)), { color: PINATA[(c0 + k + 1) % PINATA.length] });
-      const tip = p.clone().addScaledVector(d, 0.58 * s);
-      for (let t = 0; t < 2; t++) { const a = V(tip.x + R.range(-0.03, 0.03), tip.y, tip.z + R.range(-0.03, 0.03)); B.quad('matte', V(a.x - 0.015, a.y - 0.22, a.z), V(a.x + 0.015, a.y - 0.22, a.z), V(a.x + 0.015, a.y, a.z), V(a.x - 0.015, a.y, a.z), { color: PINATA[(c0 + k + 3 + t) % PINATA.length] }); }
+    B.swap('pinata', () => {                                                   // far off, an icosahedron and cones; near, tissue fringe and streamers (tools/blender/props.py)
+      B.geom('glossy', new THREE.IcosahedronGeometry(0.2 * s, 1), mat4(p), { color: PINATA[c0] });
+      const dirs = [[0, 1, 0], [0, -1, 0], [1, 0.1, 0], [-1, 0.1, 0], [0, 0.1, 1], [0, 0.1, -1], [0.6, -0.4, 0.6]];
+      dirs.forEach(([x, y, z], k) => {
+        const d = V(x, y, z).normalize(), cone = new THREE.ConeGeometry(0.075 * s, 0.4 * s, 8), q = new THREE.Quaternion().setFromUnitVectors(UP, d);
+        B.geom('glossy', cone, new THREE.Matrix4().compose(p.clone().addScaledVector(d, 0.36 * s), q, V(1, 1, 1)), { color: PINATA[(c0 + k + 1) % PINATA.length] });
+        const tip = p.clone().addScaledVector(d, 0.58 * s);
+        for (let t = 0; t < 2; t++) { const a = V(tip.x + R.range(-0.03, 0.03), tip.y, tip.z + R.range(-0.03, 0.03)); B.quad('matte', V(a.x - 0.015, a.y - 0.22, a.z), V(a.x + 0.015, a.y - 0.22, a.z), V(a.x + 0.015, a.y, a.z), V(a.x - 0.015, a.y, a.z), { color: PINATA[(c0 + k + 3 + t) % PINATA.length] }); }
+      });
+    }, () => {                                                                 // every part its own slot, tinted with the colours the old one drew
+      const ph = fhash(p.x, p.y, p.z, 41) * 6.28, paper = col => ({ uv: 'own', tile: 1, color: col, wind: ph }), slot = { body: paper(PINATA[c0]) };
+      for (let k = 0; k < 7; k++) { slot['c' + k] = paper(PINATA[(c0 + k + 1) % PINATA.length]); slot['sa' + k] = paper(PINATA[(c0 + k + 3) % PINATA.length]); slot['sb' + k] = paper(PINATA[(c0 + k + 4) % PINATA.length]); }
+      B.kit('pinata', mat4(p, 0, s), Object.fromEntries(Object.keys(slot).map(k => [k, 'paper'])), { lod: 'near', slot });
     });
     rod(p.clone().add(V(0, 0.2 * s, 0)), V(p.x, hang, p.z), 0.004, 'cable');
   };
   // A ristra: dried red chiles strung round a cord, hung from a beam.
   const ristra = (top, len, R = rs) => {
     rod(top, top.clone().add(V(0, -len, 0)), 0.005, 'cable');
-    const n = Math.floor(len / 0.032);
-    for (let i = 0; i < n; i++) {
-      const a = i * 2.39, r = 0.035 + R.range(0, 0.015), y = top.y - 0.06 - i * 0.032, g = R.range(0.55, 0.85);
-      const cone = new THREE.ConeGeometry(0.017, R.range(0.09, 0.13), 6); cone.rotateX(Math.PI + R.range(-0.4, 0.4)); cone.rotateZ(R.range(-0.5, 0.5));
-      B.geom('glossy', cone, mat4(V(top.x + Math.cos(a) * r, y, top.z + Math.sin(a) * r), a), { color: [g * 0.62, g * 0.06, g * 0.04] });
-    }
+    const n = Math.floor(len / 0.032), gs = [];
+    B.swap('ristra_seg', () => {                                               // far off, cones; near, modelled chiles three to a length of cord (tools/blender/props.py)
+      for (let i = 0; i < n; i++) {
+        const a = i * 2.39, r = 0.035 + R.range(0, 0.015), y = top.y - 0.06 - i * 0.032, g = R.range(0.55, 0.85); gs.push(g);
+        const cone = new THREE.ConeGeometry(0.017, R.range(0.09, 0.13), 6); cone.rotateX(Math.PI + R.range(-0.4, 0.4)); cone.rotateZ(R.range(-0.5, 0.5));
+        B.geom('glossy', cone, mat4(V(top.x + Math.cos(a) * r, y, top.z + Math.sin(a) * r), a), { color: [g * 0.62, g * 0.06, g * 0.04] });
+      }
+    }, () => {
+      for (let j = 0; j < Math.round(n / 3); j++) {                         // (each length 5 cm above its first old chile: those were centred on their points)
+        const g = gs[3 * j];
+        B.kit('ristra_seg', mat4(V(top.x, top.y - 0.01 - j * 0.096, top.z), fhash(top.x, top.z, j, 43) * 6.28), { chile: 'glossy', stem: 'matte' },
+          { lod: 'near', slot: { chile: { color: [g * 0.62, g * 0.06, g * 0.04] }, stem: { color: [0.42, 0.4, 0.2] } } });
+      }
+    });
   };
   // Papel picado on a string between two points: a flag every 0.38 m, colours in a run, each in the wind (style stream).
   const papel = (a, b, sag, R = rs) => {
