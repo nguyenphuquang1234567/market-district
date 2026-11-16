@@ -88,11 +88,14 @@ function simplify(g, target, err = 0.12) {
 }
 
 // Bake a set of glTF nodes into world-space geometry, merged per material, with the base centred on the origin.
+// A node whose mesh has several primitives (one per material) loads as a group with the node's name, holding one mesh per
+// primitive named after the glTF mesh: those meshes go by the group's name (the AC units and the rooibos bushes).
 function bake(scene, re, name) {
   scene.updateMatrixWorld(true);
   const byMat = new Map();
+  const nodeName = o => (o.userData.name === undefined && o.parent !== scene ? o.parent.name : o.name);
   scene.traverse(o => {
-    if (!o.isMesh || !re.test(o.name)) return;
+    if (!o.isMesh || !(re.test(o.name) || re.test(nodeName(o)))) return;
     const g = o.geometry.clone();
     for (const k of Object.keys(g.attributes)) if (!['position', 'normal', 'uv'].includes(k)) g.deleteAttribute(k);
     g.applyMatrix4(o.matrixWorld);
@@ -114,6 +117,9 @@ function bake(scene, re, name) {
     if (foliage) {
       material.transparent = false; material.alphaTest = 0.45; material.depthWrite = true; material.side = THREE.DoubleSide;
       material.userData.foliage = true;
+      // The rooibos' needle and twig cards come as a JPEG on black, without the alpha their glTF asks for: cut them out by
+      // the texture's own green (0 on the black, still about 0.1 in the darkest twig once linear).
+      if (/^wild_rooibos_bush_(twigs|leaves)$/.test(material.name)) { material.alphaMap = material.map; material.alphaTest = 0.04; }
     }
     parts.push({ geometry: g, material });
   }
