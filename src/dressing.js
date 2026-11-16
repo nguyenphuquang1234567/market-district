@@ -161,33 +161,60 @@ export function dressKit({ B, M, rnd, buildings, anchors, low, rs = null }) {
     if (rs && rs() < 0.4) for (const sx of [-1, 1]) if (rs() < 0.7) ristra(L(sx * (W / 2 - 0.12), o.bare ? 2.3 : Hf - 0.03, o.bare ? 0.6 : D / 2 + 0.02), rs.range(0.6, 0.9));
   }
 
+  // A Canary date palm. Far off, a tube trunk, flat frond ribbons and a ball; near, the modelled palm (tools/blender/props.py):
+  // a base and metre segments stacked along the old trunk's curve and taper, the crown on its top, a modelled frond laid on
+  // each old frond (its direction, elevation, length, colour and wind) and a few date clusters, chosen by position.
+  const PALM = ['palm_base', 'palm_seg_a', 'palm_seg_b', 'palm_crown', 'palm_frond_up', 'palm_frond_mid', 'palm_frond_low', 'palm_frond_dry', 'palm_dates'];
+  const FROND_E0 = [1.05, 0.5, -0.1], FROND = ['palm_frond_up', 'palm_frond_mid', 'palm_frond_low'];
   function palm(x, z, h, lean = 0.6) {
-    const la = rnd() * 6.28, seg = 10, top = V(x + Math.cos(la) * lean, h, z + Math.sin(la) * lean);
-    const pts = []; for (let i = 0; i <= seg; i++) { const t = i / seg; pts.push(V(x + Math.cos(la) * lean * t * t, h * t, z + Math.sin(la) * lean * t * t)); }
-    const tg = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 14, 0.2, 9, false), tp = tg.attributes.position;
-    for (let i = 0; i < tp.count; i++) {       // taper + flare at the base
-      const y = tp.getY(i) / h, k = 0.8 + 0.5 * Math.pow(1 - y, 6) - 0.12 * y, ax = x + Math.cos(la) * lean * y * y, az = z + Math.sin(la) * lean * y * y;
-      tp.setX(i, ax + (tp.getX(i) - ax) * k); tp.setZ(i, az + (tp.getZ(i) - az) * k);
-    }
-    tg.computeVertexNormals();
-    B.geom('bark', tg, I, { uvScale: 3, uvScaleY: 1 });
-    B.collide(x, h / 2, z, 0.5, h, 0.5, 0, 'wood');
-    const n = 26 + rnd.int(0, 6);
-    for (let i = 0; i < n; i++) {
-      const az = (i / n) * 6.28 * 3.1 + rnd.range(-0.25, 0.25), tier = i % 3, len = rnd.range(2.7, 3.7), e0 = [1.05, 0.5, -0.1][tier] + rnd.range(-0.2, 0.2), bend = [1.5, 1.7, 1.3][tier] + rnd.range(-0.2, 0.3);
-      const dry = tier === 2 && rnd.chance(0.5), g = rnd.range(0.34, 0.56), col = dry ? [0.8, 0.62, 0.36] : [g * 1.0, g, g * 0.62];
-      const dx = Math.cos(az), dz = Math.sin(az), spine = [V(0, 0, 0)];
-      for (let k = 1; k <= 8; k++) { const a = e0 - bend * (k / 8), prev = spine[k - 1]; spine.push(V(prev.x + Math.cos(a) * len / 8, prev.y + Math.sin(a) * len / 8, 0)); }
-      const ph = rnd() * 6.28;
-      const fg = new THREE.PlaneGeometry(1, 1, 2, 8), fp = fg.attributes.position, fu = fg.attributes.uv, wind = [];
-      for (let k = 0; k < fp.count; k++) {
-        const u = fu.getX(k), t = fu.getY(k), sp = spine[Math.round(t * 8)], wd = (u - 0.5) * 0.95, fold = Math.abs(u - 0.5) * 0.28;
-        fp.setXYZ(k, top.x + dx * sp.x - dz * wd, top.y + sp.y + fold - 0.1, top.z + dz * sp.x + dx * wd); wind.push(t * t * 1.4);
+    const la = rnd() * 6.28, seg = 10, top = V(x + Math.cos(la) * lean, h, z + Math.sin(la) * lean), fronds = [];
+    B.swap(PALM, () => {
+      const pts = []; for (let i = 0; i <= seg; i++) { const t = i / seg; pts.push(V(x + Math.cos(la) * lean * t * t, h * t, z + Math.sin(la) * lean * t * t)); }
+      const tg = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 14, 0.2, 9, false), tp = tg.attributes.position;
+      for (let i = 0; i < tp.count; i++) {       // taper + flare at the base
+        const y = tp.getY(i) / h, k = 0.8 + 0.5 * Math.pow(1 - y, 6) - 0.12 * y, ax = x + Math.cos(la) * lean * y * y, az = z + Math.sin(la) * lean * y * y;
+        tp.setX(i, ax + (tp.getX(i) - ax) * k); tp.setZ(i, az + (tp.getZ(i) - az) * k);
       }
-      fg.computeVertexNormals();
-      B.geom('frond', fg, I, { color: col, xf: k => [wind[k], ph, 0] });
-    }
-    B.geom('bark', new THREE.SphereGeometry(0.34, 8, 6), mat4(top.clone().add(V(0, -0.15, 0)), 0, V(1, 1.2, 1)), { uvScale: 2, color: [0.8, 0.75, 0.6] });
+      tg.computeVertexNormals();
+      B.geom('bark', tg, I, { uvScale: 3, uvScaleY: 1 });
+      B.collide(x, h / 2, z, 0.5, h, 0.5, 0, 'wood');
+      const n = 26 + rnd.int(0, 6);
+      for (let i = 0; i < n; i++) {
+        const az = (i / n) * 6.28 * 3.1 + rnd.range(-0.25, 0.25), tier = i % 3, len = rnd.range(2.7, 3.7), e0 = [1.05, 0.5, -0.1][tier] + rnd.range(-0.2, 0.2), bend = [1.5, 1.7, 1.3][tier] + rnd.range(-0.2, 0.3);
+        const dry = tier === 2 && rnd.chance(0.5), g = rnd.range(0.34, 0.56), col = dry ? [0.8, 0.62, 0.36] : [g * 1.0, g, g * 0.62];
+        const dx = Math.cos(az), dz = Math.sin(az), spine = [V(0, 0, 0)];
+        for (let k = 1; k <= 8; k++) { const a = e0 - bend * (k / 8), prev = spine[k - 1]; spine.push(V(prev.x + Math.cos(a) * len / 8, prev.y + Math.sin(a) * len / 8, 0)); }
+        const ph = rnd() * 6.28;
+        fronds.push({ az, tier, len, e0, dry, col, ph });
+        const fg = new THREE.PlaneGeometry(1, 1, 2, 8), fp = fg.attributes.position, fu = fg.attributes.uv, wind = [];
+        for (let k = 0; k < fp.count; k++) {
+          const u = fu.getX(k), t = fu.getY(k), sp = spine[Math.round(t * 8)], wd = (u - 0.5) * 0.95, fold = Math.abs(u - 0.5) * 0.28;
+          fp.setXYZ(k, top.x + dx * sp.x - dz * wd, top.y + sp.y + fold - 0.1, top.z + dz * sp.x + dx * wd); wind.push(t * t * 1.4);
+        }
+        fg.computeVertexNormals();
+        B.geom('frond', fg, I, { color: col, xf: k => [wind[k], ph, 0] });
+      }
+      B.geom('bark', new THREE.SphereGeometry(0.34, 8, 6), mat4(top.clone().add(V(0, -0.15, 0)), 0, V(1, 1.2, 1)), { uvScale: 2, color: [0.8, 0.75, 0.6] });
+    }, () => {
+      const at = t => V(x + Math.cos(la) * lean * t * t, h * t, z + Math.sin(la) * lean * t * t), k = t => 0.8 + 0.5 * Math.pow(1 - t, 6) - 0.12 * t;
+      const bark = { bark: { uv: 'own', tile: 1.2 } }, d = V(), spin = new THREE.Quaternion(), q = new THREE.Quaternion();
+      const rb = k(1 / h) / 1.025;                                               // (the base's top meets the first segment)
+      B.kit('palm_base', mat4(at(0), fhash(x, z, 50) * 6.28, V(rb, 1, rb)), { bark: 'bark' }, { lod: 'near', slot: bark });
+      const n = Math.max(1, Math.ceil(h - 1));
+      for (let j = 0; j < n; j++) {                                              // metre segments up the old curve, at the old taper
+        const t0 = (1 + (h - 1) * j / n) / h, t1 = (1 + (h - 1) * (j + 1) / n) / h, a = at(t0), r = k((t0 + t1) / 2);
+        d.subVectors(at(t1), a); const len = d.length();
+        q.setFromUnitVectors(UP, d.normalize()).multiply(spin.setFromAxisAngle(UP, fhash(x, z, j, 51) * 6.28));
+        B.kit(fhash(x, z, j, 52) < 0.5 ? 'palm_seg_a' : 'palm_seg_b', new THREE.Matrix4().compose(a, q, V(r, len, r)), { bark: 'bark' }, { lod: 'near', slot: bark });
+      }
+      B.kit('palm_crown', mat4(top, fhash(x, z, 53) * 6.28), { bark: 'bark' }, { lod: 'near', slot: { bark: { uv: 'own', tile: 1.2, color: [0.8, 0.75, 0.6] } } });
+      for (const f of fronds) {                                                  // one modelled frond on each old one
+        const m = new THREE.Matrix4().compose(top, new THREE.Quaternion().setFromEuler(new THREE.Euler(0, -f.az, f.e0 - FROND_E0[f.tier], 'YXZ')), V(f.len / 3.2, f.len / 3.2, f.len / 3.2));
+        B.kit(f.dry ? 'palm_frond_dry' : FROND[f.tier], m, { leaf: 'palm_leaf' }, { lod: 'near', slot: { leaf: { uv: 'own', tile: 1, color: f.col, wind: f.ph, windAmp: 1.4 } } });
+      }
+      for (let i = 0, nd = 2 + Math.floor(fhash(x, z, 54) * 3); i < nd; i++)
+        B.kit('palm_dates', mat4(top.clone().add(V(0, -0.35, 0)), fhash(x, z, i, 55) * 6.28), { fruit: 'glossy', stalk: 'matte' }, { lod: 'near', slot: { fruit: { color: [0.85, 0.42, 0.1] }, stalk: { color: [0.85, 0.6, 0.22] } } });
+    });
   }
 
   const dish = (p, yaw) => {

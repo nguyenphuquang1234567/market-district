@@ -61,6 +61,14 @@ add(['kiosk_roof'], { cap: 30000, box: [[-4.3, 2.9, -4.3], [4.3, 5.7, 4.3]], slo
 add(['kiosk_column'], { cap: 30000, box: [[-0.13, 0, -0.13], [0.13, 3.4, 0.13]], slots: ['iron'] });
 add(['kiosk_bracket'], { cap: 30000, box: [[3.2, 2.6, -0.06], [4.0, 3.45, 0.06]], slots: ['iron'] });
 TOTALS.kiosk = () => [tris('kiosk_roof') + 8 * tris('kiosk_column') + 8 * tris('kiosk_bracket'), 30000];
+// palms (dressing.js palm()): a base and metre segments stacked along the old trunk's curve, the crown at its top, the
+// fronds placed one for one on the old fronds (rachis along +X), date clusters under the crown
+add(['palm_base'], { cap: 65000, box: [[-0.4, 0, -0.4], [0.4, 1.03, 0.4]], slots: ['bark'], ownUV: ['bark'] });
+add(['palm_seg_a', 'palm_seg_b'], { cap: 65000, box: [[-0.25, 0, -0.25], [0.25, 1.03, 0.25]], slots: ['bark'], ownUV: ['bark'] });
+add(['palm_crown'], { cap: 65000, box: [[-0.45, -0.65, -0.45], [0.45, 0.4, 0.45]], slots: ['bark'], ownUV: ['bark'] });
+add(['palm_frond_up', 'palm_frond_mid', 'palm_frond_low', 'palm_frond_dry'], { cap: 1300, box: [[-0.1, -2.9, -0.7], [3.5, 1.8, 0.7]], slots: ['leaf'], ownUV: ['leaf'], wind: ['leaf'] });
+add(['palm_dates'], { cap: 65000, box: [[-0.1, -1.0, -0.45], [0.75, 0.1, 0.45]], slots: ['fruit', 'stalk'] });
+TOTALS.palm = () => [tris('palm_base') + 13 * Math.max(tris('palm_seg_a'), tris('palm_seg_b')) + tris('palm_crown') + 32 * Math.max(...['up', 'mid', 'low', 'dry'].map(k => tris('palm_frond_' + k))) + 4 * tris('palm_dates'), 65000];
 
 export function builder() {
   const out = [], fail = m => out.push(m);

@@ -27,7 +27,7 @@ scene = bpy.context.scene
 SHOW = {'stone': (0.62, 0.6, 0.56), 'burlap': (0.62, 0.5, 0.34), 'spice': (0.8, 0.45, 0.15), 'concrete': (0.66, 0.65, 0.62),
         'brick': (0.62, 0.3, 0.2), 'plaster': (0.86, 0.82, 0.72), 'iron': (0.3, 0.16, 0.1), 'gravel': (0.55, 0.52, 0.47),
         'body': (0.9, 0.7, 0.2), 'steel': (0.75, 0.76, 0.78), 'tin': (0.6, 0.62, 0.6), 'rubber': (0.08, 0.08, 0.08), 'bottle': (0.7, 0.72, 0.7),
-        'glass': (0.55, 0.7, 0.75), 'plastic': (0.9, 0.9, 0.88), 'pot': (0.78, 0.8, 0.82), 'wood': (0.45, 0.4, 0.35), 'tank': (0.62, 0.64, 0.62), 'porcelain': (0.92, 0.93, 0.95), 'chile': (0.6, 0.06, 0.04), 'stem': (0.42, 0.4, 0.2), 'wall': (0.95, 0.72, 0.4), 'glaze_y': (0.95, 0.75, 0.3), 'glaze_b': (0.3, 0.42, 0.85), 'dark': (0.03, 0.03, 0.03), 'trim': (0.45, 0.62, 0.5), 'finial': (0.75, 0.62, 0.3)}
+        'glass': (0.55, 0.7, 0.75), 'plastic': (0.9, 0.9, 0.88), 'pot': (0.78, 0.8, 0.82), 'wood': (0.45, 0.4, 0.35), 'tank': (0.62, 0.64, 0.62), 'porcelain': (0.92, 0.93, 0.95), 'chile': (0.6, 0.06, 0.04), 'stem': (0.42, 0.4, 0.2), 'wall': (0.95, 0.72, 0.4), 'glaze_y': (0.95, 0.75, 0.3), 'glaze_b': (0.3, 0.42, 0.85), 'dark': (0.03, 0.03, 0.03), 'trim': (0.45, 0.62, 0.5), 'finial': (0.75, 0.62, 0.3), 'bark': (0.55, 0.45, 0.35), 'leaf': (0.35, 0.5, 0.2), 'fruit': (0.9, 0.45, 0.12), 'stalk': (0.85, 0.6, 0.2)}
 MATS = {}
 def mat(name):
     if name not in MATS:
@@ -720,6 +720,150 @@ def kiosk_bracket(name):
     return P.build(smooth=50)
 
 for n in ('kiosk_roof', 'kiosk_column', 'kiosk_bracket'): globals()[n](n)
+
+# ---------------------------------------------------------------------------------------------------- palms -------------
+# Canary date palms (dressing.js palm(), seven). The game stacks a base and metre segments along the old trunk's curve and
+# taper (radius 0.2 times the old k(t)), sets the crown on the trunk's top and lays a frond on each old frond (its
+# direction, elevation, length, colour and wind phase): the up, mid and low fronds for the old three tiers, the dry one
+# for the old dry fronds. Bark mapped by its own coordinates (metres), leaflets and rachis by the palm_leaf atlas.
+def scar_shade(a, z, R=0.2, w=0.16, h=0.1, ph=0.0):
+    """The Canary palm's diamond lattice of old leaf bases: 0 in a scar's middle, 1 on the ridges between scars."""
+    u, v = (a * R + ph) / w, z / h
+    p, q = (u + v) / 2, (u - v) / 2
+    return 2 * max(abs(p % 1 - 0.5), abs(q % 1 - 0.5))
+
+def trunk_piece(P, z0, z1, rad, sides, rows, ph, flare=None, roots=0, r=None):
+    """A length of trunk from z0 to z1, radius rad(z), the scar lattice in relief and in shade; flare(z) adds to the
+    radius; uv in metres (u round, v up)."""
+    grid = []
+    for i in range(rows + 1):
+        z = z0 + (z1 - z0) * i / rows; ring = []
+        for j in range(sides + 1):
+            a = 2 * math.pi * j / sides; d = scar_shade(a, z, ph=ph)
+            rr = rad(z) * (1 + 0.06 * d * d) + (flare(z, a) if flare else 0.0)
+            ring.append((P.vert((rr * math.cos(a), rr * math.sin(a), z)), (a * 0.2, z), (*(0.62 + 0.38 * (1 - d * d) if True else 1,) * 3, 1.0)))
+        grid.append(ring)
+    for i in range(rows):
+        for j in range(sides):
+            q = [grid[i][j], grid[i][j + 1], grid[i + 1][j + 1], grid[i + 1][j]]
+            mid = (q[0][0].co + q[2][0].co) / 2
+            P.face_toward([e[0] for e in q], 'bark', Vector((mid.x, mid.y, 0)), uvs=[e[1] for e in q], cols=[e[2] for e in q])
+
+@piece
+def palm_base(name):
+    """The palm's foot: the flared root plate and the first metre (radius 0.26 at the ground to 0.205), surface roots."""
+    r = stream(name); P = Piece(name, recalc=False); ph = r.uniform(0, 1)
+    rad = lambda z: 0.205 + 0.055 * (1 - min(1.0, z / 1.0)) ** 3
+    roots = [r.uniform(0, 2 * math.pi) for _ in range(9)]
+    def flare(z, a):                                             # roots spreading out over the last 25 cm
+        if z > 0.25: return 0.0
+        k = max(math.exp(-((math.atan2(math.sin(a - c), math.cos(a - c))) / 0.18) ** 2) for c in roots)
+        return 0.09 * k * (1 - z / 0.25) ** 2
+    trunk_piece(P, 0.0, 1.02, rad, 32, 16, ph, flare=flare)
+    return P.build(smooth=60)
+
+@piece
+def palm_seg(name, ph):
+    """A metre of trunk, radius 0.2 (the game scales it to the old taper), its top lip running 2 cm into the next."""
+    P = Piece(name, recalc=False)
+    trunk_piece(P, 0.0, 1.02, lambda z: 0.2, 32, 14, ph)
+    return P.build(smooth=60)
+
+@piece
+def palm_crown(name):
+    """The crown on the trunk's top: a swollen knob of leaf bases, cut stubs of old petioles round it."""
+    r = stream(name); P = Piece(name, recalc=False)
+    prof = [(0.2, -0.6), (0.26, -0.5), (0.31, -0.36), (0.335, -0.22), (0.33, -0.08), (0.29, 0.05), (0.21, 0.16), (0.11, 0.24), (0.0, 0.27)]
+    revolve(P, prof, 28, 'bark', disp=lambda a, i, r0, z0: (0.02 * math.sin(7 * a + 3 * z0) if 0 < i < len(prof) - 1 else 0.0, 0.0),
+            uv=lambda a, i, co: (a * 0.3, co.z), col=lambda a, i, co: (*(0.7 + 0.3 * (0.5 + 0.5 * math.sin(7 * a + 3 * co.z)),) * 3, 1.0))
+    for k in range(26):                                          # cut petiole stubs, spiralling round the knob
+        a = k * 2.39996; z = -0.52 + 0.5 * (k / 26); rad = 0.3 + 0.03 * math.sin(k)
+        out = Vector((math.cos(a), math.sin(a), 0)); up = Vector((0, 0, 1)); tg = up.cross(out)
+        root = out * (rad - 0.03) + up * z; tip = root + (out * 0.1 + up * 0.06) * r.uniform(0.8, 1.2)
+        w, t = 0.05, 0.018
+        quad = [root - tg * w - up * t, root + tg * w - up * t, root + tg * w + up * t, root - tg * w + up * t]
+        cap = [tip - tg * w * 0.8 - up * t * 0.7, tip + tg * w * 0.8 - up * t * 0.7, tip + tg * w * 0.8 + up * t * 0.7, tip - tg * w * 0.8 + up * t * 0.7]
+        vs = [P.vert(c) for c in quad + cap]
+        for a0, a1 in ((0, 1), (1, 2), (2, 3), (3, 0)):
+            f = [vs[a0], vs[a1], vs[a1 + 4], vs[a0 + 4]]; mid = (f[0].co + f[2].co) / 2
+            P.face_toward(f, 'bark', mid - (root + tip) / 2, uvs=[(0, 0), (0.1, 0), (0.1, 0.1), (0, 0.1)], cols=(0.8, 0.8, 0.8, 1.0))
+        P.face_toward(vs[4:], 'bark', tip - root, uvs=[(0, 0), (0.1, 0), (0.1, 0.05), (0, 0.05)], cols=(1.0, 0.95, 0.8, 1.0))   # the cut face, paler
+    return P.build(smooth=45)
+
+FRONDS = {'palm_frond_up': (1.05, 1.5, False), 'palm_frond_mid': (0.5, 1.7, False), 'palm_frond_low': (-0.1, 1.3, False), 'palm_frond_dry': (-0.1, 1.9, True)}
+@piece
+def palm_frond(name):
+    """A frond 3.2 m long along +X, rising at its tier's elevation and bending down: a spiny petiole, a tapering rachis,
+    about 110 leaflets folded along their midribs in a V, longest in the middle; vertex alpha the old t^2 freedom.
+    Slot: leaf (the palm_leaf atlas: four leaflet columns, the rachis strip)."""
+    e0, bend, dry = FRONDS[name]
+    r = stream(name); P = Piece(name, recalc=False); L, N = 3.2, 24
+    spine, ang = [Vector((0, 0, 0))], []
+    for i in range(N):
+        a = e0 - bend * (i + 0.5) / N; ang.append(a); spine.append(spine[-1] + Vector((math.cos(a), 0, math.sin(a))) * L / N)
+    def at(t):
+        f = min(N - 1e-6, t * N); i = int(f); return spine[i].lerp(spine[i + 1], f - i), ang[i]
+    rad = lambda t: 0.035 * (1 - t) + 0.008                       # the rachis
+    rings, NR, RS = [], 16, 5                                     # (the rachis: 16 rings of 5 sides)
+    for i in range(NR + 1):
+        t = i / NR; c, a = at(min(t, 0.999)); U = Vector((-math.sin(a), 0, math.cos(a))); Y = Vector((0, 1, 0))
+        rings.append([(P.vert(c + (U * math.cos(2 * math.pi * k / RS) + Y * math.sin(2 * math.pi * k / RS)) * rad(t)), (0.86 + 0.13 * k / RS, t * 3), (1.0, 1.0, 1.0, t * t)) for k in range(RS + 1)])
+    for i in range(NR):
+        for k in range(RS):
+            q = [rings[i][k], rings[i][k + 1], rings[i + 1][k + 1], rings[i + 1][k]]; c = (q[0][0].co + q[2][0].co) / 2
+            P.face_toward([e[0] for e in q], 'leaf', c - at((i + 0.5) / NR)[0], uvs=[e[1] for e in q], cols=[e[2] for e in q])
+    for k in range(10):                                            # spines on the petiole: leaflets turned to thorns
+        t = 0.03 + 0.09 * k / 10; c, a = at(t); T = Vector((math.cos(a), 0, math.sin(a))); side = 1 if k % 2 else -1
+        d = (Vector((0, side, 0)) * 0.8 + T * 0.6).normalized(); ln = 0.06 + 0.1 * k / 10
+        vs = [P.vert(c - T * 0.01), P.vert(c + T * 0.01), P.vert(c + d * ln)]
+        P.face_toward(vs, 'leaf', Vector((0, 0, 1)), uvs=[(0.87, 0.1), (0.9, 0.1), (0.88, 0.3)], cols=(1.0, 0.95, 0.75, t * t))
+    for side in (-1, 1):                                           # the leaflets
+        for i in range(55):                                        # (110 leaflets: the perf rule in the plan, from 140)
+            t = 0.13 + 0.85 * (i + (0.5 if side > 0 else 0.0)) / 55
+            c, a = at(t); T = Vector((math.cos(a), 0, math.sin(a))); U = Vector((-math.sin(a), 0, math.cos(a))); Y = Vector((0, side, 0))
+            ln = (0.18 + 0.36 * math.sin(math.pi * min(1.0, (t - 0.08) / 0.92)) ** 0.7) * r.uniform(0.9, 1.08)
+            if dry: d = (Y * 0.45 + T * 0.55 - U * 0.75).normalized(); ln *= 0.85
+            else: d = (Y * 0.8 + T * 0.5 + U * (0.42 - 0.3 * t)).normalized()             # forward and up in a V, flattening towards the tip
+            n = d.cross(T).normalized() * side
+            if n.dot(U) < 0: n = -n
+            sag = (U * -0.22 * ln) if not dry else (U * -0.1 * ln)
+            pt = lambda f, w: c + d * ln * f + sag * f * f + n * 0.012 * (1 - abs(w)) * math.sin(math.pi * min(1.0, f * 1.4)) + (d.cross(n)).normalized() * w * 0.022 * math.sin(math.pi * min(1.0, f * 1.15) ** 0.8)
+            col = r.randrange(3) if not dry else 3; u0, u1 = 0.2 * col + 0.02, 0.2 * col + 0.18; um = (u0 + u1) / 2
+            B = P.vert(pt(0, 0)); M = [P.vert(pt(0.35, w)) for w in (-1, 0, 1)]; Q = [P.vert(pt(0.75, w)) for w in (-1, 0, 1)]; Tip = P.vert(pt(1.0, 0))
+            sh = r.uniform(0.85, 1.12); cw = lambda f: (sh, sh, sh, min(1.0, t * t + 0.15 * f))
+            uvB, uvM, uvQ, uvT = (um, 0.0), [(u0, 0.35), (um, 0.35), (u1, 0.35)], [(u0, 0.75), (um, 0.75), (u1, 0.75)], (um, 1.0)
+            for vs, uv, f in (([B, M[1], M[0]], [uvB, uvM[1], uvM[0]], 0.2), ([B, M[2], M[1]], [uvB, uvM[2], uvM[1]], 0.2),
+                              ([M[0], M[1], Q[1], Q[0]], [uvM[0], uvM[1], uvQ[1], uvQ[0]], 0.55), ([M[1], M[2], Q[2], Q[1]], [uvM[1], uvM[2], uvQ[2], uvQ[1]], 0.55),
+                              ([Q[0], Q[1], Tip], [uvQ[0], uvQ[1], uvT], 0.9), ([Q[1], Q[2], Tip], [uvQ[1], uvQ[2], uvT], 0.9)):
+                P.face_toward(vs, 'leaf', n, uvs=uv, cols=cw(f))
+    return P.build(smooth=70)
+
+@piece
+def palm_dates(name):
+    """A cluster of dates under the crown: an orange stalk arching out and down, strands off it, the fruit on them.
+    Slots: fruit, stalk."""
+    r = stream(name); P = Piece(name); W = (1.0, 1.0, 1.0, 1.0)
+    stalk = [Vector((0.0, 0, 0)), Vector((0.2, 0, -0.06)), Vector((0.38, 0, -0.2)), Vector((0.5, 0, -0.42)), Vector((0.55, 0, -0.62))]
+    tube(P, stalk, 0.018, 6, 'stalk', W)
+    for k in range(26):
+        t = 0.35 + 0.65 * k / 26; f = t * (len(stalk) - 1); i = min(len(stalk) - 2, int(f)); o = stalk[i].lerp(stalk[i + 1], f - i)
+        a = r.uniform(0, 2 * math.pi); ln = r.uniform(0.18, 0.34)
+        tip = o + Vector((0.08 * math.cos(a), 0.12 * math.sin(a), -ln))
+        mid = o.lerp(tip, 0.5) + Vector((0.03 * math.cos(a), 0.05 * math.sin(a), 0.02))
+        tube(P, [o, mid, tip], 0.004, 3, 'stalk', W)
+        for j in range(4):                                         # dates: small octahedra, stretched
+            c = mid.lerp(tip, 0.15 + 0.28 * j) + Vector((r.uniform(-0.015, 0.015), r.uniform(-0.015, 0.015), 0))
+            s = r.uniform(0.85, 1.1); ex = [Vector((0.011, 0, 0)), Vector((0, 0.011, 0)), Vector((-0.011, 0, 0)), Vector((0, -0.011, 0))]
+            ring = [P.vert(c + e * s) for e in ex]; top, bot = P.vert(c + Vector((0, 0, 0.018 * s))), P.vert(c - Vector((0, 0, 0.016 * s)))
+            g = r.uniform(0.85, 1.1)
+            for q in range(4):
+                P.face_toward([ring[q], ring[(q + 1) % 4], top], 'fruit', (ring[q].co + ring[(q + 1) % 4].co) / 2 - c + Vector((0, 0, 0.01)), cols=(g, g, g, 1.0))
+                P.face_toward([ring[(q + 1) % 4], ring[q], bot], 'fruit', (ring[q].co + ring[(q + 1) % 4].co) / 2 - c - Vector((0, 0, 0.01)), cols=(g, g, g, 1.0))
+    return P.build(smooth=60)
+
+palm_base('palm_base'); palm_seg('palm_seg_a', 0.0); palm_seg('palm_seg_b', 0.37); palm_crown('palm_crown')
+for n in FRONDS: palm_frond(n)
+palm_dates('palm_dates')
 
 class HeightField:
     """The heap's top surface on a grid, raised as each piece settles, so pieces rest on the mound and on each other."""

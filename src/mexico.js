@@ -238,7 +238,7 @@ export function leafTexture() {
 // Canary palm leaflets: four long narrow leaflets in u 0 ... 0.8 (columns 0.2 wide, base at the bottom), with parallel
 // veins and a paler midrib, the last yellowing to a brown tip; the rachis's colour in u 0.85 ... 1 (fibrous, pale green).
 export function palmLeafTexture() {
-  const R = rng(7272), tones = [[62, 96, 36], [74, 108, 40], [86, 116, 44], [110, 118, 50]];
+  const R = rng(7272), tones = [[72, 112, 42], [86, 124, 46], [99, 134, 50], [126, 136, 58]];      // (as bright as the old frond's drawing)
   const t = canvasTexture(256, 512, (g, W, H) => {
     g.clearRect(0, 0, W, H);
     const cw = W * 0.2;
