@@ -387,9 +387,12 @@ export function buildQuarter({ B, M, buildings, anchors, ghosts, gates, architec
   function poles() {
     const near = (x, z) => buildings.filter(b => !b.ghost).map(b => { const qx = Math.min(b.x1, Math.max(b.x0, x)), qz = Math.min(b.z1, Math.max(b.z0, z)); return { b, qx, qz, d: Math.hypot(qx - x, qz - z) }; }).filter(o => o.d > 1).sort((p, q) => p.d - q.d);
     for (const [x, z] of [[51.6, -40], [51.6, 3], [51.6, 44], [95.6, -24], [95.6, 26], [66, -57.4], [66, 57.4]]) {
-      rod(V(x, 0, z), V(x, 8.8, z), 0.12, 'planks', [0.45, 0.4, 0.35]); B.collide(x, 4.4, z, 0.28, 8.8, 0.28, 0, 'wood');
-      B.box('planks', x, 8.2, z, 1.8, 0.1, 0.1, { tile: 1, color: [0.45, 0.4, 0.35] });
-      B.geom('metal_white', new THREE.CylinderGeometry(0.28, 0.28, 0.75, 12), mat4(V(x + 0.35, 6.9, z)), { color: [0.62, 0.64, 0.62] });
+      B.swap('pole_quarter', () => {                                         // far off, a rod, a plank and a drum; near, the modelled pole (tools/blender/props.py)
+        rod(V(x, 0, z), V(x, 8.8, z), 0.12, 'planks', [0.45, 0.4, 0.35]); B.collide(x, 4.4, z, 0.28, 8.8, 0.28, 0, 'wood');
+        B.box('planks', x, 8.2, z, 1.8, 0.1, 0.1, { tile: 1, color: [0.45, 0.4, 0.35] });
+        B.geom('metal_white', new THREE.CylinderGeometry(0.28, 0.28, 0.75, 12), mat4(V(x + 0.35, 6.9, z)), { color: [0.62, 0.64, 0.62] });
+      }, () => B.kit('pole_quarter', mat4(V(x, 0, z)), { wood: 'planks', iron: 'iron', tank: 'metal_white', porcelain: 'glossy' },
+        { lod: 'near', slot: { wood: { uv: 'own', tile: 1, color: [0.45, 0.4, 0.35] }, iron: {}, tank: { tile: 1, color: [0.62, 0.64, 0.62] }, porcelain: { color: [0.9, 0.92, 0.95] } } }));
       for (const [i, o] of near(x, z).slice(0, 5).entries()) cable(V(x + (i - 2) * 0.35, 8.25, z), V(o.qx, o.b.H - rnd.range(0.3, 1.0), o.qz), rnd.range(0.3, 0.8));
     }
   }

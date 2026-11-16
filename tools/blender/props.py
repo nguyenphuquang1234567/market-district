@@ -27,7 +27,7 @@ scene = bpy.context.scene
 SHOW = {'stone': (0.62, 0.6, 0.56), 'burlap': (0.62, 0.5, 0.34), 'spice': (0.8, 0.45, 0.15), 'concrete': (0.66, 0.65, 0.62),
         'brick': (0.62, 0.3, 0.2), 'plaster': (0.86, 0.82, 0.72), 'iron': (0.3, 0.16, 0.1), 'gravel': (0.55, 0.52, 0.47),
         'body': (0.9, 0.7, 0.2), 'steel': (0.75, 0.76, 0.78), 'tin': (0.6, 0.62, 0.6), 'rubber': (0.08, 0.08, 0.08), 'bottle': (0.7, 0.72, 0.7),
-        'glass': (0.55, 0.7, 0.75), 'plastic': (0.9, 0.9, 0.88), 'pot': (0.78, 0.8, 0.82)}
+        'glass': (0.55, 0.7, 0.75), 'plastic': (0.9, 0.9, 0.88), 'pot': (0.78, 0.8, 0.82), 'wood': (0.45, 0.4, 0.35), 'tank': (0.62, 0.64, 0.62), 'porcelain': (0.92, 0.93, 0.95)}
 MATS = {}
 def mat(name):
     if name not in MATS:
@@ -90,6 +90,7 @@ def tri_count(ob):
 
 pieces = []
 PREVIEW_SCALE = {}                                                    # piece -> scale for its preview (a unit piece shown at its real size)
+PREVIEW_FOCUS = {}                                                    # piece -> (lo, hi): frame only that part of it in the preview
 def piece(fn):
     """Register a piece builder: fn(name) -> object. --only skips the others (for a quick look at one piece)."""
     def run(name, *a):
@@ -341,6 +342,80 @@ cart('cart')
 RUBBLE_R, RUBBLE_H = 1.5, 0.62
 PAINT = [(0.95, 0.82, 0.55), (0.92, 0.9, 0.82), (0.72, 0.8, 0.62), (0.88, 0.6, 0.45), (0.96, 0.93, 0.86)]   # ochre, cream, sage, terracotta, white
 
+# ---------------------------------------------------------------------------------------------------- utility poles ----
+# Wooden utility poles carrying a transformer (dressing.js: five in the old district; quarter.js poles(): seven), origin
+# at the foot, placed unturned. A tapered round pole, weathered with darker checks, and a cap; a crossarm on two braces
+# carrying pin insulators; a transformer hung on the pole by straps, with porcelain bushings and leads up to the arm. In
+# the old district the arm is turned 0.3 rad and the tank is a finned rectangular one where the old box was; in the
+# quarter a finned round tank where the old cylinder was. Below 6 m nothing stands out of the pole's collider.
+# Slots: wood (the piece's own texture coordinates, in metres), iron, tank, porcelain.
+INSULATOR = [(0.0, 0.0), (0.016, 0.0), (0.02, 0.03), (0.055, 0.036), (0.06, 0.046), (0.034, 0.052), (0.03, 0.07), (0.05, 0.076),
+             (0.052, 0.086), (0.034, 0.092), (0.028, 0.11), (0.018, 0.124), (0.0, 0.13)]
+BUSHING = [(0.0, 0.0), (0.03, 0.0), (0.03, 0.02), (0.05, 0.03), (0.026, 0.045), (0.045, 0.06), (0.024, 0.075), (0.04, 0.09), (0.022, 0.1),
+           (0.012, 0.12), (0.012, 0.14), (0.0, 0.14)]
+@piece
+def utility_pole(name, H, arm_z, arm_len, arm_yaw, tank):
+    r = stream(name); P = Piece(name); W = (1.0, 1.0, 1.0, 1.0)
+    sides, rows, rb, rt = 24, 14, 0.125, 0.092
+    checks = [r.uniform(0, 2 * math.pi) for _ in range(6)]
+    def shade(a, z):                                                     # weather checks: darker streaks up the pole, dirt at the foot
+        d = min(min(abs(a - c), 2 * math.pi - abs(a - c)) for c in checks)
+        return (0.62 if d < 0.09 else 1.0) * (0.75 + 0.25 * min(1.0, z / 0.6))
+    rings = []
+    for i in range(rows + 1):
+        z = H * i / rows; rad = rb + (rt - rb) * i / rows
+        rings.append([(P.vert((rad * math.cos(2 * math.pi * k / sides), rad * math.sin(2 * math.pi * k / sides), z)), 2 * math.pi * k / sides, z, rad) for k in range(sides + 1)])
+    for i in range(rows):
+        for k in range(sides):
+            q = (rings[i][k], rings[i][k + 1], rings[i + 1][k + 1], rings[i + 1][k])
+            P.face([c[0] for c in q], 'wood', uvs=[(c[1] * 0.11, c[2]) for c in q], cols=[(*(shade(c[1] % (2 * math.pi), c[2]),) * 3, 1.0) for c in q])
+    top = P.vert((0, 0, H + 0.04))                                            # a weathered cap
+    for k in range(sides): P.face((rings[-1][k][0], rings[-1][k + 1][0], top), 'wood', uvs=[(0, 0), (0.05, 0), (0.025, 0.05)], cols=(0.7, 0.7, 0.7, 1.0))
+    Rz = Matrix.Rotation(arm_yaw, 4, 'Z')
+    arm = cube((-arm_len / 2, -0.05, -0.05), (arm_len / 2, 0.05, 0.05))           # the crossarm, its grain along its length
+    bmesh.ops.bevel(arm, geom=arm.edges[:], offset=0.008, segments=1, profile=0.5, affect='EDGES')
+    P.merge(arm, 'wood', col=(0.85, 0.85, 0.85, 1.0), uv=lambda c, n: (c.x, c.z if abs(n.y) > 0.5 else c.y), matrix=Matrix.Translation((0, 0, arm_z)) @ Rz); arm.free()
+    for sx in (-1, 1):                                                       # its two braces and through-bolts
+        a0 = Rz @ Vector((sx * 0.5, 0.0, arm_z - 0.05)); b0 = Vector((math.cos(arm_yaw) * sx * 0.1, math.sin(arm_yaw) * sx * 0.1, arm_z - 0.62))
+        tube(P, [a0, b0], 0.012, 4, 'iron', W)
+    tube(P, [Rz @ Vector((0, -0.11, arm_z)), Rz @ Vector((0, 0.11, arm_z))], 0.009, 6, 'iron', W)
+    pins = [Rz @ Vector((x, 0.0, arm_z + 0.05)) for x in (-0.7, -0.35, 0.35, 0.7)]
+    for pin in pins:                                                         # pin insulators
+        tube(P, [pin, pin + Vector((0, 0, 0.06))], 0.01, 6, 'iron', W)
+        revolve(P, INSULATOR, 14, 'porcelain', matrix=Matrix.Translation(pin + Vector((0, 0, 0.04))))
+    if tank == 'box':                                                        # the old district's: a finned rectangular tank, where the old box was
+        x0, x1, y0, y1, z0, z1 = 0.14, 0.4, -0.13, 0.13, 6.32, 6.84
+        bm = cube((x0, y0, z0), (x1, y1, z1)); P.merge(bm, 'tank', col=lambda c, n: (*(0.8 + 0.2 * (c.z - z0) / (z1 - z0),) * 3, 1.0)); bm.free()
+        P.merge(cube((x0 - 0.01, y0 - 0.01, z1), (x1 + 0.01, y1 + 0.01, z1 + 0.03)), 'tank', col=W)
+        for k in range(6):                                                   # radiator fins on both sides
+            x = x0 + 0.03 + k * 0.04
+            for sy in (-1, 1): P.merge(cube((x - 0.002, sy * 0.13, z0 + 0.06) if sy > 0 else (x - 0.002, -0.175, z0 + 0.06), (x + 0.002, 0.175, z1 - 0.06) if sy > 0 else (x + 0.002, -0.13, z1 - 0.06)), 'tank', col=(0.9, 0.9, 0.9, 1.0))
+        bush = [Vector((0.27, -0.07, z1 + 0.03)), Vector((0.27, 0.07, z1 + 0.03))]
+        straps = (6.45, 6.72); sx = x0
+    else:                                                                    # the quarter's: a finned round tank, where the old cylinder was
+        cx, z0, z1, rr = 0.4, 6.53, 7.21, 0.2
+        revolve(P, [(0.0, 0.0), (rr, 0.0), (rr, z1 - z0 - 0.04), (rr + 0.012, z1 - z0 - 0.03), (rr + 0.012, z1 - z0 - 0.01), (rr * 0.8, z1 - z0 + 0.03), (0.0, z1 - z0 + 0.045)],
+                28, 'tank', col=lambda a, i, c: (*(0.82 + 0.18 * min(1.0, c.z / 0.6),) * 3, 1.0), matrix=Matrix.Translation((cx, 0, z0)))
+        for k in range(9):                                                   # radiator fins round the side away from the pole
+            a = math.radians(-120 + k * 30); d = Vector((math.cos(a), math.sin(a), 0))
+            bm = cube((-0.002, rr - 0.01, 0.08), (0.002, rr + 0.03, z1 - z0 - 0.1))
+            P.merge(bm, 'tank', col=(0.9, 0.9, 0.9, 1.0), matrix=Matrix.Translation((cx, 0, z0)) @ Matrix.Rotation(a - math.pi / 2, 4, 'Z')); bm.free()
+        bush = [Vector((cx - 0.05, -0.07, z1 + 0.04)), Vector((cx - 0.05, 0.07, z1 + 0.04))]
+        straps = (6.7, 7.05); sx = cx - rr
+    for b in bush: revolve(P, BUSHING, 12, 'porcelain', matrix=Matrix.Translation(b))
+    for z in straps:                                                         # hanger straps round the pole, bracketed to the tank
+        rad = rb + (rt - rb) * z / H + 0.006
+        tube(P, [Vector((rad * math.cos(2 * math.pi * k / 16), rad * math.sin(2 * math.pi * k / 16), z)) for k in range(17)], 0.006, 4, 'iron', W)
+        for sy in (-0.06, 0.06): tube(P, [Vector((rad * 0.8, sy, z)), Vector((sx + 0.01, sy, z))], 0.009, 4, 'iron', W)
+    for b, pin in zip(bush, (pins[1], pins[2])):                             # leads from the bushings up to the arm
+        top = b + Vector((0, 0, 0.14)); mid = (top + pin) / 2 + Vector((0.05, 0, -0.1))
+        tube(P, [top, mid, pin + Vector((0, 0, 0.1))], 0.005, 4, 'iron', W)
+    return P.build(smooth=45)
+
+utility_pole('pole_old', 8.6, 8.0, 1.7, 0.3, 'box')
+utility_pole('pole_quarter', 8.8, 8.2, 1.8, 0.0, 'round')
+for k in ('pole_old', 'pole_quarter'): PREVIEW_FOCUS[k] = ((-0.9, -0.5, 6.1), (0.9, 0.5, 8.8))
+
 class HeightField:
     """The heap's top surface on a grid, raised as each piece settles, so pieces rest on the mound and on each other."""
     def __init__(self, f, ext=1.95, cell=0.04):
@@ -466,6 +541,8 @@ if PREVIEW:                                                     # one render per
         for o in pieces: o.hide_render = o is not ob
         ob.scale = PREVIEW_SCALE.get(ob.name, (1, 1, 1)); bpy.context.view_layer.update()
         pts = [ob.matrix_world @ Vector(c) for c in ob.bound_box]
+        if ob.name in PREVIEW_FOCUS:
+            lo, hi = PREVIEW_FOCUS[ob.name]; pts = [Vector((x, y, z)) for x in (lo[0], hi[0]) for y in (lo[1], hi[1]) for z in (lo[2], hi[2])]
         c = sum(pts, Vector()) / 8; rad = max((p - c).length for p in pts)
         d = Vector((0.75, -1.3, 0.7)).normalized()
         cam.location = c + d * rad / math.tan(cam.data.angle / 2) * 1.08

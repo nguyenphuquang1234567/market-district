@@ -582,8 +582,11 @@ export function dress(ctx) {
     K.signs(anchors, { shop: 0.9, shutter: 0.45, door: 0.22 });
   }
   for (const [x, z] of [[-26.6, -19.2], [25.6, 19.4], [-5.2, -58.2], [5.3, 58.3], [-31.4, 21.4]]) {    // utility poles
-    rod(V(x, 0, z), V(x, 8.6, z), 0.11, 'planks', [0.45, 0.4, 0.35]); B.collide(x, 4.3, z, 0.26, 8.6, 0.26, 0, 'wood');
-    B.box('planks', x, 8.0, z, 1.7, 0.1, 0.1, { rot: 0.3, tile: 1, color: [0.45, 0.4, 0.35] }); B.box('metal_white', x + 0.2, 6.6, z, 0.4, 0.6, 0.35, { tile: 1 });
+    B.swap('pole_old', () => {                                               // far off, a rod, a plank and a box; near, the modelled pole (tools/blender/props.py)
+      rod(V(x, 0, z), V(x, 8.6, z), 0.11, 'planks', [0.45, 0.4, 0.35]); B.collide(x, 4.3, z, 0.26, 8.6, 0.26, 0, 'wood');
+      B.box('planks', x, 8.0, z, 1.7, 0.1, 0.1, { rot: 0.3, tile: 1, color: [0.45, 0.4, 0.35] }); B.box('metal_white', x + 0.2, 6.6, z, 0.4, 0.6, 0.35, { tile: 1 });
+    }, () => B.kit('pole_old', mat4(V(x, 0, z)), { wood: 'planks', iron: 'iron', tank: 'metal_white', porcelain: 'glossy' },
+      { lod: 'near', slot: { wood: { uv: 'own', tile: 1, color: [0.45, 0.4, 0.35] }, iron: {}, tank: { tile: 1 }, porcelain: { color: [0.9, 0.92, 0.95] } } }));
     for (let i = 0; i < 4; i++) cable(V(x + rnd.range(-0.7, 0.7), 8.05, z), wallNear(x, z, i), rnd.range(0.3, 0.8));
   }
 

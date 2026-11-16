@@ -31,6 +31,15 @@ const flatFront = parts => {
   return bad ? `${bad} body vertices in front of the sign's panel` : null;
 };
 add(['cart'], { cap: 15000, box: [[-0.92, 0, -0.53], [0.92, 2.1, 0.53]], slots: ['body', 'steel', 'tin', 'iron', 'rubber'], check: flatFront });
+// utility poles (dressing.js and quarter.js poles()): origin at the foot, placed unturned; below 6 m nothing may stand out
+// of the pole's collider (0.26 / 0.28 m square)
+const slim = parts => {
+  let bad = 0;
+  for (const p of parts) { const a = p.geometry.attributes.position; for (let i = 0; i < a.count; i++) if (a.getY(i) < 6 && Math.hypot(a.getX(i), a.getZ(i)) > 0.14) bad++; }
+  return bad ? `${bad} vertices below 6 m outside the pole's collider` : null;
+};
+add(['pole_old'], { cap: 8000, box: [[-0.9, 0, -0.35], [0.9, 8.75, 0.35]], slots: ['wood', 'iron', 'tank', 'porcelain'], ownUV: ['wood'], check: slim });
+add(['pole_quarter'], { cap: 8000, box: [[-0.95, 0, -0.35], [0.95, 8.95, 0.35]], slots: ['wood', 'iron', 'tank', 'porcelain'], ownUV: ['wood'], check: slim });
 // name -> () => [triangles, cap], for things drawn as several pieces
 export const TOTALS = {};
 
