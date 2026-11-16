@@ -7,6 +7,7 @@
 import * as THREE from 'three';
 import { Builder } from '/src/builder.js';
 import { assets } from '/src/assets.js';
+import { dressKit } from '/src/dressing.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 const close = (a, b) => a.length === b.length && a.every((v, i) => Math.abs(v - b[i]) < 1e-6);
@@ -132,6 +133,21 @@ export function builder() {
         if (![...C.buckets.keys()].some(i => /^concrete\|\d+$/.test(i))) fail('replace(missing): the old version is not drawn');
       }
     } finally { assets.kit = keep; }
+  }
+  { // rods of 1 cm and up are drawn 10-sided, cables 6-sided, untagged; inside a far version (lodDefault) as before
+    {
+      const tri = B => [...B.buckets.values()].reduce((t, k) => t + k.i.length / 3, 0);
+      const make = () => { const B = new Builder(); return { B, K: dressKit({ B, M: {}, rnd: () => 0.5, buildings: [], anchors: [], low: null }) }; };
+      let { B, K } = make(); K.rod(V(0, 0, 0), V(0, 1, 0), 0.02);
+      if (tri(B) !== 40) fail('rod r 0.02: ' + tri(B) + ' triangles, want 40 (10 sides with caps)');
+      ({ B, K } = make()); K.rod(V(0, 0, 0), V(0, 1, 0), 0.005);
+      if (tri(B) !== 24) fail('rod r 0.005: ' + tri(B) + ' triangles, want 24 (thin cords stay 6-sided)');
+      ({ B, K } = make()); B.lodDefault = 'far'; K.rod(V(0, 0, 0), V(0, 1, 0), 0.02);
+      if (tri(B) !== 24) fail('rod in a far version: ' + tri(B) + ' triangles, want 24');
+      ({ B, K } = make()); K.cable(V(0, 5, 0), V(4, 5, 0), 0.5);
+      if (tri(B) !== 192) fail('cable: ' + tri(B) + ' triangles, want 192 (16 x 6 x 2)');
+      if ([...B.buckets.keys()].some(i => /\|(near|far)$/.test(i))) fail('rods/cables tagged: ' + [...B.buckets.keys()]);
+    }
   }
   { // geom passes its lod; under lodDefault an untagged draw takes it, an explicit null stays untagged
     const B = new Builder();

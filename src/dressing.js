@@ -23,16 +23,18 @@ export function dressKit({ B, M, rnd, buildings, anchors, low, rs = null }) {
   };
   const mat4 = (p, rotY = 0, s = 1, rx = 0, rz = 0) => new THREE.Matrix4().compose(p, new THREE.Quaternion().setFromEuler(new THREE.Euler(rx, rotY, rz, 'YXZ')), typeof s === 'number' ? V(s, s, s) : s);
 
-  // cylinder between two points
+  // cylinder between two points: 10-sided from 1 cm up (the thin cords of piñatas and ristras stay 6-sided), and as it
+  // always was inside the plain far version of a modelled piece (B.lodDefault)
   const rod = (a, b, r, key = 'iron', color) => {
     const d = b.clone().sub(a), len = d.length();
     const m = new THREE.Matrix4().compose(a.clone().add(b).multiplyScalar(0.5), new THREE.Quaternion().setFromUnitVectors(UP, d.normalize()), V(1, 1, 1));
-    B.geom(key, new THREE.CylinderGeometry(r, r, len, 6), m, { color, uvScaleY: len });
+    B.geom(key, new THREE.CylinderGeometry(r, r, len, r >= 0.01 && !B.lodDefault ? 10 : 6), m, { color, uvScaleY: len });
   };
   const cable = (a, b, sag, r = 0.012) => {
     const pts = [];
     for (let i = 0; i <= 10; i++) { const t = i / 10, p = a.clone().lerp(b, t); p.y -= sag * 4 * t * (1 - t); pts.push(p); }
-    B.geom('cable', new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 14, r, 4, false), I);
+    const fine = !B.lodDefault;                                                 // (6 sides and 16 segments; 4 and 14 as before inside a far version)
+    B.geom('cable', new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), fine ? 16 : 14, r, fine ? 6 : 4, false), I);
     return pts;
   };
   // deformable cloth sheet: fn(s,t) -> { p, w } where w is how freely the vertex moves in the wind
