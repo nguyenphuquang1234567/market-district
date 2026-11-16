@@ -79,7 +79,7 @@ const FinalShader = {
     tDiffuse: { value: null }, uRes: { value: new THREE.Vector2(1, 1) }, uTime: { value: 0 },
     uVignette: { value: 0.22 }, uGrain: { value: 0.018 }, uCA: { value: 0.6 }, uSharp: { value: 0.22 },
     uDamage: { value: 0 }, uDesat: { value: 0 }, uFlash: { value: 0 }, uBlur: { value: new THREE.Vector2() },
-    uSat: { value: 1.08 }, uWarm: { value: new THREE.Vector3(1.035, 1.0, 0.94) }, uCool: { value: new THREE.Vector3(0.975, 0.99, 1.03) },
+    uSat: { value: 1.0 }, uWarm: { value: new THREE.Vector3(1.015, 1.0, 0.975) }, uCool: { value: new THREE.Vector3(0.985, 0.995, 1.02) },
   },
   vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
   fragmentShader: `
@@ -99,8 +99,9 @@ const FinalShader = {
         col = mix(col, acc / 11.0, smoothstep(0.02, 0.2, r2));
       }
       col *= 1.0 - uVignette * smoothstep(0.12, 0.80, r2 * 1.7);
-      // grade: a little more colour in the lime-washed walls and papel picado, sunlit tones warmed, shade a touch cooler
-      // (balanced so neither end gets darker: shade stays readable)
+      // grade: sunlit tones a touch warmer, shade a touch cooler, saturation left as lit (balanced so neither end gets
+      // darker: shade stays readable). The sun is already warm (sunColor): warming its light again here turned every
+      // limewashed wall orange, and the extra saturation the walls once got made the painted ones garish.
       float lg = dot(col, vec3(.2126, .7152, .0722));
       col = mix(vec3(lg), col, uSat) * mix(uCool, uWarm, smoothstep(0.12, 0.8, lg));
       float l = dot(col, vec3(.2126, .7152, .0722));

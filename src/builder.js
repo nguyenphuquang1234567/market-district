@@ -153,7 +153,7 @@ export class Builder {
     const nm = new THREE.Matrix3().getNormalMatrix(m), e = m.elements;
     for (const part of piece) {
       const key = slots[part.slot]; if (!key) continue;
-      const so = o.slot?.[part.slot] || o, tile = so.tile || 1.4, uo = so.uo || 0, vo = so.vo || 0, tint = so.color || WHITE;
+      const so = o.slot?.[part.slot] || o, tile = so.tile || 1.4, uo = so.uo || 0, vo = so.vo || 0, tint = so.color || WHITE, xx = so.x || WHITE;
       const k = this._b(key, e[12], e[14], false, so.lod !== undefined ? so.lod : o.lod), base = k.p.length / 3, g = part.geometry;
       const pos = g.attributes.position, nor = g.attributes.normal, col = g.attributes.color;
       for (let i = 0; i < pos.count; i++) {
@@ -164,7 +164,7 @@ export class Builder {
         if (ay >= ax && ay >= az) k.u.push(px / tile + uo, (-pz * Math.sign(nrm.y)) / tile + vo);
         else { const sx = ax > az ? Math.sign(nrm.x) : 0, sz = ax > az ? 0 : Math.sign(nrm.z); k.u.push((px * sz - pz * sx) / tile + uo, py / tile + vo); }
         if (col) k.c.push(col.getX(i) * tint[0], col.getY(i) * tint[1], col.getZ(i) * tint[2]); else k.c.push(tint[0], tint[1], tint[2]);
-        k.x.push(1, 1, 1);
+        k.x.push(xx[0], xx[1], xx[2]);
       }
       if (g.index) for (let i = 0; i < g.index.count; i++) k.i.push(base + g.index.getX(i));
       else for (let i = 0; i < pos.count; i++) k.i.push(base + i);
@@ -341,6 +341,7 @@ export class Builder {
       g.setAttribute('uv', new THREE.Float32BufferAttribute(k.u, 2));
       g.setAttribute('color', new THREE.Float32BufferAttribute(k.c, 3));
       if (key === 'ground') g.setAttribute('aBlend', new THREE.Float32BufferAttribute(k.x, 3));
+      if (M[key].userData.extra) g.setAttribute(M[key].userData.extra, new THREE.Float32BufferAttribute(k.x, 3));
       if (M[key].userData.patchKey?.startsWith('wind')) g.setAttribute('aWind', new THREE.Float32BufferAttribute(k.x.filter((_, i) => i % 3 < 2), 2));
       g.setIndex(k.i);
       const mesh = new THREE.Mesh(g, M[key]);

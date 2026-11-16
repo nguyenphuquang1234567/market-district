@@ -358,6 +358,150 @@ def fountain_tazza():
     return keep(join('fountain_tazza', [t, ped]), sm=34)
 fountain_tazza()
 
+# ---------------------------------------------------------------------------------------------------- facade archetypes ---
+# Pieces for the facade archetypes (world.js / facades.js): arched surrounds, window hoods and pediments, quoins,
+# pilasters, wrought iron, casement frames, balustrades and a niche. Same axes as the rest of the kit.
+def sweep_path(name, prof, path, material, caps=True):
+    """A closed profile [(a, b)] swept along a path in the wall plane, path [(x, z)]: a = offset to the right of the path
+    (outwards, for an arch traced anticlockwise), b = how far the point stands out of the wall (-y). Joints are mitred."""
+    bm = bmesh.new(); m = len(path); rings = []
+    for i, (x, z) in enumerate(path):
+        xa, za = path[i - 1] if i > 0 else (2 * x - path[1][0], 2 * z - path[1][1])
+        xb, zb = path[i + 1] if i < m - 1 else (2 * x - path[i - 1][0], 2 * z - path[i - 1][1])
+        tx, tz = xb - xa, zb - za; l = math.hypot(tx, tz); tx, tz = tx / l, tz / l
+        nx, nz = tz, -tx
+        s = 1.0
+        if 0 < i < m - 1:                                         # keep the profile's width round a corner
+            ux, uz = x - xa, z - za; lu = math.hypot(ux, uz); ux, uz = ux / lu, uz / lu
+            s = 1.0 / max(0.3, uz * nx - ux * nz)                    # 1 / cos(half the turn): the incoming segment's normal against the mitre's
+        rings.append([bm.verts.new((x + nx * a * s, -b, z + nz * a * s)) for a, b in prof])
+    n = len(prof)
+    for i in range(m - 1):
+        A, Bv = rings[i], rings[i + 1]
+        for k in range(n): j = (k + 1) % n; poly(bm, (A[k], A[j], Bv[j], Bv[k]))
+    if caps: poly(bm, rings[0][::-1]); poly(bm, rings[-1])
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
+    return to_obj(name, bm, material)
+
+def tube(bm, pts, r, sides=4):
+    """A thin bar along a polyline [(x, y, z)] (square for sides = 4), into an existing bmesh."""
+    rings = []
+    for i, p in enumerate(pts):
+        a = Vector(pts[max(0, i - 1)]); b = Vector(pts[min(len(pts) - 1, i + 1)]); t = (b - a).normalized()
+        u = t.cross(Vector((0, 1, 0))); u = u.normalized() if u.length > 1e-6 else Vector((1, 0, 0)); w = t.cross(u).normalized()
+        rings.append([bm.verts.new(Vector(p) + (u * math.cos(2 * math.pi * k / sides + math.pi / 4) + w * math.sin(2 * math.pi * k / sides + math.pi / 4)) * r) for k in range(sides)])
+    for i in range(len(rings) - 1):
+        for k in range(sides): j = (k + 1) % sides; poly(bm, (rings[i][k], rings[i][j], rings[i + 1][j], rings[i + 1][k]))
+    poly(bm, rings[0][::-1]); poly(bm, rings[-1])
+
+def scroll(cx, cz, r0, turns, start, sign=1, n=14, y=0.0):
+    """A flat spiral in the wall plane (an iron C or S scroll's curl), centre (cx, cz), from radius r0 inwards."""
+    return [(cx + sign * r0 * (1 - 0.55 * k / n) * math.cos(start + sign * turns * 2 * math.pi * k / n), y, cz + r0 * (1 - 0.55 * k / n) * math.sin(start + sign * turns * 2 * math.pi * k / n)) for k in range(n + 1)]
+
+# Arched surround (archivolt) for an opening 1 m wide, its springing at z = 0: the window/door surround bar's own
+# profile carried round a semicircle, so it runs on from the straight jambs. The game scales it by the opening's span.
+ARCHI = [(z, -y) for y, z in BAR]
+keep(sweep_path('archivolt', ARCHI, [(0.5 * math.cos(math.pi * k / 18), 0.5 * math.sin(math.pi * k / 18)) for k in range(19)], TRIM), sm=40)
+
+# Window hood (cornisa de ventana): a small cornice on two scrolled consoles, 1 m wide (stretched to fit), bottom at
+# z = 0 (just above the surround), its consoles hanging below the ends.
+HOOD = [(y * 0.45, z * 0.45) for y, z in COR]
+hood = sweep('_hood', HOOD, 1.0, TRIM)
+cons = []
+for sx in (-0.45, 0.45):
+    c = sweep('_cn', CB, 1.0, TRIM); c.scale = (0.075, 0.3, 0.55); c.location = (sx, 0, 0); apply(c); only(c); bpy.ops.object.transform_apply(location=True, scale=True); cons.append(c)
+keep(bevel(join('hood', [hood] + cons), 0.002, 1, 45), sm=40)
+
+# Pediment (fronton): raking cornices meeting at the apex over a straight one, the tympanum flat between them. 1 m wide.
+PED = [(z * 0.32, -y * 0.32) for y, z in COR]
+rake = sweep_path('_rk', PED, [(0.55, 0.0), (0.0, 0.26), (-0.55, 0.0)], TRIM)
+base = sweep('_pb2', [(y * 0.32, z * 0.32) for y, z in COR], 1.12, TRIM)
+bm = bmesh.new(); vs = [bm.verts.new(p) for p in [(-0.5, -0.004, 0.05), (0.5, -0.004, 0.05), (0.0, -0.004, 0.25)]]; poly(bm, vs)
+tymp = to_obj('_ty', bm, WALL)
+keep(join('pediment', [rake, base, tymp]), sm=40)
+
+# Quoins (sillares): rusticated corner stones standing 3 cm proud, long and short arms alternating up the corner. The
+# corner convention of corner(): building inside at x < 0, y > 0; facade A is y = 0, facade B is x = 0. 0.34 m tall.
+def quoin(name, la, lb):
+    q = box(name, -la, 0.03, -0.03, 0.02, 0.0, 0.34, TRIM); cut(q, box('_qb', -0.02, 0.03, -0.03, lb, 0.0, 0.34, TRIM), 'UNION')
+    return keep(bevel(q, 0.018, 2, 30), sm=40)
+quoin('quoin_a', 0.44, 0.26); quoin('quoin_b', 0.26, 0.44)
+
+# Pilaster: a shaft 0.36 wide and 4 cm proud with a sunk panel, one metre tall (stretched), and its base and capital.
+sh = box('pilaster', -0.18, 0.18, -0.04, 0.01, 0.0, 1.0, TRIM); cut(sh, box('_pp', -0.11, 0.11, -0.06, -0.028, 0.05, 0.95, TRIM))
+keep(bevel(sh, 0.004, 1, 40), sm=40)
+pb = [box('_b1', -0.23, 0.23, -0.085, 0.01, 0.0, 0.12, TRIM), box('_b2', -0.21, 0.21, -0.07, 0.01, 0.12, 0.17, TRIM), box('_b3', -0.19, 0.19, -0.05, 0.01, 0.17, 0.2, TRIM)]
+for o in pb: bevel(o, 0.012, 2, 30)
+keep(join('pil_base', pb), sm=40)
+pc = [box('_c1', -0.19, 0.19, -0.05, 0.01, 0.0, 0.04, TRIM), box('_c2', -0.21, 0.21, -0.075, 0.01, 0.04, 0.1, TRIM), box('_c3', -0.24, 0.24, -0.1, 0.01, 0.1, 0.16, TRIM)]
+for o in pc: bevel(o, 0.012, 2, 30)
+keep(join('pil_cap', pc), sm=40)
+
+# Wrought iron balcony railing (barandal de herreria), 1 m wide and 1 m tall, in the plane y = 0: rails, square
+# balusters, S scrolls along the foot, paired C scrolls under the top rail and a ring in the middle.
+def rail_scroll():
+    bm = bmesh.new(); r = 0.0075
+    for z0, z1 in [(0.0, 0.03), (0.21, 0.23), (0.965, 1.0)]:
+        tube(bm, [(-0.5, 0, (z0 + z1) / 2), (0.5, 0, (z0 + z1) / 2)], (z1 - z0) / 2 * 1.2)
+    xs = [-0.4375 + 0.125 * k for k in range(8)]
+    for x in xs: tube(bm, [(x, 0, 0.23), (x, 0, 0.965)], r)
+    for x in [-0.5 + 0.125 * k for k in range(8)]:                                  # S scrolls in the foot band
+        c = x + 0.0625
+        tube(bm, scroll(c - 0.022, 0.12, 0.05, 0.75, -math.pi / 2, 1, 10)[::-1] + scroll(c + 0.022, 0.12, 0.05, 0.75, math.pi / 2, 1, 10)[1:], r * 0.8)
+    for x in xs[::2]:                                                               # paired C scrolls under the top rail
+        c = x + 0.0625
+        tube(bm, scroll(c - 0.03, 0.9, 0.035, 0.8, 0.0, -1, 10), r * 0.8); tube(bm, scroll(c + 0.03, 0.9, 0.035, 0.8, math.pi, 1, 10), r * 0.8)
+    tube(bm, [(0.075 * math.cos(2 * math.pi * k / 16), 0, 0.6 + 0.075 * math.sin(2 * math.pi * k / 16)) for k in range(17)], r)   # the ring
+    return keep(to_obj('rail_scroll', bm, IRON), sm=50)
+rail_scroll()
+
+# Window grille (proteccion), 1 x 1 m in the plane y = 0: square bars, two flat bars across, S scrolls along the top.
+def reja():
+    bm = bmesh.new(); r = 0.008
+    for x in [-0.375 + 0.125 * k for k in range(7)]: tube(bm, [(x, 0, 0.0), (x, 0, 1.0)], r)
+    for z in (0.1, 0.8): tube(bm, [(-0.5, 0, z), (0.5, 0, z)], 0.012, 4)
+    for x in [-0.375 + 0.125 * k for k in range(6)]:
+        c = x + 0.0625
+        tube(bm, scroll(c - 0.02, 0.9, 0.045, 0.7, -math.pi / 2, 1, 9)[::-1] + scroll(c + 0.02, 0.9, 0.045, 0.7, math.pi / 2, 1, 9)[1:], r * 0.75)
+    for x in (-0.5, 0.5): tube(bm, [(x, 0, 0.0), (x, 0, 1.0)], 0.012)
+    return keep(to_obj('reja', bm, IRON), sm=50)
+reja()
+
+# Casement window (ventana de madera), 1 x 1 m, its face in the plane y = 0 and 6 cm deep into +y: a frame, two
+# leaves meeting in the middle, each glazed in three panes by glazing bars.
+def casement():
+    obs = [box('_f1', -0.5, -0.44, 0.0, 0.06, 0.0, 1.0, WOOD), box('_f2', 0.44, 0.5, 0.0, 0.06, 0.0, 1.0, WOOD),
+           box('_f3', -0.5, 0.5, 0.0, 0.06, 0.0, 0.07, WOOD), box('_f4', -0.5, 0.5, 0.0, 0.06, 0.94, 1.0, WOOD),
+           box('_f5', -0.03, 0.03, -0.01, 0.05, 0.07, 0.94, WOOD)]
+    for z in (0.36, 0.65):
+        obs += [box('_gb', -0.44, -0.03, 0.01, 0.04, z - 0.012, z + 0.012, WOOD), box('_gb', 0.03, 0.44, 0.01, 0.04, z - 0.012, z + 0.012, WOOD)]
+    for x in (-0.235, 0.235): obs.append(box('_gv', x - 0.011, x + 0.011, 0.01, 0.04, 0.07, 0.94, WOOD))
+    c = join('casement', obs); return keep(bevel(c, 0.004, 1, 40), sm=40)
+casement()
+
+# Balustrade (balaustrada), 1 m: a plinth, four turned balusters and a moulded rail. Centred on y = 0, 0.84 tall.
+BAL = [(0.0, 0.14), (0.055, 0.14), (0.055, 0.17), (0.04, 0.2), (0.05, 0.27), (0.072, 0.36), (0.07, 0.43), (0.05, 0.5), (0.035, 0.56),
+       (0.035, 0.62), (0.05, 0.66), (0.055, 0.7), (0.0, 0.7)]
+def balustrade():
+    obs = [box('_bp', -0.5, 0.5, -0.12, 0.12, 0.0, 0.14, TRIM), box('_br', -0.5, 0.5, -0.14, 0.14, 0.7, 0.84, TRIM)]
+    for o in obs: bevel(o, 0.015, 2, 30)
+    for x in (-0.375, -0.125, 0.125, 0.375):
+        b = lathe('_bl', BAL, 10, TRIM); b.location = (x, 0, 0); apply(b); only(b); bpy.ops.object.transform_apply(location=True); obs.append(b)
+    return keep(join('balustrade', obs), sm=34)
+balustrade()
+
+# Niche (nicho) with a saint: a moulded arched frame standing out of the wall, a blue painted back, a little shelf
+# and a figure in a long robe. 0.5 wide, 0.9 tall, bottom at z = 0.
+def niche():
+    fr = sweep_path('_nf', [(a * 0.6, b * 0.8) for a, b in ARCHI], [(0.2, 0.0), (0.2, 0.55)] + [(0.2 * math.cos(math.pi * k / 12), 0.55 + 0.2 * math.sin(math.pi * k / 12)) for k in range(1, 12)] + [(-0.2, 0.55), (-0.2, 0.0)], TRIM)
+    bm = bmesh.new(); pts = [(0.2, 0.0), (0.2, 0.55)] + [(0.2 * math.cos(math.pi * k / 12), 0.55 + 0.2 * math.sin(math.pi * k / 12)) for k in range(1, 12)] + [(-0.2, 0.55), (-0.2, 0.0)]
+    poly(bm, [bm.verts.new((x, -0.002, z)) for x, z in pts]); back = to_obj('_nb', bm, TILE)
+    shelf = bevel(box('_ns', -0.24, 0.24, -0.12, 0.01, -0.06, 0.0, TRIM), 0.01, 2, 30)
+    fig = lathe('_nfg', [(0.0, 0.0), (0.075, 0.0), (0.07, 0.1), (0.055, 0.3), (0.05, 0.38), (0.045, 0.42), (0.03, 0.44), (0.032, 0.47), (0.03, 0.5), (0.0, 0.51)], 10, TRIM)
+    fig.location = (0, -0.07, 0.0); apply(fig); only(fig); bpy.ops.object.transform_apply(location=True)
+    return keep(join('niche', [fr, back, shelf, fig]), sm=40)
+niche()
+
 # ---------------------------------------------------------------------------------------------------- export ---------
 for ob in pieces: ob.location = (0, 0, 0)
 summary = ', '.join(f'{ob.name} {tri_count(ob)}' for ob in pieces)

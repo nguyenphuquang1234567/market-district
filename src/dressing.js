@@ -2,6 +2,8 @@
 import * as THREE from 'three';
 import { FLOOR0, PARAPET, SIDEWALK } from './world.js';
 import { tarpV, papelUV, PAPEL_COLOURS, SIGNS, signUV } from './mexico.js';
+import { rng } from './util.js';
+import { hash as fhash } from './facades.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 const I = new THREE.Matrix4();
@@ -211,7 +213,12 @@ export function dressKit({ B, M, rnd, buildings, anchors, low, rs = null }) {
   function dressAnchors(list) {
   const stalls = [];
   for (const a of list) {
-    B.mute = !!a.bd?.ghost;
+    // An archetype's own balcony or window (facades.js) is dressed from a stream of its own; a legacy anchor (on a floor
+    // the archetype redrew) is dressed for the same draws as always, into nothing. The shared stream never notices.
+    const keepR = rnd, keepS = rs;
+    if (a.own) { rnd = rng(Math.floor(fhash(a.p.x, a.p.y, a.p.z, 5) * 1e9) + 3); rs = rnd; }
+    try {
+    B.mute = !!a.bd?.ghost || !!a.legacy;
     if (a.street === 'none') continue;
     const { p, N, T } = a, rotN = N ? Math.atan2(N.x, N.z) : 0;
     const at = (u, y, d) => V(p.x + T.x * u + N.x * d, y, p.z + T.z * u + N.z * d);   // d = metres out from the wall
@@ -253,9 +260,10 @@ export function dressKit({ B, M, rnd, buildings, anchors, low, rs = null }) {
       const sk = P(rb - 0.55, y, D - 1.3); sack(sk.x, sk.y, sk.z, rnd.pick(SPICE)); const sk2 = P(rb - 0.6, y, D - 1.95); sack(sk2.x, sk2.y, sk2.z, rnd.pick(SPICE));
       const bulb = P(mid, a.h - 0.5, 2.2); rod(P(mid, a.h, 2.2), bulb, 0.006, 'cable');
     } else if (a.kind === 'balcony') {
-      if (rs && !a.bd?.ghost && rs() < (a.bd?.late !== undefined && a.street === 'calle' ? 0.3 : 0.16)) bougainvillea(at(rs.range(-a.w / 4, a.w / 4), p.y + 1.05, 0.08), N, T, rs.range(0.9, a.w * 0.8), rs.range(1.2, 2.6));
+      if (rs && !a.bd?.ghost && rs() < (a.bd?.late !== undefined && a.street === 'calle' ? 0.3 : 0.16)) { bougainvillea(at(rs.range(-a.w / 4, a.w / 4), p.y + 1.05, 0.08), N, T, rs.range(0.9, a.w * 0.8), rs.range(1.2, 2.6)); a.draped = true; }
       const k = rnd.int(0, 5), top = p.y + 1.0;
-      if (k <= 1) {             // laundry / rug over the rail
+      if (k <= 1) {             // laundry / rug over the rail (soft: a grenade thrown at it drops)
+        a.draped = true;
         const w = rnd.range(0.7, Math.min(1.5, a.w - 0.4)), u0 = rnd.range(-a.w / 2 + 0.2, a.w / 2 - 0.2 - w), len = rnd.range(0.7, 1.2), key = k === 0 ? 'rug' : rnd.pick(['cloth_plain', 'cloth_red', 'cloth_green']);
         sheet(key, 4, 5, (u, t) => ({ p: at(u0 + u * w, top + 0.02 - t * len, 0.03 + 0.02 * t), w: t * (key === 'rug' ? 0.15 : 0.9) }), { color: key === 'cloth_plain' ? rnd.pick(FADED) : [1, 1, 1], us: key === 'rug' ? 1 : 1.5, vs: key === 'rug' ? 1.3 : 1.5 });
       } else if (k === 2) planter(at(rnd.range(-0.4, 0.4), p.y, -0.3), 1.5);
@@ -308,6 +316,7 @@ export function dressKit({ B, M, rnd, buildings, anchors, low, rs = null }) {
       if (rnd.chance(0.5)) { const q = ep(); B.prop(rnd.chance(0.5) ? 'ac' : 'ac_rust', q.x, H, q.z, rnd() * 6.28, 1); }
       if (rnd.chance(0.3)) { const q = ep(); for (let i = 0; i < 2; i++) B.geom('metal_white', new THREE.CylinderGeometry(0.09, 0.09, 1.5, 8), mat4(V(q.x + i * 0.5, H + 0.75, q.z)), { color: [0.6, 0.6, 0.6] }); }
     }
+    } finally { rnd = keepR; rs = keepS; }
   }
   B.mute = false;
   return stalls;

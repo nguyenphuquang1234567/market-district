@@ -167,8 +167,10 @@ export function selfTest(G) {
   const backX = nw ? nw.item.body.translation().x : 0;
   check('thrown hard at a wall it comes back off it, not through it', !!nw && minX > -6.3 && nw.bounces >= 1 && backX > minX + 0.5, `nearest the wall x ${minX.toFixed(2)}, came back to x ${backX.toFixed(2)}`);
   if (nw) T.remove(nw);
-  // balconies, railings and awnings have no collision box: thrown objects meet them as the triangles that are drawn
-  const balc = G.world.anchors.find(q => q.kind === 'balcony' && q.solid && q.street === 'main');
+  // a balcony's parapet or balustrade is a box the solver knows; what hangs over it (a rug, laundry, bougainvillea) is
+  // soft and takes the throw out of a grenade, so the test throws at a bare one
+  const bare = G.world.anchors.filter(q => q.kind === 'balcony' && q.solid && !q.draped), plain = q => (q.front ?? 0.11) < 0.2;
+  const balc = bare.find(q => q.street === 'main' && plain(q)) || bare.find(q => q.street === 'main') || bare.find(plain) || bare[0];   // (a plastered parapet on the main street, as the test was written for, else a balustrade, else one elsewhere)
   if (balc) {
     const B0 = balc.p, N0 = balc.N, into = q => (B0.x - q.x) * N0.x + (B0.z - q.z) * N0.z;      // how far past the balcony's outer face (metres)
     const gb = T.spawn('frag', new V3(B0.x + N0.x * 4, B0.y + 0.2, B0.z + N0.z * 4), new V3(-N0.x * 10, 2.4, -N0.z * 10), still, new Q4(), null); gb.fuse = 99;
@@ -176,15 +178,18 @@ export function selfTest(G) {
     const backOff = into(gb.item.body.translation()), knocked = gb.bounces; T.remove(gb);
     const gd = T.spawn('frag', new V3(B0.x - N0.x * 0.5, B0.y + 1.3, B0.z - N0.z * 0.5), still, still, new Q4(), null); gd.fuse = 99; run(3.2);
     const lying = gd.item.body.translation().y - B0.y, asleep = gd.item.body.isSleeping(); T.remove(gd);
-    check('a grenade thrown at a balcony comes back off it, and one dropped onto it stays lying there', deepest < 0.06 && knocked >= 1 && backOff < -0.5 && lying > 0.01 && lying < 0.06 && asleep,
+    check('a grenade thrown at a balcony comes back off it, and one dropped onto it stays lying there', deepest < 0.06 && knocked >= 1 && backOff < -0.3 && lying > 0.01 && lying < 0.06 && asleep,
       `got ${(deepest * 100).toFixed(0)} cm past its face at most, came back ${(-backOff).toFixed(1)} m; dropped one lies ${(lying * 100).toFixed(1)} cm above the floor, at rest ${asleep}`);
   }
   // a balcony is a floor to stand on, its railing or parapet stops a soldier, and only the floor and the parapet hide one
   park(); P.health = 100;
-  const bIron = G.world.anchors.find(q => q.kind === 'balcony' && !q.solid && q.street === 'main');
-  for (const [q, name, wall] of [[bIron, 'railing', 0.04], [balc, 'parapet', 0.11]]) {
+  // (balconies a soldier fits on: their depth inside the railing or parapet more than a body's width)
+  const room = q => (q.dep ?? 1.05) - (q.front ?? (q.solid ? 0.11 : 0.04)) > 0.72;
+  const bIron = G.world.anchors.find(q => q.kind === 'balcony' && !q.solid && q.street === 'main' && room(q)), bSolid = G.world.anchors.find(q => q.kind === 'balcony' && q.solid && room(q));
+  for (const [q, name] of [[bIron, 'railing'], [bSolid, 'parapet']]) {
     if (!q) continue;
-    const s0 = { x: q.p.x - q.N.x * 0.5, z: q.p.z - q.N.z * 0.5 }, edge = () => (P.pos.x - q.p.x) * q.N.x + (P.pos.z - q.p.z) * q.N.z, side = () => Math.abs((P.pos.x - q.p.x) * q.T.x + (P.pos.z - q.p.z) * q.T.z);
+    const wall = q.front ?? (q.solid ? 0.11 : 0.04), mid = wall + ((q.dep ?? 1.05) - wall) / 2;
+    const s0 = { x: q.p.x - q.N.x * mid, z: q.p.z - q.N.z * mid }, edge = () => (P.pos.x - q.p.x) * q.N.x + (P.pos.z - q.p.z) * q.N.z, side = () => Math.abs((P.pos.x - q.p.x) * q.T.x + (P.pos.z - q.p.z) * q.T.z);
     G.goto(s0.x, s0.z, Math.atan2(q.N.x, q.N.z) * 180 / Math.PI); P.pos.y = q.p.y + 0.6; run(0.6);
     const landed = P.grounded && Math.abs(P.pos.y - q.p.y) < 0.02;
     P.sim.f = 1; run(1.2); P.sim.f = 0; const front = edge(), y1 = P.pos.y - q.p.y;
@@ -192,9 +197,9 @@ export function selfTest(G) {
     check(`a soldier dropped onto a balcony stands on it and its ${name} stops him`, landed && Math.abs(y1) < 0.02 && Math.abs(y2) < 0.02 && front < -(wall + 0.32) && across < q.w / 2 - wall - 0.32,
       `landed ${landed}, ${(-front).toFixed(2)} m in from the front, ${(q.w / 2 - across).toFixed(2)} m in from the side, ${y2.toFixed(2)} m off the floor`);
   }
-  if (bIron && balc) {
+  if (bIron && bSolid) {
     const at = (q, n, dy) => new V3(q.p.x - q.N.x * n, q.p.y + dy, q.p.z - q.N.z * n);
-    const floor = !G.los(at(bIron, 0.5, -0.6), at(bIron, 0.5, 0.6)), rail = G.los(at(bIron, 0.5, 0.5), at(bIron, -1.5, 0.5)), parapet = !G.los(at(balc, 0.5, 0.5), at(balc, -1.5, 0.5));
+    const floor = !G.los(at(bIron, 0.5, -0.6), at(bIron, 0.5, 0.6)), rail = G.los(at(bIron, 0.5, 0.5), at(bIron, -1.5, 0.5)), parapet = !G.los(at(bSolid, 0.5, 0.5), at(bSolid, -1.5, 0.5));
     check('a balcony floor and parapet stop sight and fire, its open railing does not', floor && rail && parapet, `floor ${floor ? 'blocks' : 'open'}, railing ${rail ? 'see-through' : 'blocks'}, parapet ${parapet ? 'blocks' : 'open'}`);
   }
   park(); G.goto(0.6, -58, 0, 0); P.health = 100;

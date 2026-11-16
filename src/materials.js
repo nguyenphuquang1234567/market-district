@@ -20,14 +20,21 @@ function pbr(id, o = {}) {
 }
 
 // World-space weathering: large tonal blotches, rain streaks down walls and splash-back dirt near the ground.
-function weather(m, grime = 1, macro = 1) {
-  m.userData.patchKey = `w${grime}_${macro}`;
+// peel { lo, hi, flat, mean }: the texture is paint flaking off plaster, and the vertex tint (the paint's colour) takes
+// only where its texel is lighter than lo..hi; the plaster showing through keeps its own grey. Over the paint the
+// plaster's grain is evened out by `flat` towards `mean` (the painted texels' average, so the tint still lands on it).
+// age: the paint's age per building, in the vec3 attribute aAge (the builder's extra attribute, o.x): x how far the sun
+// has bleached it, y how much road dust and rising damp it has taken, z 1 + the height (m) the street floor was repainted
+// to. (1, 1, 1), what anything drawn without it gets, is a common amount of both and no repainting.
+function weather(m, grime = 1, macro = 1, peel = null, age = false) {
+  m.userData.patchKey = `w${grime}_${macro}` + (peel ? `_p${peel.lo}_${peel.hi}_${peel.flat}` : '') + (age ? '_age' : '');
+  if (age) m.userData.extra = 'aAge';
   m.userData.patch = shader => {
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nvarying vec3 vWPos;')
-      .replace('#include <project_vertex>', '#include <project_vertex>\nvWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+      .replace('#include <common>', '#include <common>\nvarying vec3 vWPos;' + (age ? '\nattribute vec3 aAge;\nvarying vec3 vAge;' : ''))
+      .replace('#include <project_vertex>', '#include <project_vertex>\nvWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;' + (age ? '\nvAge = aAge;' : ''));
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\nvarying vec3 vWPos;')
+      .replace('#include <common>', '#include <common>\nvarying vec3 vWPos;' + (age ? '\nvarying vec3 vAge;' : ''))
       .replace('#include <map_fragment>', `#include <map_fragment>
         {
           vec3 gn = abs(normalize(cross(dFdx(vWPos), dFdy(vWPos))));
@@ -36,12 +43,49 @@ function weather(m, grime = 1, macro = 1) {
           vec2 wuv = wall > 0.5 ? vec2(along, vWPos.y) : vWPos.xz;
           float n1 = texture2D(tCloud, wuv * 0.037).r;
           float n2 = texture2D(tCloud, wuv * 0.19 + 0.37).g;
-          float st = texture2D(tCloud, vec2(along * 0.55, vWPos.y * 0.03)).b;
+          // rain streaks: two scales at odd ratios, and whole stretches of wall left clean, so they never repeat in step
+          float st = texture2D(tCloud, vec2(along * 0.23 + 0.31, vWPos.y * 0.022)).b * 0.62 + texture2D(tCloud, vec2(along * 0.067 + 0.7, vWPos.y * 0.009)).b * 0.38;
+          float sm = smoothstep(0.35, 0.65, texture2D(tCloud, vec2(along * 0.021 + vWPos.y * 0.004, 0.37)).r);
           diffuseColor.rgb *= mix(1.0, mix(0.78, 1.10, n1) * mix(0.90, 1.07, n2), ${macro.toFixed(2)});
-          diffuseColor.rgb *= 1.0 - smoothstep(0.50, 0.80, st) * wall * 0.30 * ${macro.toFixed(2)};
-          float g = wall * (1.0 - smoothstep(0.05, 0.7 + n2 * 1.1, vWPos.y)) * ${grime.toFixed(2)};
+          diffuseColor.rgb *= 1.0 - smoothstep(0.50, 0.78, st) * sm * wall * 0.34 * ${macro.toFixed(2)};
+          float g = wall * (1.0 - smoothstep(0.05, 0.7 + n2 * 1.1, vWPos.y)) * ${grime.toFixed(2)}${age ? ' * vAge.y * 0.75' : ''};
           diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.66, 0.58, 0.47), g * 0.8);
         }`);
+    if (!peel && !age) return;
+    const paint = peel ? `{
+          vec3 tx = sampledDiffuseColor.rgb;
+          float pm = smoothstep(${peel.lo.toFixed(3)}, ${peel.hi.toFixed(3)}, dot(tx, vec3(0.2126, 0.7152, 0.0722)));
+          vec3 even = mix(tx, vec3(${peel.mean.map(v => v.toFixed(3)).join(', ')}), ${peel.flat.toFixed(2)}) / max(tx, vec3(0.02));
+          diffuseColor.rgb *= mix(vec3(1.0), vColor.rgb * even, pm);
+        }` : 'diffuseColor.rgb *= vColor.rgb;';
+    const aged = !age ? '' : `{
+        vec3 gq = abs(normalize(cross(dFdx(vWPos), dFdy(vWPos))));
+        float wl = 1.0 - step(0.7, gq.y), al = gq.x > gq.z ? vWPos.z : vWPos.x, yy = vWPos.y;
+        float na = texture2D(tCloud, vec2(al, yy) * 0.043 + 0.21).r;            // patches a few metres across
+        float nb = texture2D(tCloud, vec2(al * 0.29 + 0.53, 0.17)).g;            // varies along the wall only
+        float nc = texture2D(tCloud, vec2(al * 0.06 + 0.11, 0.61)).b;            // the same, slowly (metres to tens of metres)
+        float rp = vAge.z - 1.0, fresh = rp > 0.05 ? 1.0 - smoothstep(rp - 0.012, rp + 0.012, yy) : 0.0, old = rp > 0.05 ? 1.0 - fresh : 0.0;
+        float lm = dot(diffuseColor.rgb, vec3(0.2126, 0.7152, 0.0722));
+        // bleached by the sun: chalky, lighter and greyer, more of it higher up and in patches, none on new paint (and on a
+        // house whose street floor was repainted, the old coat above it shows its age)
+        float fd = vAge.x * (smoothstep(0.6, 9.0, yy) + 0.35 * old) * (0.45 + 0.9 * na) * (1.0 - fresh) * wl;
+        diffuseColor.rgb = mix(diffuseColor.rgb, vec3(lm * 1.06 + 0.012), clamp(fd * 0.3, 0.0, 0.42));
+        // the repainted street floor: new paint, never quite the old colour, richer and darker than the bleached coat above
+        diffuseColor.rgb = mix(diffuseColor.rgb, mix(vec3(lm), diffuseColor.rgb, 1.3) * 0.9, fresh * 0.9);
+        // road dust over the lowest metre, thinning out unevenly (it lifts a dark base band and greys a light wall)
+        float du = vAge.y * wl * (1.0 - smoothstep(0.02, 0.5 + 0.9 * nb, yy)) * (0.55 + 0.45 * na);
+        diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.30, 0.27, 0.22), clamp(du * 0.4, 0.0, 0.45));
+        // rising damp in some stretches: darker and a little greener below a wandering line, and the salts it brings up
+        // dried pale along that line
+        float dh = 0.3 + 0.55 * nc + 0.08 * (nb - 0.5), wet = vAge.y * wl * smoothstep(0.45, 0.72, na);
+        float dmp = wet * (1.0 - smoothstep(dh - 0.16, dh + 0.03, yy)), salt = wet * exp(-pow((yy - dh) / 0.04, 2.0));
+        diffuseColor.rgb *= (1.0 - clamp(dmp * 0.2, 0.0, 0.3)) * mix(vec3(1.0), vec3(0.95, 0.98, 0.93), clamp(dmp, 0.0, 1.0));
+        diffuseColor.rgb = mix(diffuseColor.rgb, vec3(lm * 1.12 + 0.03), clamp(salt * 0.28, 0.0, 0.3));
+      }`;
+    shader.fragmentShader = shader.fragmentShader.replace('#include <color_fragment>', `#ifdef USE_COLOR
+        ${paint}
+      #endif
+      ${aged}`);
   };
   return m;
 }
@@ -245,6 +289,100 @@ function foamMaterial() {
 
 const repeat = t => { t.wrapS = t.wrapT = THREE.RepeatWrapping; return t; };
 
+// ---- window glass with a room behind it ----------------------------------------------------------------------------------
+// Interior mapping: the view ray through each pane is traced into a box room behind the glass (back wall, side walls,
+// floor and ceiling), and what it meets is shaded here: plaster in one of a few colours with a darker dado, a
+// doorway, a wardrobe or a picture on the far wall, tiled or boarded floors, a ceiling lamp that is on in some rooms,
+// and curtains (sheer, a pair of drapes or one) hanging just inside the glass. Daylight falls off into the room.
+// The room shows as emitted light; the glass itself is a black mirror, so the sky's reflection still takes over at
+// grazing angles. Per window (vertex data from world.js): aWin = [seed, width, height], color.r = sill height / 2.
+function roomMaterial() {
+  const m = new THREE.MeshStandardMaterial({ color: 0x000000, roughness: 0.16, metalness: 0, vertexColors: true, envMapIntensity: 0.4 });
+  m.defines = { USE_UV: '' };
+  m.userData.patchKey = 'room'; m.userData.extra = 'aWin';
+  m.userData.patch = shader => {
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nattribute vec3 aWin;\nvarying vec3 vWin;\nvarying vec3 vRPos;\nvarying vec3 vRNrm;')
+      .replace('#include <project_vertex>', '#include <project_vertex>\nvWin = aWin; vRPos = (modelMatrix * vec4(transformed, 1.0)).xyz; vRNrm = normalize(mat3(modelMatrix) * objectNormal);');
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', `#include <common>
+varying vec3 vWin;
+varying vec3 vRPos;
+varying vec3 vRNrm;
+float h1(float x) { return fract(sin(x * 91.17) * 43758.55); }
+vec3 roomWall(float k) {
+  return k < 0.17 ? vec3(0.78, 0.74, 0.62) : k < 0.33 ? vec3(0.62, 0.74, 0.66) : k < 0.5 ? vec3(0.8, 0.62, 0.6) :
+         k < 0.67 ? vec3(0.6, 0.68, 0.8) : k < 0.83 ? vec3(0.86, 0.8, 0.66) : vec3(0.72, 0.7, 0.68);
+}
+vec3 interior(vec3 wpos, vec3 nrm, vec2 uv, float sill) {
+  float seed = vWin.x, W = max(vWin.y, 0.3), Hh = max(vWin.z, 0.3);
+  vec3 N = normalize(nrm), T = normalize(cross(vec3(0.0, 1.0, 0.0), N)), V = normalize(wpos - cameraPosition);
+  vec3 d = vec3(dot(V, T), V.y, -dot(V, N)); d.z = max(d.z, 0.02);
+  vec3 p = vec3((uv.x - 0.5) * W, uv.y * Hh, 0.0);
+  float RW = max(W * 0.5 + 0.8 + h1(seed * 3.0) * 0.8, 1.3), fy = -sill, cy = 2.8 - sill, D = 2.6 + h1(seed * 5.0) * 2.4;
+  float tz = D / d.z;
+  float tx = (sign(d.x) * RW - p.x) / (abs(d.x) < 1e-4 ? 1e-4 * sign(d.x + 1e-9) : d.x);
+  float ty = ((d.y > 0.0 ? cy : fy) - p.y) / (abs(d.y) < 1e-4 ? 1e-4 : d.y);
+  float t = min(tz, min(tx, ty));
+  vec3 h = p + d * t;
+  float lit = step(0.7, h1(seed * 7.0));
+  vec3 wc = roomWall(h1(seed * 11.0)), col;
+  float hy = h.y - fy;                                            // height above the room's floor
+  float edge;                                                     // distance to the nearest corner of the room, for its shading
+  if (t == tz) edge = min(min(RW - abs(h.x), hy), cy - h.y);
+  else if (t == tx) edge = min(min(D - h.z, hy), cy - h.y);
+  else edge = min(RW - abs(h.x), D - h.z);
+  if (t == tz) {                                                  // the far wall
+    col = wc * (hy < 0.9 ? 0.78 : 1.0) * (hy < 0.1 ? 0.6 : 1.0);
+    float k2 = h1(seed * 43.0), x1 = (h1(seed * 47.0) - 0.5) * RW;
+    if (k2 < 0.45 && abs(h.x - x1) < 0.85 && hy < (k2 < 0.2 ? 0.8 : 0.55)) col = roomWall(h1(seed * 53.0)) * 0.42 * (hy > (k2 < 0.2 ? 0.7 : 0.45) ? 1.3 : 1.0);   // a sofa or a bed against it
+    float k = h1(seed * 13.0), x0 = (h1(seed * 17.0) - 0.5) * RW;
+    if (k < 0.3 && abs(h.x - x0) < 0.42 && hy < 2.05) col = vec3(0.035, 0.03, 0.028);                       // a doorway
+    else if (k < 0.62 && abs(h.x - x0) < 0.48 && hy < 1.85) col = vec3(0.26, 0.16, 0.1) * (abs(h.x - x0) > 0.46 || hy > 1.82 || abs(h.x - x0) < 0.012 ? 0.6 : 1.0);   // a wardrobe
+    else if (k >= 0.62) { vec2 e = abs(vec2(h.x - x0 * 0.6, hy - 1.55)); if (e.x < 0.34 && e.y < 0.24) col = (e.x < 0.3 && e.y < 0.2) ? roomWall(h1(seed * 19.0)) * 0.7 + 0.15 : vec3(0.22, 0.14, 0.08); }   // a picture
+  } else if (t == tx) {                                           // a side wall, a little shaded
+    col = wc * 0.82 * (hy < 0.9 ? 0.8 : 1.0);
+  } else if (d.y < 0.0) {                                         // the floor: tiles or boards
+    vec2 f = vec2(h.x, h.z);
+    if (h1(seed * 23.0) < 0.6) { vec2 q = f / 0.33; float c = mod(floor(q.x) + floor(q.y), 2.0); col = mix(vec3(0.5, 0.26, 0.17), vec3(0.62, 0.56, 0.46), c * step(0.5, h1(seed * 29.0))) * (min(fract(q.x), fract(q.y)) < 0.04 ? 0.7 : 1.0); }
+    else { float b = floor(f.x / 0.14); col = vec3(0.42, 0.28, 0.17) * (0.8 + 0.2 * h1(b + seed)) * (fract(f.x / 0.14) < 0.06 ? 0.6 : 1.0); }
+  } else {                                                        // the ceiling, and its lamp
+    col = vec3(0.86, 0.84, 0.8);
+    col += lit * vec3(6.0, 4.6, 3.0) * (1.0 - smoothstep(0.05, 0.09, length(vec2(h.x, h.z - D * 0.5))));
+  }
+  float day = 0.2 / (1.0 + 0.32 * h.z * h.z) + 0.028;
+  vec3 lp = vec3(0.0, cy - 0.35, D * 0.5);
+  col *= (vec3(day) * vec3(0.94, 0.97, 1.0) + lit * vec3(0.85, 0.62, 0.36) / (1.0 + 0.12 * dot(h - lp, h - lp))) * (0.5 + 0.5 * smoothstep(0.0, 0.6, edge));
+  float cu = h1(seed * 31.0);                                     // curtains a hand's breadth inside the glass
+  if (cu < 0.62) {
+    float tc = 0.09 / d.z; vec2 c = p.xy + d.xy * tc; float u = c.x / W + 0.5;
+    float cover = cu < 0.22 ? 1.0 : cu < 0.45 ? (step(u, 0.3) + step(0.7, u)) : step(u, 0.26 + 0.2 * h1(seed * 37.0));
+    vec3 cc = roomWall(h1(seed * 41.0)) * vec3(1.05, 0.98, 0.92) * (0.78 + 0.22 * sin(c.x * 41.0 + seed * 9.0));
+    cc *= 0.16 + lit * 0.35;
+    col = mix(col, cc, cover * (cu < 0.22 ? 0.6 : 0.96));
+  }
+  return col;
+}`)
+      .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+      { float fr = pow(1.0 - clamp(dot(normalize(cameraPosition - vRPos), normalize(vRNrm)), 0.0, 1.0), 5.0);
+        totalEmissiveRadiance += interior(vRPos, vRNrm, vUv, vColor.r * 2.0) * (1.0 - fr) * 0.96; }`);
+  };
+  m.userData.noBVH = false;
+  return m;
+}
+// Glass blocks (vitroblock), for stair windows of the 1950s blocks: 20 cm blocks, each a little bubble of light.
+function glassBlockTexture() {
+  return canvasTexture(128, 128, g => {
+    for (let y = 0; y < 2; y++) for (let x = 0; x < 2; x++) {
+      const gr = g.createRadialGradient(x * 64 + 32, y * 64 + 32, 4, x * 64 + 32, y * 64 + 32, 34);
+      gr.addColorStop(0, '#dfe9e6'); gr.addColorStop(0.7, '#9fb5b2'); gr.addColorStop(1, '#6f8582');
+      g.fillStyle = gr; g.fillRect(x * 64 + 3, y * 64 + 3, 58, 58);
+      g.fillStyle = 'rgba(255,255,255,0.35)'; g.fillRect(x * 64 + 10, y * 64 + 10, 18, 3);
+    }
+    g.fillStyle = '#b7b3a8'; for (const k of [0, 61, 64, 125]) { g.fillRect(k, 0, 3, 128); g.fillRect(0, k, 128, 3); }
+  });
+}
+
 export function createMaterials() {
   const flat = (color, rough, metal = 0, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: metal, vertexColors: true, ...extra });
   const decal = kind => new THREE.MeshStandardMaterial({
@@ -254,10 +392,10 @@ export function createMaterials() {
   const cloth = (id, back = 0.5) => windy(pbr(id, { side: THREE.DoubleSide }), 0.055, back);
   const M = {
     // walls (neutral plasters are tinted per building through vertex colours)
-    w_plaster: weather(pbr('painted_plaster_wall')), w_plaster2: weather(pbr('plastered_wall_04')),
+    w_plaster: weather(pbr('painted_plaster_wall'), 1, 1, null, true), w_plaster2: weather(pbr('plastered_wall_04'), 1, 1, null, true),
     w_damaged: weather(pbr('damaged_plaster'), 1, 0.7), w_worn: weather(pbr('worn_plaster_wall'), 1, 0.7),
     w_peel: weather(pbr('peeling_painted_wall')), w_blue: weather(pbr('blue_plaster_weathered')),
-    w_red: weather(pbr('red_plaster_weathered')), w_white: weather(pbr('white_rough_plaster'), 1, 0.8),
+    w_red: weather(pbr('red_plaster_weathered')), w_white: weather(pbr('white_rough_plaster'), 1, 0.8, { lo: 0.22, hi: 0.36, flat: 0.45, mean: [0.567, 0.564, 0.529] }, true),
     w_broken: weather(pbr('rough_plaster_broken'), 1, 0.7), w_brick: weather(pbr('red_brick_plaster_patch_02'), 1, 0.6),
     concrete: weather(pbr('concrete_wall_008'), 0.8), dirty: weather(pbr('dirty_concrete'), 0.6, 0.6),
     cracked: weather(pbr('cracked_concrete'), 0, 0.8), pavement: weather(pbr('concrete_pavement'), 0, 0.9),
@@ -290,9 +428,11 @@ export function createMaterials() {
     bulb: new THREE.MeshStandardMaterial({ color: 0x302a20, emissive: 0xffd49a, emissiveIntensity: 9, roughness: 0.4 }),
     flowers: windy(new THREE.MeshStandardMaterial({ map: flowersTexture(), alphaTest: 0.45, side: THREE.DoubleSide, roughness: 0.75, vertexColors: true }), 0.03, 0.5),    // bougainvillea
     glossy: flat(0xffffff, 0.32),                                                         // chiles, piñata foil
-    paint: weather(flat(0xcfcfcf, 0.86), 0.9, 1),                                         // a flat painted band (base, window surround), tinted per building (as bright as the plaster it is painted on)
+    paint: weather(flat(0xcfcfcf, 0.86), 0.9, 1, null, true),                                         // a flat painted band (base, window surround), tinted per building (as bright as the plaster it is painted on)
     teja: weather(pbr('red_sandstone_wall', { normalScale: 0.7 }), 0.25, 0.6),           // fired clay roof tiles (the kit's barrel tiles), shaded tile by tile through vertex colours
     water: waterMaterial(), water_fall: fallMaterial(), water_foam: foamMaterial(),       // the plaza fountain
+    room: roomMaterial(),                                                                 // window glass with a room behind it
+    glassblock: new THREE.MeshStandardMaterial({ map: repeat(glassBlockTexture()), roughness: 0.18, vertexColors: true, emissive: 0x2b3432, emissiveMap: null, envMapIntensity: 1.2 }),
   };
   M.glass.roughnessMap = null; M.glass.roughness = 0.09;
   for (const k of ['frond', 'cloth_red', 'cloth_green', 'cloth_plain', 'rug', 'cloth_papel', 'cloth_tarp', 'leaves', 'flowers']) M[k].userData.noBVH = true;
@@ -303,6 +443,7 @@ export function createMaterials() {
     ground: 'dirt', bark: 'wood', cable: 'fabric', plastic: 'wood', rubble: 'concrete', tiles: 'concrete', dark: 'none',
     cobble: 'concrete', terracotta: 'concrete', brick: 'brick', cantera: 'concrete', shutter_paint: 'metal', roof_tin: 'metal', sign: 'plaster',
     talavera: 'concrete', cloth_papel: 'fabric', cloth_tarp: 'fabric', leaves: 'wood', bulb: 'glass', paint: 'plaster', flowers: 'wood', glossy: 'wood', teja: 'concrete',
+    room: 'glass', glassblock: 'glass',
   };
   for (const [k, m] of Object.entries(M)) { m.userData.surf = surf[k] || (k.startsWith('w_') ? 'plaster' : 'concrete'); m.name = k; }
   return M;

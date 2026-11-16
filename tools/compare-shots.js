@@ -44,20 +44,30 @@ function roomView(G) {
   return [p.x, p.z, Math.atan2(rm.N.x, rm.N.z) * 180 / Math.PI, 4];
 }
 
-export async function shots(G, tag, { names = Object.keys(VIEWS), w = 1536, h = 864, settle = 2.0, clock = 120 } = {}) {
-  const out = [], R = G.R, cam = R.camera, deg = Math.PI / 180;
+// exposure: null (the auto exposure, as the player sees it), a number, or { view: value } (e.g. the `exposure` map a
+// previous run returned and saved as captures/cmp_<tag>_exposure.json), so two builds can be compared at one exposure.
+export async function shots(G, tag, { names = Object.keys(VIEWS), w = 1536, h = 864, settle = 2.0, clock = 120, exposure = null } = {}) {
+  const out = [], R = G.R, cam = R.camera, deg = Math.PI / 180, used = {};
   // capture size first: exposure settles on the framing that is saved (a square pane would meter a different picture)
   const canvas = R.renderer.domElement; canvas.style.width = w + 'px'; canvas.style.height = h + 'px'; R.renderScale = 1; R.adaptive = false; R.resize();
   G.manual = true; G.auto = true; G.frozen = true; G.resetMatch(); G.playing = true; G.hud.show(null); park(G);
-  const yieldToLoop = () => new Promise(r => setTimeout(r, 40));     // lets an exposure read still in flight from the menu land first
+  // lets an exposure read still in flight from the menu land first. (A hidden page has its timers held to one a minute
+  // after five minutes; a message is not held, so a run in a hidden browser pane goes on at full speed.)
+  const yieldToLoop = () => new Promise(r => { if (!document.hidden) return setTimeout(r, 40); const ch = new MessageChannel(); ch.port1.onmessage = () => r(); ch.port2.postMessage(0); });
   for (const [i, name] of names.entries()) {
     let v = VIEWS[name]; if (v === 'room') v = roomView(G);
     const [x, z, yaw, pitch, eye] = v;
+    const lock = exposure == null ? null : typeof exposure === 'number' ? exposure : exposure[name] ?? null;
     G.setClock(clock);
     G.goto(x, z, yaw, pitch);
     G.weapon.root.visible = false;
     await yieldToLoop();
     if (i === 0) { G.step(120, 1 / 60); await yieldToLoop(); G.setClock(clock); }      // the first view also settles out of the menu's exposure
+    if (lock) {                                   // held at the given exposure: run until the damped exposure has arrived, then restart the clock
+      R.autoExposure = false; R.exposureTarget = lock;
+      for (let k = 0; k < 900 && Math.abs(R.exposure - lock) > 1e-4; k++) G.step(1, 1 / 60);
+      G.setClock(clock);
+    } else R.autoExposure = true;
     G.step(Math.round(settle * 60), 1 / 60);
     if (eye) {                                    // a raised camera: drawn without the player, the meter settling on what it sees
       const place = () => { cam.position.set(x, eye, z); cam.rotation.set(pitch * deg, Math.PI + yaw * deg, 0, 'YXZ'); cam.updateMatrixWorld(); };
@@ -66,8 +76,12 @@ export async function shots(G, tag, { names = Object.keys(VIEWS), w = 1536, h = 
       place();
     }
     G.weapon.root.visible = false;
+    used[name] = +R.exposure.toFixed(4);
     out.push(await G.capture(`cmp_${tag}_${name}`, w, h));
   }
+  R.autoExposure = true;
+  out.exposure = used;
+  await fetch(`/__capture/cmp_${tag}_exposure.json`, { method: 'POST', body: JSON.stringify(used, null, 1) }).catch(() => {});
   park(G); G.resetMatch(); G.playing = false; G.manual = false; G.auto = false; G.frozen = false; G.matchLive = false; G.hud.show('start');
   return out;
 }

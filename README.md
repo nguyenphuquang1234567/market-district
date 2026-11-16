@@ -97,6 +97,61 @@ Key bindings live in the same saved settings object (`binds`, including `frag` a
   inside of the basin, and draws the water: standing in the basin and both bowls with two layers of ripples drifting
   across each other, spilling over each lip as a sheet that breaks into strands, and foaming where it lands. It can be
   heard from across the plaza, and a soldier can wade in the basin (soldiers' routes keep round it).
+- **Facade archetypes** — every building is one of five kinds of Mexican street architecture, chosen from the streets it
+  faces (each street has its own mix) by a random stream of the building's own (`src/facades.js`):
+  - *casona* — a colonial house: tall openings in cantera surrounds under moulded hoods, pediments or round arches with
+    keystones, an iron balcony with scrolled railings to each first-floor door (some with stone balustrades), French
+    window rails above, quoins up the corners, pilasters between the bays, a rusticated stone base, string courses, a
+    heavy cornice and sometimes a balustraded roof between piers with ball finials;
+  - *vecindad* — a tenement: small windows with scrolled grilles set where the rooms needed them, a bathroom slit beside
+    some, bricked-up openings, a single off-centre balcony, newer plaster in patches, plaster fallen off to the brick;
+  - *comercial* — a 1950s block: bands of wide steel windows between projecting floor slabs, concrete fins, a glass-block
+    stair window, a cantilevered canopy over the shops, a stepped parapet or a sign frame on the roof;
+  - *obra negra* — a plastered shop floor under storeys left in brick between bare concrete columns and beams, raw openings
+    (boarded, open, walled up or glazed), cast lintels, rebar out of the column stubs;
+  - *barrio* — a small house in strong colours: wooden casements and shutters, painted surrounds, a tile hood over the
+    door and a window, a niche with a saint, a curved crest on the parapet or a tiled eave.
+  The new kit pieces (archivolt, hood, pediment, quoins, pilaster with base and capital, scrolled balcony railing,
+  window grille, casement, balustrade, niche) are modelled in `tools/blender/kit.py` like the rest. Every window's glass
+  shows a room behind it (interior mapping in the `room` material): plaster in one of a few colours with a darker dado, a
+  doorway, a wardrobe or a picture on the far wall, a tiled or boarded floor, a ceiling lamp lit in some rooms, and sheer
+  curtains or drapes just inside the glass; the room moves with the viewpoint, and the sky's reflection takes over at
+  grazing angles. Rain stains run down from the sills. The street floor's openings, the shops, the street props, the
+  collision and the soldiers' routes are the district's own and stayed exactly where they were: the old floors above
+  the shops are still generated for their random draws and thrown away, and the new ones draw from the building's stream.
+- **Facade colour** — painted the way Mexican market streets actually are (`src/facades.js`). In 59 photographs of
+  streets in seven towns (Guanajuato, Dolores Hidalgo, Puebla, Mexico City, Oaxaca, Querétaro, San Cristóbal de las
+  Casas; Wikimedia Commons), half of what is wall is below 0.18 HSV saturation and one pixel in twenty above 0.6: the
+  walls are natural limewash and plaster colours, and a strong colour is a house here and there, red-orange and ochre
+  far more often than blue or pink. So the palette is nine plaster tones, coolest to warmest (limestone, off-white,
+  cream, straw, beige, sand, clay, ochre, weathered terracotta), and three muted accents (a jade turquoise, earthy red,
+  faded green): no blue and no pink walls (even faded, in the sun they read as sea blue and pink). Nothing is picked per house at random: each kind of street has its own mix of tones,
+  accents and how often a house takes one (the plaza civic and light, the main street and the quarter's streets warmer,
+  the market street the liveliest, the lanes and alleys pale); along a street the warmth drifts slowly (a smooth noise
+  field about 36 m across), so a few houses share a family of tones and the next few move on; each kind of building
+  leans its own way within that (casonas to limestone, ochre and terracotta with cantera and only the earthy red as an
+  accent, 1950s blocks to the pale tones, barrio houses to the warm ones and more accents); a house is
+  never the same tone as its neighbour, an accent goes only on a small two-storey house, a touch of colour in its row (a
+  whole block of three or four floors in an accent stands out of its street instead of into it), and stands between
+  quiet light-toned neighbours (never next to another accent or a strong earth tone), and no two houses have quite the same
+  paint (a few percent of lightness and the faintest hue shift). The colour roles follow the heritage rules of
+  Zapopan (art. 60 and its *Gama de color* annex) and Zacatlán (its illustrated guide): two matte colours to a facade,
+  A on the wall and B on the base band (*guardapolvo*), the frames and what is picked out, B either the wall's own colour
+  a good step darker or a deep earth or grey that goes with it (oxide, umber, slate, moss, wine, charcoal);
+  frames white, cantera on the casonas, or B; balconies and sills in the frame colour; ironwork black; doors and shutters
+  stained wood or painted, a cool colour on a warm wall and a warm one on a cool wall. Every facade also carries its
+  age, read by the wall shader per building (vertex attribute `aAge`): paint bleached by the sun, more of it higher up
+  and in patches; road dust over the lowest metre, thinning out unevenly; rising damp in some stretches, darker below a
+  wandering line with the salts dried pale along it; a street floor repainted (often a shop front, up to its doors or to
+  the floor line) in new paint a shade richer than the faded coat above; newer paint in repair patches; on some
+  tenements, unfinished houses and barrio houses the paint flaking off the grey plaster. How much of each a house shows
+  depends on its kind and a little luck, and some houses were painted recently. The colours come from a random stream
+  of their own, so repainting the district never moves a balcony. The final grade no longer adds saturation and warms
+  the sunlit tones only slightly (the sun is already warm); measured at the same exposure across 20 views, the share of
+  very strong colour went from 16 % to 6 % (the photographs: 5 %) with the picture as bright as before. Sources: Zapopan,
+  *Gama de color* (portal.zapopan.gob.mx/ordenamiento/planos/colores_empleables.pdf); Zacatlán, *Guía ilustrada de
+  preservación de imagen urbana* (zacatlan.gob.mx/boletines/wp-content/uploads/2026/01/Guia_Ilustrada-Imagen_Urbana.pdf);
+  street photographs from Wikimedia Commons (searches for streets of the seven towns above).
 - **The market quarter** — a second district (x 46…111, about 65 × 160 m; west on the in-game compass, behind the
   covered market lane) reached through four passages cut in the ring of houses behind the lane, which carry on the two
   spawn streets and the two cross streets. Cobbled streets: *Calle del Mercado* along the ring, *Calle Sur* and *Calle
@@ -362,6 +417,7 @@ In the browser console, with the dev server running:
   and parapet stopping sight while the open railing does not. (One check fails and did before the
   throwables were added, on `main` as well: the empty-magazine reload is sampled 0.13 s before the reload finishes.)
   `?selftest=1` in the URL runs it by itself once loaded and saves the results to `captures/selftest.json`.
+  `?nogi=1` skips the indirect light (no bake) for a quick look while the geometry changes.
 - `src/clipcheck.js` (also `tools/clip-probe.js`) — how far each loose prop sits inside the collision boxes and behind
   the drawn surfaces: `clip.scan(G)` for all of them, `clip.prop(G, item)` for one, `clip.shove(G, { z })` walks a
   soldier's pusher into a chair against a wall.

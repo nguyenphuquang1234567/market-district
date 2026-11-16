@@ -6,6 +6,7 @@ import { NavGrid, OVERHANG } from './physics.js';
 import { dress } from './dressing.js';
 import { buildQuarter, HALL, PLAZUELA, ATRIUM, QUARTER_SPAWNS, QUARTER_HOTSPOTS } from './quarter.js';
 import { rng, clamp } from './util.js';
+import { facadeStyle, roomData, tint, hash as fhash } from './facades.js';
 import { noise } from './materials.js';
 
 THREE.BufferGeometry.prototype.computeBoundsTree = computeBoundsTree;
@@ -72,7 +73,7 @@ export function architecture(B, rnd, buildings, anchors, rs = null, style = { ba
   function facade(bd, side, force = false) {
     if (!force && bd.late && bd.late.includes(side)) return;
     const { O, T, N, L } = frame(side, bd);
-    const H = bd.H, wall = bd.wall, wo = { color: bd.tint, tile: bd.tile, uo: bd.uo, vo: bd.vo };
+    const H = bd.H, wall = bd.wall, wo = { color: bd.tint, tile: bd.tile, uo: bd.uo, vo: bd.vo, x: bd.age };   // x: the paint's age (facades.js, the wall shader)
     const P = (u, v, d = 0) => V(O.x + T.x * u - N.x * d, v, O.z + T.z * u - N.z * d);
     const Q = (key, u0, v0, u1, v1, d = 0, o = wo) => B.quad(key, P(u0, v0, d), P(u1, v0, d), P(u1, v1, d), P(u0, v1, d), o);
     const FB = (key, u0, v0, u1, v1, d0, d1, o = {}) => {
@@ -138,6 +139,7 @@ export function architecture(B, rnd, buildings, anchors, rs = null, style = { ba
     const frameKey = bd.frameIron ? 'iron' : 'planks', fo = { color: bd.frameTint, tile: 1.1 };
     const sh = { color: bd.shTint, uv: [0, 0, 1, 1] };
     let doors = 0;
+    const doorsU = [];                                                         // (the archetype puts arches or hoods over these)
     const gaps = [];                                                           // ground-floor openings the painted base band stops at
 
     // window dressing ------------------------------------------------------------
@@ -145,11 +147,11 @@ export function architecture(B, rnd, buildings, anchors, rs = null, style = { ba
     // over it (stone, or plaster painted the surround's colour) and a keystone over a door.
     const surround = (u0, v0, u1, v1, top = true, door = false) => {
       const sr = bd.surround; if (!sr) return;
-      const w = sr.w, o = { color: sr.c, tile: 1.4 };
+      const w = sr.w, o = { color: sr.c, tile: 1.4, x: bd.age };
       FB('paint', u0 - w, v0 - (v0 > 0.05 ? w : 0), u0, v1 + w, -0.008, 0, o); FB('paint', u1, v0 - (v0 > 0.05 ? w : 0), u1 + w, v1 + w, -0.008, 0, o);
       if (top) FB('paint', u0, v1, u1, v1 + w, -0.008, 0, o);
       if (v0 > 0.05) FB('paint', u0, v0 - w, u1, v0, -0.008, 0, o);
-      const fk = { trim: bd.kit.stone ? 'cantera' : 'w_plaster' }, fo = bd.kit.stone ? { tile: 3.2, color: [1, 1, 1], lod: 'near' } : { tile: 1.8, color: sr.c, lod: 'near' };
+      const fk = { trim: bd.kit.stone ? 'cantera' : 'w_plaster' }, fo = bd.kit.stone ? { tile: 3.2, color: [1, 1, 1], lod: 'near' } : { tile: 1.8, color: sr.ck || sr.c, lod: 'near' };
       const s = w / 0.15, vb = v0 > 0.05 ? v0 - 0.075 : 0;                    // the jambs run down to the sill's underside, or the ground
       if (top) {
         B.kit('frame_bar', KM((u0 + u1) / 2, v1, 0, T, UP, N, u1 - u0, s, 1), fk, fo);
@@ -179,7 +181,8 @@ export function architecture(B, rnd, buildings, anchors, rs = null, style = { ba
         for (const [a, b, c, e] of [[u0, v0, u1, v0 + 0.055], [u0, v1 - 0.055, u1, v1], [u0, v0, u0 + 0.055, v1], [u1 - 0.055, v0, u1, v1], [uc - 0.025, v0, uc + 0.025, v1]])
           FB(frameKey, a, b, c, e, d - 0.05, d, fo);
         if (v1 - v0 > 1.6) FB(frameKey, u0, v0 + (v1 - v0) * 0.62, u1, v0 + (v1 - v0) * 0.62 + 0.045, d - 0.05, d, fo);
-        Q('glass', u0 + 0.05, v0 + 0.05, u1 - 0.05, v1 - 0.05, d - 0.012, { color: [1, 1, 1] });
+        { const c = P(uc, v0, 0), rd = roomData(c.x, c.z, v0, u1 - u0 - 0.1, v1 - v0 - 0.1, v0 + 0.05 - (v0 > FLOOR0 ? FLOOR0 + Math.floor((v0 - FLOOR0) / FLOORN) * FLOORN : 0));
+          Q('room', u0 + 0.05, v0 + 0.05, u1 - 0.05, v1 - 0.05, d - 0.012, { uv: [0, 0, 1, 1], x: rd.x, color: rd.color }); }
       }
       if (type === 'shut') {
         FB('shutter_wood', u0 + 0.01, v0 + 0.01, uc - 0.008, v1 - 0.01, 0.045, 0.085, sh); FB('shutter_wood', uc + 0.008, v0 + 0.01, u1 - 0.01, v1 - 0.01, 0.045, 0.085, sh);
@@ -201,7 +204,11 @@ export function architecture(B, rnd, buildings, anchors, rs = null, style = { ba
       } else if (rnd.chance(0.3)) Q('d_stain', u0 - 0.1, v0 - 1.6 - rnd() * 0.8, u1 + 0.1, v0 - 0.08, -0.006, { uv: [0, 0, 1, 1] });
     };
 
+    // Above the street floor the district's own loop still runs, for its random draws, but keeps nothing (B.mute) and
+    // its anchors are marked legacy (dressed, for the same draws, into nothing): archetypeFacade() draws those floors.
+    let legacyMute = false, legacyFrom = -1;
     for (let f = 0; f < bd.floors; f++) {
+      if (f === 1) { legacyMute = B.mute; B.mute = true; legacyFrom = anchors.length; }
       const v0 = f === 0 ? 0 : FLOOR0 + (f - 1) * FLOORN, v1 = f === 0 ? FLOOR0 : v0 + FLOORN;
       for (let i = 0; i < nb; i++) {
         const cu0 = m + i * bw, cu1 = cu0 + bw, uc = (cu0 + cu1) / 2;
@@ -210,7 +217,7 @@ export function architecture(B, rnd, buildings, anchors, rs = null, style = { ba
           if (i === nb - 1 && !doors && kind !== 'shop') kind = 'door';
           if (street === 'none') kind = 'blank';
           if (kind === 'door') {
-            doors++;
+            doors++; doorsU.push(uc);
             const op = { u0: uc - 0.55, v0: 0, u1: uc + 0.55, v1: 2.32, d: 0.3 };
             cell(cu0, v0, cu1, v1, op); gaps.push([op.u0, op.u1]); surround(op.u0, 0, op.u1, op.v1, true, true);
             const metal = rnd.chance(0.35);
@@ -287,9 +294,10 @@ export function architecture(B, rnd, buildings, anchors, rs = null, style = { ba
         if (cs1) B.kit('string_corner', KM(L, v0, 0, T, UP, N), kTrim, oTrim);
       }
     }
+    if (legacyFrom >= 0) { B.mute = legacyMute; for (let k = legacyFrom; k < anchors.length; k++) anchors[k].legacy = true; }
     if (bd.band && street !== 'none') {                                       // the painted base band (guardapolvo), stopping at doors and shutters
       const c = bd.band.c, h = bd.band.h, line = [c[0] * 0.75, c[1] * 0.75, c[2] * 0.75];
-      const seg = (u0, u1) => { FB('paint', u0, 0, u1, h, -0.012, 0, { color: c, tile: 1.6 }); FB('paint', u0, h, u1, h + 0.05, -0.016, 0, { color: line, tile: 1.6 }); };     // with a darker pin-line on top
+      const seg = (u0, u1) => { FB('paint', u0, 0, u1, h, -0.012, 0, { color: c, tile: 1.6, x: bd.age }); FB('paint', u0, h, u1, h + 0.05, -0.016, 0, { color: line, tile: 1.6, x: bd.age }); };     // with a darker pin-line on top
       let a = cs0 ? 0.03 : 0; const e = L - (cs1 ? 0.03 : 0);                  // (kept off the worn corners)
       for (const [g0, g1] of gaps.sort((p, q) => p[0] - q[0])) { if (g0 - a > 0.05) seg(a, g0); a = Math.max(a, g1); }
       if (e - a > 0.05) seg(a, e);
@@ -312,6 +320,7 @@ export function architecture(B, rnd, buildings, anchors, rs = null, style = { ba
       for (let y = 1; y < H; y += 2.1) FB('iron', u - 0.08, y, u + 0.08, y + 0.04, -0.15, 0);
     }
     if (rnd.chance(0.55)) { const y = FLOOR0 - rnd.range(0.12, 0.4), a = rnd.range(0.3, L * 0.4); FB('iron', a, y, L - rnd.range(0.2, L * 0.3), y + 0.028, -0.03, 0); FB('iron', a, y - rnd.range(0.8, 2), a + 0.028, y, -0.03, 0); }
+    const decalMute = B.mute; B.mute = true;
     for (let k = 0; k < 1 + L / 9; k++) {
       if (!free.length) break;
       const r = rnd.pick(free), kind = rnd.pick(['d_patch', 'd_scars', 'd_stain', 'd_stain']);
@@ -319,6 +328,322 @@ export function architecture(B, rnd, buildings, anchors, rs = null, style = { ba
       if (s < 0.4) continue;
       const g = rnd.range(0.86, 1.08);
       Q(kind, ca - s / 2, cb - s / 2, ca + s / 2, cb + s / 2, -0.005 - k * 0.001, { uv: [0, 0, 1, 1], color: kind === 'd_patch' ? [bd.tint[0] * g, bd.tint[1] * g, bd.tint[2] * g] : [1, 1, 1] });
+    }
+    B.mute = decalMute;
+    archetypeFacade();
+
+    // ===================================================================================================================
+    // The building's archetype (facades.js): the floors above the shops, ornament, the base, repairs and wear. The loop
+    // above still ran over those floors keeping nothing (B.mute), so every draw of the shared random streams happened as
+    // it always did: shops, street props, cover and routes are where they were. Every choice here comes from vr.
+    function archetypeFacade() {
+      const st = bd.style; if (!st) return;
+      if (street === 'none') { for (let f = 1; f < bd.floors; f++) { const v0 = FLOOR0 + (f - 1) * FLOORN; Q(wall, m, v0, L - m, v0 + FLOORN); } return; }
+      const vr = st.vr, kind = st.kind, A = st.A, I4 = new THREE.Matrix4(), free2 = [];
+      const stoneK = { trim: 'cantera' }, stoneO = { color: [1, 1, 1], tile: 3.2 };
+      const trimK = kind === 'casona' ? stoneK : kTrim, trimO = kind === 'casona' ? stoneO : oTrim;
+      // colours: the scheme's (facades.js): B or white round the openings, wood stained or painted, the shutters with it
+      const sw = kind === 'casona' ? 0.15 : 0.13, sCol = st.frameP, sColW = st.frameW, frameTint = st.woodP;
+      const painted = !/^#(5b3a26|3f2a1e)$/.test(st.colors.wood), shKey = painted ? 'planks' : 'shutter_wood', shO = { color: painted ? st.woodP : st.door, uv: [0, 0, 1, 1], tile: 0.9 };
+      const upperWall = kind === 'obra' ? 'brick' : wall, woU = kind === 'obra' ? { color: [0.96, 0.9, 0.84], tile: 1.9, uo: bd.uo, vo: bd.vo } : wo;
+      const conc = { color: [0.8, 0.79, 0.76], tile: 1.8, solid: false };
+
+      // triangles textured as quad() textures (projected in world space), for the arched heads
+      const tris = (key, list, o) => {
+        const pos = [], nor = [], uv = [], tile = o.tile || 2.6, uo = o.uo || 0, vo = o.vo || 0, e1 = V(), e2 = V(), n = V();
+        for (const t of list) {
+          const w = t.map(([u, v, d]) => P(u, v, d));
+          n.crossVectors(e1.subVectors(w[1], w[0]), e2.subVectors(w[2], w[0])).normalize();
+          const floor = Math.abs(n.y) > 0.7;
+          for (const p of w) {
+            pos.push(p.x, p.y, p.z); nor.push(n.x, n.y, n.z);
+            uv.push(floor ? p.x / tile + uo : (p.x * n.z - p.z * n.x) / tile + uo, floor ? (-p.z * Math.sign(n.y)) / tile + vo : p.y / tile + vo);
+          }
+        }
+        if (!pos.length) return;
+        const g = new THREE.BufferGeometry();
+        g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+        B.geom(key, g, I4, { color: o.color || [1, 1, 1] });
+      };
+      const reveal = (key, u0, v0, u1, v1, d, o, top = true) => {             // the four faces of an opening's depth
+        B.quad(key, P(u0, v0, 0), P(u0, v0, d), P(u0, v1, d), P(u0, v1, 0), o);
+        B.quad(key, P(u1, v0, d), P(u1, v0, 0), P(u1, v1, 0), P(u1, v1, d), o);
+        if (top) B.quad(key, P(u0, v1, d), P(u1, v1, d), P(u1, v1, 0), P(u0, v1, 0), o);
+        B.quad(key, P(u0, v0, 0), P(u1, v0, 0), P(u1, v0, d), P(u0, v0, d), o);
+      };
+      // a round-headed opening: the jambs up to the springing, the curved soffit, and wall filling the spandrels
+      const archHead = (op, key, o) => {
+        const r = (op.u1 - op.u0) / 2, uc = (op.u0 + op.u1) / 2, vs = op.v1 - r, d = op.d, n = 12, list = [];
+        reveal(key, op.u0, op.v0, op.u1, vs, d, o, false);
+        const at = k => [uc + r * Math.cos(Math.PI * k / n), vs + r * Math.sin(Math.PI * k / n)];
+        for (let k = 0; k < n; k++) {
+          const [ua, va] = at(k), [ub, vb] = at(k + 1), c = k < n / 2 ? [op.u1, op.v1] : [op.u0, op.v1];
+          list.push([[ua, va, 0], [c[0], c[1], 0], [ub, vb, 0]]);
+          list.push([[ua, va, 0], [ub, vb, 0], [ub, vb, d]], [[ua, va, 0], [ub, vb, d], [ua, va, d]]);
+        }
+        tris(key, list, o);
+      };
+      // wall over a bay of one storey, round its openings (rectangular or round-headed); free wall noted for weathering
+      const cellN = (cu0, cv0, cu1, cv1, ops, key = upperWall, o = woU) => {
+        const W = (a, b, c, e) => { if (c - a > 0.002 && e - b > 0.002) Q(key, a, b, c, e, 0, o); };
+        let u = cu0;
+        ops.sort((p, q) => p.u0 - q.u0);
+        for (const op of ops) {
+          W(u, cv0, op.u0, cv1); W(op.u0, cv0, op.u1, op.v0); W(op.u0, op.v1, op.u1, cv1);
+          if (op.v0 - cv0 > 0.7) free2.push([op.u0 - 0.2, cv0, op.u1 + 0.2, op.v0 - 0.1]);
+          if (op.arch) archHead(op, key, o); else reveal(key, op.u0, op.v0, op.u1, op.v1, op.d, o);
+          u = op.u1;
+        }
+        W(u, cv0, cu1, cv1);
+        if (!ops.length) free2.push([cu0, cv0, cu1, cv1]);
+        else { free2.push([cu0, cv0, ops[0].u0 - 0.06, cv1]); free2.push([u + 0.06, cv0, cu1, cv1]); }
+      };
+      // the glass of an opening with its room behind (the 'room' material); a round head gets a fan of glass
+      const roomGlass = (u0, v0, u1, v1, d, floorY, arch) => {
+        const w = u1 - u0, h = v1 - v0, vs = arch ? v1 - w / 2 : v1, c = P((u0 + u1) / 2, v0, 0), rd = roomData(c.x, c.z, v0, w, h, v0 - floorY);
+        Q('room', u0, v0, u1, vs, d, { uv: [0, 0, 1, (vs - v0) / h], x: rd.x, color: rd.color });
+        if (!arch) return;
+        const n = 12, r = w / 2, uc = (u0 + u1) / 2, pos = [], nor = [], uv = [];
+        for (let k = 0; k < n; k++) for (const [uu, vv] of [[uc, vs], [uc + r * Math.cos(Math.PI * k / n), vs + r * Math.sin(Math.PI * k / n)], [uc + r * Math.cos(Math.PI * (k + 1) / n), vs + r * Math.sin(Math.PI * (k + 1) / n)]]) {
+          const p = P(uu, vv, d); pos.push(p.x, p.y, p.z); nor.push(N.x, N.y, N.z); uv.push((uu - u0) / w, (vv - v0) / h);
+        }
+        const g = new THREE.BufferGeometry();
+        g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+        B.geom('room', g, I4, { color: rd.color, xf: () => rd.x });
+      };
+      // a wooden bar round a round head (the frame's arch) and the glazing bars of its fan
+      const archBar = (op, d, key, tint) => {
+        const r = (op.u1 - op.u0) / 2 - 0.03, uc = (op.u0 + op.u1) / 2, vs = op.v1 - (op.u1 - op.u0) / 2, pts = [];
+        for (let k = 0; k <= 12; k++) pts.push(P(uc + r * Math.cos(Math.PI * k / 12), vs + r * Math.sin(Math.PI * k / 12), d));
+        B.geom(key, new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 16, 0.03, 4, false), I4, { color: tint, uvScale: 1 });
+        for (const a of [Math.PI / 4, Math.PI / 2, Math.PI * 3 / 4]) {
+          const p = P(uc + r * 0.5 * Math.cos(a), vs + r * 0.5 * Math.sin(a), d), q = new THREE.Quaternion().setFromUnitVectors(UP, V().addScaledVector(T, Math.cos(a)).addScaledVector(UP, Math.sin(a)).normalize());
+          B.geom(key, new THREE.BoxGeometry(0.025, r, 0.025), new THREE.Matrix4().compose(p, q, V(1, 1, 1)), { color: tint });
+        }
+      };
+      // the moulded surround round an upper opening (stone for a casona, painted plaster otherwise): paint drawn far
+      const surroundN = (u0, v0, u1, v1) => {
+        const s = sw / 0.15, o = { color: sCol, tile: 1.4, lod: 'far', solid: false, x: bd.age };
+        FB('paint', u0 - sw, v0 - sw, u0, v1 + sw, -0.008, 0, o); FB('paint', u1, v0 - sw, u1 + sw, v1 + sw, -0.008, 0, o); FB('paint', u0, v1, u1, v1 + sw, -0.008, 0, o); FB('paint', u0, v0 - sw, u1, v0, -0.008, 0, o);
+        const fk = st.stone ? stoneK : { trim: 'w_plaster' }, fo = st.stone ? { ...stoneO, lod: 'near' } : { tile: 1.8, color: sColW, lod: 'near' };
+        B.kit('frame_bar', KM((u0 + u1) / 2, v1, 0, T, UP, N, u1 - u0, s, 1), fk, fo);
+        B.kit('frame_corner', KM(u0 - 0.075 * s, v1, 0, T, UP, N, s, s, 1), fk, fo); B.kit('frame_corner', KM(u1 + 0.075 * s, v1, 0, T, UP, N, s, s, 1), fk, fo);
+        B.kit('frame_bar', KM(u0, (v0 - 0.075 + v1) / 2, 0, UP, nT, N, v1 - v0 + 0.075, s, 1), fk, fo);
+        B.kit('frame_bar', KM(u1, (v0 - 0.075 + v1) / 2, 0, DOWN, T, N, v1 - v0 + 0.075, s, 1), fk, fo);
+      };
+      // an opening's contents and what goes round it.
+      // s: glass ('room' | 'dark' | 'bricked' | 'board' | 'block'), frame ('wood' | 'steel' | 'alu' | 'raw'),
+      //    shut ('open' | 'shut'), grille, surround, head ('hood' | 'pediment'), sill, floorY (the storey's floor)
+      const fill = (op, s) => {
+        const { u0, v0, u1, v1, d } = op, uc = (u0 + u1) / 2, w = u1 - u0, vs = op.arch ? v1 - w / 2 : v1;
+        if (s.surround) {
+          if (op.arch) {
+            const sc = w, so = { color: sCol, tile: 1.4, lod: 'far', solid: false, x: bd.age };
+            B.kit('archivolt', KM(uc, vs, 0, T, UP, N, sc, sc, 1), trimK, trimO);
+            B.kit('frame_bar', KM(u0, (v0 + vs) / 2, 0, UP, nT, N, vs - v0, sc, 1), trimK, { ...trimO, lod: 'near' });
+            B.kit('frame_bar', KM(u1, (v0 + vs) / 2, 0, DOWN, T, N, vs - v0, sc, 1), trimK, { ...trimO, lod: 'near' });
+            FB('paint', u0 - 0.15 * sc, v0, u0, vs, -0.008, 0, so); FB('paint', u1, v0, u1 + 0.15 * sc, vs, -0.008, 0, so);
+            B.kit('keystone', KM(uc, v1 + 0.02, 0, T, UP, N), trimK, trimO);
+          } else surroundN(u0, v0, u1, v1);
+        }
+        if (s.sill) {
+          FB('concrete', u0 - 0.09, v0 - 0.07, u1 + 0.09, v0 - 0.012, -0.08, d * 0.6, { color: bd.trim, solid: false });
+          B.kit('sill', KM(uc, v0, 0, T, UP, N, w + 0.18 + (s.surround ? 2 * sw : 0), 1, 1), trimK, { ...trimO, lod: 'near' });
+        }
+        const top = v1 + (s.surround ? sw : 0);
+        if (s.head === 'hood') B.kit('hood', KM(uc, top, 0, T, UP, N, w + 2 * sw + 0.14, 1, 1), trimK, trimO);
+        else if (s.head === 'pediment') B.kit('pediment', KM(uc, top + 0.01, 0, T, UP, N, w + 2 * sw + 0.22, 1, 1), trimK, trimO);
+        if (s.glass === 'bricked') {                                         // walled up, the lintel left over it
+          Q(vr() < 0.6 ? 'w_brick' : 'cracked', u0, v0, u1, vs, d * 0.35, { tile: 1.3, color: [0.94, 0.9, 0.86], uo: vr(), vo: vr() });
+          if (op.arch) { const r = w / 2, n = 10, list = []; for (let k = 0; k < n; k++) list.push([[uc, vs, d * 0.35], [uc + r * Math.cos(Math.PI * k / n), vs + r * Math.sin(Math.PI * k / n), d * 0.35], [uc + r * Math.cos(Math.PI * (k + 1) / n), vs + r * Math.sin(Math.PI * (k + 1) / n), d * 0.35]]); tris('w_brick', list, { tile: 1.3, color: [0.94, 0.9, 0.86] }); }
+          return;
+        }
+        if (s.glass === 'dark') { Q('dark', u0, v0, u1, vs, d + 0.45, {}); return; }
+        if (s.glass === 'board') {                                           // boarded over, the boards nailed on the outside
+          Q('dark', u0, v0, u1, vs, d + 0.45, {});
+          for (let y = v0 - 0.05; y < vs; y += 0.2 + vr() * 0.06) FB('planks', u0 - 0.06 - vr() * 0.05, y, u1 + 0.06 + vr() * 0.05, Math.min(vs + 0.04, y + 0.17), -0.03, 0, { tile: 0.9, color: [0.78, 0.72, 0.66], solid: false });
+          return;
+        }
+        if (s.glass === 'block') { Q('glassblock', u0, v0, u1, v1, d * 0.5, { tile: 0.4, color: [1, 1, 1] }); return; }
+        roomGlass(u0, v0, u1, v1, d - 0.012, s.floorY, op.arch);
+        const fz = d - 0.075;
+        if (s.frame === 'wood') {
+          B.kit('casement', KM(uc, v0, fz, T, UP, N, w, vs - v0, 1), { wood: 'planks' }, { lod: 'near', slot: { wood: { color: frameTint, tile: 0.9 } } });
+          for (const [a, b, c, e] of [[u0, v0, u1, v0 + 0.06], [u0, vs - 0.06, u1, vs], [u0, v0, u0 + 0.06, vs], [u1 - 0.06, v0, u1, vs], [uc - 0.03, v0, uc + 0.03, vs]])
+            FB('planks', a, b, c, e, fz, d - 0.012, { color: frameTint, tile: 1.1, lod: 'far', solid: false });
+          if (op.arch) archBar(op, d - 0.04, 'planks', frameTint);
+        } else if (s.frame === 'steel') {
+          const k = Math.max(1, Math.round(w / 0.62)), tr = v0 + (v1 - v0) * 0.68;
+          for (const [a, b, c, e] of [[u0, v0, u1, v0 + 0.04], [u0, v1 - 0.04, u1, v1], [u0, v0, u0 + 0.04, v1], [u1 - 0.04, v0, u1, v1], [u0, tr, u1, tr + 0.03]]) FB('iron', a, b, c, e, d - 0.045, d - 0.012, { solid: false });
+          for (let j = 1; j < k; j++) { const u = u0 + w * j / k; FB('iron', u - 0.015, v0, u + 0.015, v1, d - 0.045, d - 0.012, { solid: false }); }
+        } else if (s.frame === 'alu') {
+          for (const [a, b, c, e] of [[u0, v0, u1, v0 + 0.045], [u0, vs - 0.045, u1, vs], [u0, v0, u0 + 0.045, vs], [u1 - 0.045, v0, u1, vs], [uc - 0.02, v0, uc + 0.02, vs]])
+            FB('metal_white', a, b, c, e, d - 0.05, d - 0.012, { color: [0.8, 0.81, 0.82], tile: 1.2, solid: false });
+        }
+        if (s.shut === 'open') { const hw = w / 2; FB(shKey, u0 - hw - 0.03, v0, u0 - 0.03, vs, -0.05, -0.012, shO); FB(shKey, u1 + 0.03, v0, u1 + hw + 0.03, vs, -0.05, -0.012, shO); }
+        else if (s.shut === 'shut') { FB(shKey, u0 + 0.01, v0 + 0.01, uc - 0.008, vs - 0.01, d - 0.16, d - 0.12, shO); FB(shKey, uc + 0.008, v0 + 0.01, u1 - 0.01, vs - 0.01, d - 0.16, d - 0.12, shO); }
+        if (s.grille) B.kit('reja', KM(uc, v0 - 0.03, -0.035, T, UP, N, w + 0.1, vs - v0 + 0.07, 1), { iron: 'iron' }, { lod: 'near' });
+      };
+      // an air-conditioning unit on brackets under a window, its run-off staining the wall
+      const ac = op => {
+        const uc = (op.u0 + op.u1) / 2, p = P(uc + vr.range(-0.1, 0.1), op.v0 - 1.0, -0.21);
+        B.prop(vr() < 0.5 ? 'ac' : 'ac_rust', p.x, p.y, p.z, rotN, 0.9);
+        Q('d_stain', uc - 0.45, op.v0 - 2.7, uc + 0.45, op.v0 - 0.95, -0.006, { uv: [0, 0, 1, 1], color: [0.8, 0.8, 0.8] });
+      };
+      // a balcony on its slab and brackets: wrought iron (scrolled near, plain bars further off), plain bars, a stone
+      // balustrade or a plastered parapet. Collision as before: slab and parapet solid, iron for movement only.
+      const balconyAt = (a, b, v0, dep, type) => {
+        const stone = kind === 'casona', W = b - a;
+        FB(stone ? 'cantera' : 'concrete', a, v0 - 0.14, b, v0, -dep, 0, stone ? { tile: 3.2 } : { color: bd.trim });
+        FC(a, v0 - 0.14, b, v0, -dep, 0, 'concrete');
+        for (const u of [a + 0.16, b - 0.16]) B.kit('corbel', KM(u, v0 - 0.14, 0, T, UP, N, 1, 0.9, dep / 0.36 * 0.85), trimK, { ...trimO, lod: 'near' });
+        if (type === 'iron' || type === 'bars') {
+          if (type === 'iron') {
+            B.kit('rail_scroll', KM((a + b) / 2, v0, -dep + 0.03, T, UP, N, W - 0.04, 1, 1), { iron: 'iron' }, { lod: 'near' });
+            for (const u of [a + 0.03, b - 0.03]) B.kit('rail_scroll', KM(u, v0, -(dep - 0.03) / 2, N, UP, nT, dep - 0.04, 1, 1), { iron: 'iron' }, { lod: 'near' });
+          }
+          const lo = type === 'iron' ? { lod: 'far' } : {};
+          for (const y of [v0 + 0.05, v0 + 0.97]) { FB('iron', a, y, b, y + 0.035, -dep, -dep + 0.035, lo); FB('iron', a, y, a + 0.035, y + 0.035, -dep, 0, lo); FB('iron', b - 0.035, y, b, y + 0.035, -dep, 0, lo); }
+          for (let u = a + 0.06; u < b - 0.03; u += type === 'iron' ? 0.25 : 0.125) FB('iron', u, v0, u + 0.015, v0 + 1.0, -dep + 0.01, -dep + 0.025, lo);
+          FC(a, v0, b, v0 + 1.02, -dep, -dep + 0.04, 'metal', true); FC(a, v0, a + 0.04, v0 + 1.02, -dep, 0, 'metal', true); FC(b - 0.04, v0, b, v0 + 1.02, -dep, 0, 'metal', true);
+        } else if (type === 'balustrade') {
+          const n = Math.max(1, Math.round(W - 0.2)), ul = (W - 0.2) / n;
+          for (let k = 0; k < n; k++) B.kit('balustrade', KM(a + 0.1 + ul * (k + 0.5), v0, -dep + 0.13, T, UP, N, ul, 1.1, 0.9), stoneK, stoneO);
+          for (const u of [a + 0.12, b - 0.12]) B.kit('balustrade', KM(u, v0, -dep / 2, N, UP, nT, dep - 0.2, 1.1, 0.8), stoneK, stoneO);
+          FC(a, v0, b, v0 + 0.95, -dep, -dep + 0.26, 'concrete'); FC(a, v0, a + 0.24, v0 + 0.95, -dep + 0.26, 0, 'concrete'); FC(b - 0.24, v0, b, v0 + 0.95, -dep + 0.26, 0, 'concrete');
+        } else {
+          FB(wall, a, v0, b, v0 + 0.95, -dep, -dep + 0.11, wo); FB(wall, a, v0, a + 0.11, v0 + 0.95, -dep + 0.11, 0, wo); FB(wall, b - 0.11, v0, b, v0 + 0.95, -dep + 0.11, 0, wo);
+          B.kit('coping', new THREE.Matrix4().makeBasis(T.clone().multiplyScalar(W), UP, N.clone()).setPosition(P((a + b) / 2, v0 + 0.95, -dep + 0.055)), trimK, trimO);
+          FC(a, v0, b, v0 + 0.95, -dep, -dep + 0.11, 'plaster'); FC(a, v0, a + 0.11, v0 + 0.95, -dep + 0.11, 0, 'plaster'); FC(b - 0.11, v0, b, v0 + 0.95, -dep + 0.11, 0, 'plaster');
+        }
+        anchors.push({ kind: 'balcony', own: true, p: P((a + b) / 2, v0, -dep), N, T, w: W, bd, street, solid: type === 'balustrade' || type === 'parapet', dep, front: type === 'balustrade' ? 0.26 : type === 'parapet' ? 0.11 : 0.04 });
+      };
+      const string = v => { const a = cs0 ? 0.12 : 0, b = L - (cs1 ? 0.12 : 0); B.kit('string', KM((a + b) / 2, v, 0, T, UP, N, b - a, 1, 1), trimK, trimO); if (cs1) B.kit('string_corner', KM(L, v, 0, T, UP, N), trimK, trimO); };
+
+      // ---- the floors above the shops ------------------------------------------------------------------------------------
+      const oneBay = Math.min(nb - 1, Math.floor(vr() * nb)), fins = kind === 'comercial' && vr() < 0.5, block = kind === 'comercial' && nb > 1 && vr() < 0.45, sills = [];
+      for (let f = 1; f < bd.floors; f++) {
+        const v0 = FLOOR0 + (f - 1) * FLOORN, v1 = v0 + FLOORN, piano = f === 1, topF = f === bd.floors - 1;
+        if (kind === 'obra') { Q('brick', cs0, v0, m, v1, -0.002, woU); Q('brick', L - m, v0, L - cs1, v1, -0.002, woU); }
+        for (let i = 0; i < nb; i++) {
+          const cu0 = m + i * bw, cu1 = cu0 + bw, uc = (cu0 + cu1) / 2, ops = [], fills = [];
+          if (kind === 'casona') {
+            const isBalc = piano && (st.balcony === 'each' || (st.balcony === 'alternate' && i % 2 === 0) || (st.balcony === 'piano' && i === (nb >> 1)));
+            const w = Math.min(st.win.w, bw - 1.0), arch = st.head === 'arch' && (!st.headAlt || i % 2 === 0);
+            let sill = isBalc ? 0.03 : piano ? st.win.sill : 0.6, h = isBalc ? 2.4 : piano ? st.win.h - 0.1 : st.win.h - 0.4;
+            if (arch) h = Math.max(h, w / 2 + 1.25);
+            const op = { u0: uc - w / 2, v0: v0 + sill, u1: uc + w / 2, v1: Math.min(v0 + sill + h, v1 - (arch ? 0.5 : 0.55)), d: A.depth, arch };
+            ops.push(op);
+            const head = arch ? null : st.head === 'arch' ? 'hood' : st.headAlt && piano ? (i % 2 ? 'pediment' : 'hood') : st.head === 'plain' ? null : st.head;
+            fills.push({ glass: vr() < st.bricked ? 'bricked' : 'room', frame: 'wood', shut: !isBalc && vr() < st.shutters ? 'open' : null, surround: true, head, sill: !isBalc, floorY: v0 });
+            if (isBalc) { const bal = vr() < 0.22; balconyAt(op.u0 - 0.32, op.u1 + 0.32, v0, bal ? 0.98 : 0.8, bal ? 'balustrade' : 'iron'); }
+            else if (!topF && vr() < 0.3) {                                  // a balcon frances: a low iron rail across the window
+              B.kit('rail_scroll', KM(uc, op.v0, -0.07, T, UP, N, w + 0.12, 0.85, 1), { iron: 'iron' }, { lod: 'near' });
+              for (const y of [op.v0 + 0.04, op.v0 + 0.82]) FB('iron', op.u0 - 0.06, y, op.u1 + 0.06, y + 0.03, -0.09, -0.06, { lod: 'far' });
+            }
+          } else if (kind === 'comercial') {
+            const isBlock = block && i === nb - 1;
+            const op = isBlock ? { u0: uc - 0.55, v0: v0 + 0.3, u1: uc + 0.55, v1: v1 - 0.3, d: A.depth } : { u0: cu0 + 0.24, v0: v0 + st.win.sill, u1: cu1 - 0.24, v1: v0 + st.win.sill + st.win.h, d: A.depth };
+            ops.push(op); fills.push(isBlock ? { glass: 'block' } : { glass: 'room', frame: 'steel', floorY: v0 });
+            if (!isBlock) FB('concrete', op.u0 - 0.05, op.v0 - 0.08, op.u1 + 0.05, op.v0, -0.1, 0, conc);
+          } else if (kind === 'obra') {
+            const w = st.win.w * (0.92 + vr() * 0.16), r = vr();
+            const op = { u0: uc - w / 2, v0: v0 + st.win.sill, u1: uc + w / 2, v1: v0 + st.win.sill + st.win.h, d: A.depth };
+            ops.push(op);
+            fills.push(r < st.bricked ? { glass: 'bricked' } : r < 0.3 ? { glass: 'dark' } : r < 0.42 ? { glass: 'board' } : { glass: 'room', frame: st.frame === 'raw' ? 'alu' : st.frame, floorY: v0, grille: vr() < st.grille });
+          } else {                                                           // vecindad, barrio
+            const isBalc = piano && st.balcony === 'one' && i === oneBay;
+            if (isBalc) {
+              const op = { u0: uc - 0.5, v0: v0 + 0.03, u1: uc + 0.5, v1: v0 + 2.2, d: A.depth };
+              ops.push(op); fills.push({ glass: 'room', frame: kind === 'barrio' ? 'wood' : st.frame === 'raw' ? 'alu' : st.frame, surround: kind === 'barrio', floorY: v0 });
+              { const par = kind === 'vecindad' && vr() < 0.5; balconyAt(uc - (kind === 'barrio' ? 0.85 : 1.05), uc + (kind === 'barrio' ? 0.85 : 1.05), v0, par ? 1.05 : 0.85, par ? 'parapet' : 'bars'); }
+            } else if (kind === 'vecindad' && vr() < 0.08) { /* a blank bay */ }
+            else {
+              const w = st.win.w * (kind === 'vecindad' ? 0.88 + vr() * 0.24 : 1), h = st.win.h * (kind === 'vecindad' ? 0.9 + vr() * 0.2 : 1);
+              const slack = Math.max(0, (bw - w) / 2 - 0.45), off = (vr() - 0.5) * 2 * slack * st.jitter, sy = v0 + st.win.sill + (kind === 'vecindad' ? (vr() - 0.5) * 0.16 : 0);
+              const op = { u0: uc + off - w / 2, v0: sy, u1: uc + off + w / 2, v1: sy + h, d: A.depth };
+              ops.push(op);
+              fills.push({ glass: vr() < st.bricked ? 'bricked' : 'room', frame: kind === 'barrio' ? 'wood' : st.frame === 'raw' ? 'alu' : st.frame, surround: kind === 'barrio',
+                shut: vr() < st.shutters ? (kind === 'barrio' && vr() < 0.7 ? 'open' : 'shut') : null, grille: vr() < st.grille, sill: true, floorY: v0 });
+              if (kind === 'vecindad' && vr() < st.slit) {                   // a small bathroom or kitchen window beside it
+                const side = off > 0 ? -1 : 1, su = uc + off + side * (w / 2 + 0.6);
+                if (su - 0.25 > cu0 + 0.12 && su + 0.25 < cu1 - 0.12) { ops.push({ u0: su - 0.25, v0: v0 + 1.75, u1: su + 0.25, v1: v0 + 2.2, d: A.depth }); fills.push({ glass: 'room', frame: 'alu', grille: vr() < 0.5, floorY: v0 }); }
+              }
+              if (kind === 'barrio' && i === (nb >> 1) && vr() < 0.45) tiles(op.u0 - 0.35, op.u1 + 0.35, op.v1 + sw + 0.1, 0.46, 0.5, [op.u0 - 0.23, op.u1 + 0.23]);
+            }
+          }
+          cellN(cu0, v0, cu1, v1, ops);
+          ops.forEach((op, k) => {
+            fill(op, fills[k]);
+            if (fills[k].glass !== 'block' && op.v0 - v0 > 0.4) sills.push(op);
+            if (kind === 'obra' && fills[k].glass !== 'bricked') FB('concrete', op.u0 - 0.12, op.v1, op.u1 + 0.12, op.v1 + 0.16, -0.012, 0, conc);   // a cast lintel
+            if (op.v0 - v0 > 0.5 && fills[k].glass === 'room' && kind !== 'casona' && vr() < (kind === 'comercial' ? 0.22 : 0.16)) ac(op);
+          });
+        }
+        if (kind === 'barrio' && st.niche && piano && nb >= 2) B.kit('niche', KM(m + (nb >> 1) * bw, v0 + 1.05, 0, T, UP, N), { trim: 'w_plaster', tile: 'paint' }, { slot: { trim: { color: [0.97, 0.96, 0.92], tile: 1.2 }, tile: { color: [0.25, 0.4, 0.8], tile: 1 } } });
+        // the floor line: a string course, a concrete slab edge, or a bare beam
+        if (kind === 'casona' || (A.ledge && vr() < A.ledge)) string(v0);
+        else if (kind === 'comercial') FB('concrete', cs0 + 0.01, v0 - 0.13, L - cs1 - 0.01, v0 + 0.1, -0.17, 0, conc);
+        else if (kind === 'obra') FB('concrete', cs0 + 0.01, v0 - 0.12, L - cs1 - 0.01, v0 + 0.1, -0.016, 0, conc);
+        if (kind === 'obra') for (let i = 0; i <= nb; i++) { const u = i === 0 ? Math.max(cs0, 0.02) + 0.12 : i === nb ? L - Math.max(cs1, 0.02) - 0.12 : m + i * bw; FB('concrete', u - 0.12, v0 + 0.1, u + 0.12, v1 - 0.12, -0.014, 0, conc); }
+        if (fins) for (let i = 1; i < nb; i++) { const u = m + i * bw; FB('concrete', u - 0.06, v0 + 0.1, u + 0.06, v1 - 0.13, -0.34, 0, conc); }
+      }
+
+      // ---- the street floor: the archetype's additions (its openings are the district's own, above) ----------------------
+      if (!bd.band && !bd.plinth) {                                    // a guardapolvo where the district drew no band or stone plinth: stone for a casona, B painted otherwise
+        let a = cs0 ? 0.03 : 0; const e = L - (cs1 ? 0.03 : 0), h = 0.9;
+        const seg = (u0, u1) => { if (u1 - u0 < 0.06 || kind === 'casona') return; FB('paint', u0, 0, u1, h, -0.012, 0, { color: st.bandP, tile: 1.6, solid: false, x: bd.age }); FB('paint', u0, h, u1, h + 0.05, -0.016, 0, { color: st.lineP, tile: 1.6, solid: false, x: bd.age }); };
+        for (const [g0, g1] of [...gaps].sort((p, q) => p[0] - q[0])) { if (g0 - a > 0.05) seg(a, g0); a = Math.max(a, g1); }
+        if (e - a > 0.05) seg(a, e);
+      }
+      if (kind === 'casona') {
+        // a cantera base course between the openings (unless a painted band is there), its top moulded, and a blind round arch over every door
+        let a = cs0 ? 0.26 : 0.02; const e = L - (cs1 ? 0.26 : 0.02);
+        const seg = (u0, u1) => { if (u1 - u0 < 0.12) return; FB('cantera', u0, 0, u1, 0.92, -0.008, 0, { tile: 2.4, solid: false }); B.kit('string', KM((u0 + u1) / 2, 0.92, 0, T, UP, N, u1 - u0, 0.6, 0.14), stoneK, { ...stoneO, lod: 'near' }); };   // (a centimetre proud: clutter shoved against the wall must not sink into it)
+        if (!bd.band) { for (const [g0, g1] of [...gaps].sort((p, q) => p[0] - q[0])) { seg(a, g0 - 0.02); a = Math.max(a, g1 + 0.02); } seg(a, e); }
+        const sv = bd.surround ? bd.surround.w : 0;
+        for (const uc of doorsU) { B.kit('archivolt', KM(uc, 2.32 + sv + 0.01, 0, T, UP, N, 1.1, 1.1, 1), stoneK, stoneO); B.kit('keystone', KM(uc, 2.32 + sv + 0.56, 0, T, UP, N), stoneK, stoneO); }
+      } else if (kind === 'comercial') {
+        // the cantilevered concrete canopy (marquesina) over the shop fronts, its fascia painted
+        const a = Math.max(cs0, 0.02) + 0.03, b = L - Math.max(cs1, 0.02) - 0.03, y = 3.28, dep = 1.35;
+        FB('concrete', a, y, b, y + 0.14, -dep, 0, conc); FB('paint', a, y - 0.06, b, y + 0.24, -dep - 0.05, -dep, { color: st.fascia, tile: 1.6, solid: false, x: bd.age });
+        FC(a, y, b, y + 0.14, -dep, 0, 'concrete');
+      } else if (kind === 'barrio') {
+        for (const uc of doorsU) tiles(uc - 0.95, uc + 0.95, 2.32 + (bd.surround ? bd.surround.w : 0) + 0.14, 0.55, 0.45, [uc - 0.8, uc + 0.8]);
+      }
+      // quoins up the corner, pilasters between the bays
+      if (st.quoins && cs1) for (let y = 0.95, k = 0; y < H - 0.3; y += 0.36, k++) B.kit(k % 2 ? 'quoin_a' : 'quoin_b', KM(L, y, 0, T, UP, N), stoneK, stoneO);
+      if (st.pilasters && nb > 1) for (let i = 1; i < nb; i++) {
+        const u = m + i * bw, y0 = kind === 'casona' ? 0.97 : 0.05, y1 = H - 0.42;
+        B.kit('pil_base', KM(u, y0, 0, T, UP, N), trimK, trimO);
+        B.kit('pilaster', KM(u, y0 + 0.2, 0, T, UP, N, 1, y1 - y0 - 0.36, 1), trimK, trimO);
+        B.kit('pil_cap', KM(u, y1 - 0.16, 0, T, UP, N), trimK, trimO);
+      }
+
+      // ---- repairs and wear: newer plaster in patches, plaster fallen off to the brick, stains ---------------------------
+      const regions = [...free.filter(r => r[3] <= FLOOR0 + 0.01), ...free2].filter(r => r[2] - r[0] > 0.7 && r[3] - r[1] > 0.6);
+      for (let k = 0; k < st.patches && regions.length; k++) {
+        const r = regions[Math.floor(vr() * regions.length)], w = Math.min(r[2] - r[0] - 0.05, 0.6 + vr() * 1.6), h = Math.min(r[3] - r[1] - 0.05, 0.45 + vr() * 1.3);
+        const u = r[0] + vr() * (r[2] - r[0] - w), v = r[1] + vr() * (r[3] - r[1] - h), g = 0.86 + vr() * 0.22, onBrick = kind === 'obra' && v > FLOOR0;
+        Q(onBrick ? wall : (v > FLOOR0 ? upperWall : wall), u, v, u + w, v + h, -0.004 - k * 0.0006, { tile: bd.tile, uo: vr(), vo: vr(), color: onBrick ? bd.tint : [bd.tint[0] * g, bd.tint[1] * g, bd.tint[2] * g * (0.98 + vr() * 0.06)], x: [bd.age[0] * 0.25, bd.age[1] * 0.6, 1] });
+      }
+      for (let k = 0; k < st.brickPatches && regions.length; k++) {
+        const r = regions[Math.floor(vr() * regions.length)];
+        if (kind === 'obra' && r[1] >= FLOOR0) continue;
+        const cx = r[0] + 0.3 + vr() * Math.max(0, r[2] - r[0] - 0.6), cy = r[1] + 0.3 + vr() * Math.max(0, r[3] - r[1] - 0.6);
+        for (let j = 0; j < 3; j++) { const w = 0.25 + vr() * 0.45, h = 0.18 + vr() * 0.3, ox = (vr() - 0.5) * 0.4, oy = (vr() - 0.5) * 0.3; Q('w_brick', cx + ox - w / 2, cy + oy - h / 2, cx + ox + w / 2, cy + oy + h / 2, -0.0035 - j * 0.0004, { tile: 1.2, color: [0.95, 0.9, 0.86], uo: vr(), vo: vr() }); }
+      }
+      for (const op of sills) if (vr() < A.wear * 0.7) {                   // rain run off the sills, darkening the wall below
+        const w = (op.u1 - op.u0) * (0.7 + vr() * 0.4), uc = (op.u0 + op.u1) / 2 + (vr() - 0.5) * 0.2, h = 0.7 + vr() * 1.3;
+        Q('d_stain', uc - w / 2, op.v0 - 0.07 - h, uc + w / 2, op.v0 - 0.07, -0.006, { uv: [0, 0, 1, 1], color: [0.9, 0.9, 0.9] });
+      }
+      for (let k = 0; k < 1 + L / 9 && regions.length; k++) {
+        const r = regions[Math.floor(vr() * regions.length)], kd = ['d_patch', 'd_scars', 'd_patch'][Math.floor(vr() * 3)];          // (stains run from sills and units, above)
+        const lim = kd === 'd_scars' ? 0.75 : 2.2, s = Math.min(lim, Math.min(r[2] - r[0], r[3] - r[1]) * (0.55 + vr() * 0.4)), ca = (r[0] + r[2]) / 2 + (vr() - 0.5) * 0.6 * (r[2] - r[0] - s), cb = (r[1] + r[3]) / 2;
+        if (s < 0.4) continue;
+        const g = 0.86 + vr() * 0.22;
+        Q(kd, ca - s / 2, cb - s / 2, ca + s / 2, cb + s / 2, -0.006 - k * 0.001, { uv: [0, 0, 1, 1], color: kd === 'd_patch' ? [bd.tint[0] * g, bd.tint[1] * g, bd.tint[2] * g] : [1, 1, 1] });
+      }
     }
   }
 
@@ -367,6 +692,7 @@ export function architecture(B, rnd, buildings, anchors, rs = null, style = { ba
   }
 
   // ---------------------------------------------------------------------------------------------- building ------
+  let prevStyle = null;                                                        // the last building's colours: its neighbour is painted unlike them
   function building(x0, x1, z0, z1, o = {}) {
     const st = o.style ?? rnd.pick(STYLES), floors = o.floors ?? rnd.pick([2, 2, 3, 3, 3]);
     const was = B.mute; if (o.ghost) B.mute = true;              // a ghost is generated (same random draws) and thrown away: a passage replaces it
@@ -390,15 +716,24 @@ export function architecture(B, rnd, buildings, anchors, rs = null, style = { ba
     // the kit's choices for this building: stone (cantera) or plaster trim, a tiled eave instead of a cornice, tile hoods
     const hk = k => hash(x0, z0, x1, z1, k);
     bd.kit = { stone: hk(1) < 0.38, tejaroz: !bd.cornice && floors >= 2 && hk(2) < 0.34, hoods: hk(3) < 0.24 };
+    // its archetype (facades.js), from a stream of its own: colours and what is drawn change, never what is solid or
+    // where anything stands (the street floor's openings, bands and frames stay the district's own)
+    const fs = bd.style = facadeStyle(bd, prevStyle); prevStyle = fs;
+    bd.wall = fs.wallKey; bd.tile = fs.wallTile; bd.tint = fs.tint; bd.age = fs.age; bd.trim = fs.trimC; bd.doorTint = fs.door; bd.frameTint = fs.woodP; bd.shTint = fs.woodP;
+    if (bd.band) bd.band.c = fs.kind === 'casona' ? tint('#cdb89c', 'paint', 1, 0.05, 0.5) : fs.bandP;   // (colour only: the band's boxes stay where they were)
+    if (bd.surround) { bd.surround.c = fs.frameP; bd.surround.ck = fs.frameW; }
+    bd.kit.hoods = false; bd.kit.tejaroz = fs.roof === 'eave' && floors >= 2;
+    bd.kit.stone = fs.stone || (fs.kind === 'casona' && bd.kit.stone);
+    bd.cornice = fs.kind === 'casona' || (fs.kind === 'barrio' && fs.roof === 'plain');
     buildings.push(bd);
     for (const s of 'nsew') facade(bd, s);
-    const H = bd.H, wo = { color: bd.tint, tile: bd.tile, uo: bd.uo, vo: bd.vo }, pt = 0.26, py = H + PARAPET / 2;
+    const H = bd.H, wo = { color: bd.tint, tile: bd.tile, uo: bd.uo, vo: bd.vo, x: bd.age }, pt = 0.26, py = H + PARAPET / 2;
     B.quad('concrete', V(x0, H, z1), V(x1, H, z1), V(x1, H, z0), V(x0, H, z0), { tile: 3, color: [0.78, 0.76, 0.72] });
     // the parapet's moulded coping (kit), crowned and dripped on both faces
     const cTrim = { trim: bd.kit.stone ? 'cantera' : 'concrete' }, cO = bd.kit.stone ? { color: [1, 1, 1], tile: 3.2 } : { color: bd.trim, tile: 2.0 };
-    const coping = (cx, cz, sx, sz) => {
+    const coping = (cx, cz, sx, sz, y = H + PARAPET) => {
       const along = sz > sx ? new THREE.Vector3(0, 0, 1) : new THREE.Vector3(1, 0, 0), len = Math.max(sx, sz) + 0.04;
-      B.kit('coping', new THREE.Matrix4().makeBasis(along.clone().multiplyScalar(len), UP, along.clone().cross(UP)).setPosition(cx, H + PARAPET, cz), cTrim, cO);
+      B.kit('coping', new THREE.Matrix4().makeBasis(along.clone().multiplyScalar(len), UP, along.clone().cross(UP)).setPosition(cx, y, cz), cTrim, cO);
     };
     const par = (cx, cz, sx, sz, side) => {
       const g = bd.parapetGap;
@@ -407,10 +742,48 @@ export function architecture(B, rnd, buildings, anchors, rs = null, style = { ba
         for (const [a, b] of [[zA, g.a], [g.b, zB]]) { B.box(bd.wall, cx, py, (a + b) / 2, sx, PARAPET, b - a, wo); coping(cx, (a + b) / 2, sx, b - a); if (bd.roofAccess) B.collide(cx, py, (a + b) / 2, sx, PARAPET, b - a); }
         return;
       }
-      B.box(bd.wall, cx, py, cz, sx, PARAPET, sz, wo);
+      const front = !!(bd.street?.[side] && bd.street[side] !== 'none');
+      if (front && fs.roof === 'balustrade') { balustrade(cx, cz, sx, sz); if (bd.roofAccess) B.collide(cx, py, cz, sx, PARAPET, sz); return; }
+      B.box(fs.kind === 'obra' ? 'brick' : bd.wall, cx, py, cz, sx, PARAPET, sz, fs.kind === 'obra' ? { tile: 1.9, color: [0.96, 0.9, 0.84] } : wo);
       coping(cx, cz, sx, sz);
       if (bd.roofAccess) B.collide(cx, py, cz, sx, PARAPET, sz);
+      if (front) roofline(cx, cz, sx, sz);
     };
+    // the archetype's roofline on a street side: a stone balustrade between piers with finials (casona), a stepped
+    // parapet or a sign frame (1950s block), a curved crest (barrio), column stubs bristling with rebar (unfinished)
+    const runOf = (cx, cz, sx, sz) => { const along = sz > sx ? V(0, 0, 1) : V(1, 0, 0); return { along, len: Math.max(sx, sz), thick: Math.min(sx, sz), Z: along.clone().cross(UP) }; };
+    const finial = (x, z, y) => { B.box('cantera', x, y + 0.48, z, 0.36, 0.96, 0.36, { tile: 3.2 }); B.box('cantera', x, y + 0.99, z, 0.44, 0.06, 0.44, { tile: 3.2 }); B.geom('cantera', new THREE.SphereGeometry(0.13, 10, 8), new THREE.Matrix4().makeTranslation(x, y + 1.17, z), { uvScale: 0.5 }); };
+    function balustrade(cx, cz, sx, sz) {
+      const { along, len, Z } = runOf(cx, cz, sx, sz), n = Math.max(1, Math.round(len - 0.4)), ul = (len - 0.4) / n;
+      for (let k = 0; k < n; k++) { const t = -len / 2 + 0.2 + ul * (k + 0.5); B.kit('balustrade', new THREE.Matrix4().makeBasis(along.clone().multiplyScalar(ul), UP, Z.clone()).setPosition(cx + along.x * t, H, cz + along.z * t), { trim: 'cantera' }, { slot: { trim: { color: [1, 1, 1], tile: 3.2 } } }); }
+      for (const t of [-len / 2 + 0.18, len / 2 - 0.18]) finial(cx + along.x * t, cz + along.z * t, H);
+    }
+    function roofline(cx, cz, sx, sz) {
+      const { along, len, thick, Z } = runOf(cx, cz, sx, sz), top = H + PARAPET, vr = fs.vr;
+      const at = t => V(cx + along.x * t, 0, cz + along.z * t), dim = (l, h, d = thick) => along.x ? [l, h, d] : [d, h, l];
+      if (fs.roof === 'stepped' && len > 7) {
+        for (const [f, h] of [[0.4, 0.55], [0.18, 1.0]]) { const [a, b, c] = dim(len * f, h); B.box(bd.wall, cx, top + h / 2, cz, a, b, c, wo); coping(cx, cz, ...dim(len * f, 0, thick).filter((_, i) => i !== 1), top + h); }
+      } else if (fs.roof === 'sign' && len > 6) {
+        const w = Math.min(len * 0.55, 6), col = tint(['#b23a2e', '#20438a', '#e0a832', '#2f6b45'][Math.floor(vr() * 4)], 'paint', 0.9, 0.04, 0.45);
+        for (const t of [-w * 0.4, w * 0.4]) { const p = at(t); B.box('iron', p.x, top + 0.75, p.z, 0.08, 1.5, 0.08); }
+        const [a, b, d] = dim(w, 1.0, 0.06); B.box('paint', cx, top + 1.1, cz, a, b, d, { color: col, tile: 2 });
+        const [a2, b2, d2] = dim(w + 0.08, 0.05, 0.08); B.box('iron', cx, top + 1.62, cz, a2, b2, d2); B.box('iron', cx, top + 0.58, cz, a2, b2, d2);
+      } else if (fs.roof === 'crest') {
+        const sh = new THREE.Shape(), hw = Math.min(1.5, len * 0.22), hh = 0.75 + vr() * 0.25;
+        sh.moveTo(-hw, 0); sh.lineTo(-hw, 0.12); sh.bezierCurveTo(-hw * 0.6, 0.12, -hw * 0.55, hh * 0.55, -hw * 0.3, hh * 0.62); sh.bezierCurveTo(-hw * 0.12, hh * 0.68, -0.12, hh, 0, hh);
+        sh.bezierCurveTo(0.12, hh, hw * 0.12, hh * 0.68, hw * 0.3, hh * 0.62); sh.bezierCurveTo(hw * 0.55, hh * 0.55, hw * 0.6, 0.12, hw, 0.12); sh.lineTo(hw, 0); sh.lineTo(-hw, 0);
+        const g = new THREE.ExtrudeGeometry(sh, { depth: thick, bevelEnabled: false, curveSegments: 8 }); g.translate(0, 0, -thick / 2);
+        B.geom(bd.wall, g, new THREE.Matrix4().makeBasis(along.clone(), UP, Z.clone()).setPosition(cx, top - 0.02, cz), { color: bd.tint, uvScale: 1 / bd.tile, xf: () => bd.age });
+        B.geom('cantera', new THREE.SphereGeometry(0.11, 10, 8), new THREE.Matrix4().makeTranslation(cx, top + hh + 0.08, cz), { uvScale: 0.5 });
+      } else if (fs.roof === 'stubs') {
+        for (let t = -len / 2 + 0.3; t <= len / 2 - 0.3 + 1e-6; t += Math.max(2.4, (len - 0.6) / Math.max(1, Math.round((len - 0.6) / 3.3)))) {
+          if (vr() < 0.3) continue;
+          const p = at(t), h = 0.3 + vr() * 0.55;
+          B.box('concrete', p.x, top + h / 2, p.z, 0.26, h, 0.26, { tile: 1, color: [0.78, 0.76, 0.72] });
+          for (const [ox, oz] of [[-0.08, -0.08], [0.08, -0.08], [-0.08, 0.08], [0.08, 0.08]]) { const l = 0.4 + vr() * 0.9; B.geom('iron', new THREE.CylinderGeometry(0.007, 0.007, l, 4), new THREE.Matrix4().makeTranslation(p.x + ox, top + h + l / 2, p.z + oz), { color: [0.6, 0.42, 0.3] }); }
+        }
+      }
+    }
     par(x1 - pt / 2, (z0 + z1) / 2, pt, z1 - z0, 'e'); par(x0 + pt / 2, (z0 + z1) / 2, pt, z1 - z0, 'w');
     par((x0 + x1) / 2, z1 - pt / 2, x1 - x0 - 2 * pt, pt, 'n'); par((x0 + x1) / 2, z0 + pt / 2, x1 - x0 - 2 * pt, pt, 's');
     // colliders: footprint minus shop rooms
@@ -584,7 +957,7 @@ export function buildWorld(R, M) {
   const group = new THREE.Group(); group.name = 'world';
   for (const m of meshes) {
     const water = m.name.startsWith('water');               // (the fountain's water: it neither casts shadows nor stops anything)
-    m.castShadow = !m.name.startsWith('d_') && !water && !['ground', 'cable', 'dark', 'glass', 'matte', 'paint', 'sign', 'bulb'].includes(m.name) && !m.userData.noShadow; m.receiveShadow = true;    // (paint and signs lie flat on walls: nothing to cast)
+    m.castShadow = !m.name.startsWith('d_') && !water && !['ground', 'cable', 'dark', 'glass', 'room', 'matte', 'paint', 'sign', 'bulb'].includes(m.name) && !m.userData.noShadow; m.receiveShadow = true;    // (paint and signs lie flat on walls: nothing to cast)
     const lod = lodRange(m); if (lod) m.userData.lod = lod;
     m.matrixAutoUpdate = false;
     if (m.name === 'frond' || m.name === 'leaves' || m.name === 'flowers' || m.name.startsWith('d_') || water) m.userData.noAO = true;
@@ -614,5 +987,5 @@ export function buildWorld(R, M) {
   // leave out the side the camera cannot see (its lowest roofline, and the passages it can see through).
   const ringRoof = Math.min(...buildings.filter(b => b.x0 === 31 && b.x1 === 46).map(b => b.H + (b.roofAccess ? 0 : PARAPET)));
   const zones = { x0: 31, x1: 46, split0: 22, split1: 46, roof: ringRoof, gates: quarter.passages };
-  return { group, colliders: B.colliders, details: B.details, rayMeshes, clothMeshes, buildings, nav, spawns, anchors, surfaceAt, dynamic: B.dynamic, emitters: B.emitters, lamps: B.lamps, rails: B.rails || [], quarterHotspots: QUARTER_HOTSPOTS, zones };
+  return { group, colliders: B.colliders, details: B.details, rayMeshes, clothMeshes, buildings, nav, spawns, anchors: anchors.filter(a => !a.legacy), surfaceAt, dynamic: B.dynamic, emitters: B.emitters, lamps: B.lamps, rails: B.rails || [], quarterHotspots: QUARTER_HOTSPOTS, zones };
 }
