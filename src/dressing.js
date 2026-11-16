@@ -217,7 +217,7 @@ export function dressKit({ B, M, rnd, buildings, anchors, low, rs = null }) {
       }
       for (let i = 0, nd = 2 + Math.floor(fhash(x, z, 54) * 3); i < nd; i++)
         B.kit('palm_dates', mat4(top.clone().add(V(0, -0.35, 0)), fhash(x, z, i, 55) * 6.28), { fruit: 'glossy', stalk: 'matte' }, { lod: 'near', slot: { fruit: { color: [0.85, 0.42, 0.1] }, stalk: { color: [0.85, 0.6, 0.22] } } });
-    });
+    }, [x, z]);                                                                  // (both versions in the foot's cell: they switch together)
   }
 
   const dish = (p, yaw) => {

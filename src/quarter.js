@@ -346,7 +346,7 @@ export function buildQuarter({ B, M, buildings, anchors, ghosts, gates, architec
         B.geom('leaves', g, mat4(p), { color: [tint * 0.95, tint, tint * 0.85], xf: k => [wind[k], i * 0.7, 0] });
       }
     }, () => B.kit(v, mat4(V(x, 0, z), fhash(x, z, 61) * 6.28, s), { bark: 'bark', leaf: 'leaf' },
-      { lod: 'near', slot: { bark: { uv: 'own', tile: 1.5, color: [0.78, 0.74, 0.68] }, leaf: { uv: 'own', tile: 1, wind: fhash(x, z, 62) * 6.28 } } }));
+      { lod: 'near', slot: { bark: { uv: 'own', tile: 1.5, color: [0.78, 0.74, 0.68] }, leaf: { uv: 'own', tile: 1, wind: fhash(x, z, 62) * 6.28 } } }), [x, z]);   // (both versions in the foot's cell)
   }
 
   function bench(x, z, rot) {

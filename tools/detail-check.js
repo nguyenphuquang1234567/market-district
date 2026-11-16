@@ -3,6 +3,7 @@
 // builder(): the Builder's near/far plumbing on synthetic input. pieces(): every props.glb piece listed in PIECES is
 // loaded, within its triangle cap, inside its envelope (the space the old geometry took), and carries the wind and
 // texture coordinates its slots need. totals(): the caps of pieces drawn together (a palm, the kiosk, the chapel).
+// swapCells(G): each palm and laurel keeps its old and modelled versions in one cell, so they switch together.
 // Each returns a list of problems; empty means it passed.
 import * as THREE from 'three';
 import { Builder } from '/src/builder.js';
@@ -112,6 +113,17 @@ export function builder() {
       const B2 = new Builder();                                           // a throw in far() still restores the default
       try { B2.swap('__t', () => { throw new Error('x'); }, () => {}); } catch { /* expected */ }
       if (B2.lodDefault !== null) fail('swap: lodDefault left set after far() threw');
+      // swap(..., at): both versions go into the cell of `at` (a tree's foot), so the renderer switches them together even
+      // where they reach over a cell edge (x -26 is one); after the swap, cells are each draw's own again
+      const B3 = new Builder(), edge = x => B3.quad('concrete', V(x, 0, 0), V(x + 0.5, 0, 0), V(x + 0.5, 1, 0), V(x, 1, 0));
+      B3.swap('__t', () => { edge(-27); edge(-25.5); }, () => B3.kit('__t', new THREE.Matrix4().makeTranslation(-27.5, 0, 0), { a: 'leaf' }, { lod: 'near' }), [-25, 0]);
+      const cells = new Set([...B3.buckets.values()].map(k => k.cell));
+      if (cells.size !== 1 || !cells.has(B3.cell(-25, 0))) fail('swap(at): the two versions are not all in the cell of at: ' + [...B3.buckets.keys()]);
+      edge(-45);
+      if (!B3.buckets.has('concrete|' + B3.cell(-44.75, 0))) fail('swap(at): the cell stays pinned after the swap: ' + [...B3.buckets.keys()]);
+      const B4 = new Builder();
+      try { B4.swap('__t', () => { throw new Error('x'); }, () => {}, [0, 0]); } catch { /* expected */ }
+      if (B4.pin != null) fail('swap(at): the cell left pinned after far() threw');
     } finally { assets.kit = keep; }
   }
   { // replace(): the old version's draws are made but nothing of it is kept; the piece is drawn untagged; a missing
@@ -248,6 +260,44 @@ export function shadowProxies(G, eye) {
       if (near && (!m.visible || m.material.colorWrite !== false || m.material.depthWrite !== false)) out.push(`far ${m.name} near the camera is not an unseen shadow caster`);
       if (!near && m.material.colorWrite === false) out.push(`far ${m.name} far off is drawn unseen`);
     }
+  }
+  return out;
+}
+
+// Palms and laurels (Builder.swap): the renderer shows a tree's old or modelled version by the distance to the 24 m cell
+// each mesh is in (render.js kitShown), so all of both versions must sit in one cell; split over two, part of the tree is
+// drawn twice or not at all from places near one cell and far from the other. Trees are found by their modelled trunks'
+// feet (near bark on the ground); a vertex counts for the nearest foot within 6 m when the next foot is 1.5 m farther.
+// Problems found.
+export function swapCells(G) {
+  const W = G.world.group.children, feet = [], out = [];
+  for (const m of W) {
+    if (m.name !== 'bark' || m.userData.kitLod !== 'near') continue;
+    const a = m.geometry.attributes.position;
+    for (let i = 0; i < a.count; i++) {
+      if (a.getY(i) > 0.05) continue;
+      const x = a.getX(i), z = a.getZ(i);
+      let f = feet.find(f => Math.hypot(f.sx / f.n - x, f.sz / f.n - z) < 2.5);
+      if (!f) feet.push(f = { sx: 0, sz: 0, n: 0, far: new Set(), near: new Set() });
+      f.sx += x; f.sz += z; f.n++;
+    }
+  }
+  if (!feet.length) return ['no modelled trees found'];
+  for (const f of feet) { f.x = f.sx / f.n; f.z = f.sz / f.n; }
+  const OLD = ['bark', 'frond', 'leaves'], NEW = ['bark', 'palm_leaf', 'leaf', 'glossy', 'matte'];
+  for (const m of W) {
+    const lod = m.userData.kitLod;
+    if (!lod || !(lod === 'far' ? OLD : NEW).includes(m.name)) continue;
+    const a = m.geometry.attributes.position, cell = m.userData.lodBox.join(',');
+    for (let i = 0; i < a.count; i++) {
+      const x = a.getX(i), z = a.getZ(i); let d1 = Infinity, d2 = Infinity, best = null;
+      for (const f of feet) { const d = Math.hypot(f.x - x, f.z - z); if (d < d1) { d2 = d1; d1 = d; best = f; } else if (d < d2) d2 = d; }
+      if (d1 < 6 && d2 - d1 > 1.5) best[lod].add(cell);
+    }
+  }
+  for (const f of feet) {
+    const far = [...f.far], near = [...f.near];
+    if (far.length !== 1 || near.length !== 1 || far[0] !== near[0]) out.push(`tree at (${f.x.toFixed(1)}, ${f.z.toFixed(1)}): old version in cell ${far.join(' + ') || 'none'}, modelled one in ${near.join(' + ') || 'none'}`);
   }
   return out;
 }

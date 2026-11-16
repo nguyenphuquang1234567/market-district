@@ -55,6 +55,7 @@ export class Builder {
     this.dropped = [];          // loose props that could not be dressed clear of anything solid
     this.mute = false;          // while set, everything is generated as usual (same random draws) but nothing is kept
     this.lodDefault = null;     // the lod of anything drawn without one (see swap())
+    this.pin = null;            // while set, the cell everything is drawn into (see swap())
     this.muteDraw = false;      // while set, nothing is drawn but solids are still recorded (see replace())
   }
 
@@ -67,7 +68,7 @@ export class Builder {
   // takes lodDefault; null means untagged even then.
   _b(key, x, z, far, lod) {
     if (lod === undefined && !far) lod = this.lodDefault;
-    const cell = far ? -1 : this.cell(x, z), id = key + '|' + (far ? 'far' : cell) + (lod ? '|' + lod : '');
+    const cell = far ? -1 : (this.pin ?? this.cell(x, z)), id = key + '|' + (far ? 'far' : cell) + (lod ? '|' + lod : '');
     let b = this.buckets.get(id);
     if (!b) this.buckets.set(id, b = { key, lod, cell, p: [], n: [], u: [], c: [], i: [], x: [] });
     return b;
@@ -184,13 +185,20 @@ export class Builder {
   // modelled kit piece(s) `names` (a name or a list) with lod: 'near'. When every piece is loaded, what far() draws is
   // tagged 'far'; when one is missing, far() is drawn untagged, exactly as before, and near() is not called, so a missing
   // props.glb never leaves a hole. Either way far() makes all its random draws. Returns what far() returns.
-  swap(names, far, near) {
+  // at = [x, z] (a tree's foot): both versions are drawn into that spot's cell, so the renderer switches the whole thing
+  // at once. Left to each draw's own cell, a frond or leaf card reaching over a cell edge switches with the next cell, and
+  // from some places is drawn twice (old and new) or not at all.
+  swap(names, far, near, at) {
     if (![].concat(names).every(n => assets.kit?.[n])) return far();
-    const prev = this.lodDefault; this.lodDefault = 'far';
-    let ret;
-    try { ret = far(); } finally { this.lodDefault = prev; }
-    near();
-    return ret;
+    const prev = this.lodDefault, pin = this.pin;
+    if (at) this.pin = this.cell(at[0], at[1]);
+    try {
+      this.lodDefault = 'far';
+      let ret;
+      try { ret = far(); } finally { this.lodDefault = prev; }
+      near();
+      return ret;
+    } finally { this.pin = pin; }
   }
 
   // The same without a far version (pebbles, sacks, chiles, piñatas, poles, carts, rubble, the chapel's dome, the kiosk):
