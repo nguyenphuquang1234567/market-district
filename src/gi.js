@@ -6,6 +6,7 @@ import * as THREE from 'three';
 import { MeshBVH } from 'three-mesh-bvh';
 import { giUniforms } from './render.js';
 import { FOLIAGE } from './materials.js';
+import { DETAIL } from './assets.js';
 
 const GRID = { x0: -46, y0: 0.35, z0: -80, sx: 1, sy: 1.1, sz: 1, nx: 158, ny: 8, nz: 161 };       // x -46…111: the old district and the market quarter
 // 96 rays a probe, the set turned by a different angle at every probe so neighbours do not share the same gaps (the
@@ -232,8 +233,10 @@ function upload(sh, skyRef) {
 
 // Loads the cached bake if it matches this build of the map, otherwise bakes (and offers the result to the dev server).
 // stale (dev, ?stalegi=1): take the cached bake even if the map has changed since, for a quick look while geometry is
-// being added; nothing is baked or saved.
+// being added; nothing is baked or saved. ?detail=0 (the map as it was before the detail pass, for A/B timings) takes the
+// cached bake as it is too, and saves none it has to make: the file is the detailed map's.
 export async function setupGI(R, world, M, onProgress, force = false, stale = false) {
+  stale ||= !DETAIL;
   const N = GRID.nx * GRID.ny * GRID.nz;
   // (the colliders, the sun, the lamps and how much is drawn: a change to any of them means a fresh bake)
   const drawn = world.group.children.reduce((a, m) => a + (m.geometry.index ? m.geometry.index.count : 0), 0);
@@ -251,6 +254,6 @@ export async function setupGI(R, world, M, onProgress, force = false, stale = fa
   const { sh, sky } = await bake(R, world, M, onProgress);
   upload(sh, sky);
   const out = new ArrayBuffer(32 + N * 12 * 4); new Float32Array(out, 0, 8).set([MAGIC, VERSION, N, sig, sky, 0, 0, 0]); new Float32Array(out, 32).set(sh);
-  fetch('/__save/gi.bin', { method: 'POST', body: out }).catch(() => {});
+  if (DETAIL) fetch('/__save/gi.bin', { method: 'POST', body: out }).catch(() => {});
   return 'baked';
 }
