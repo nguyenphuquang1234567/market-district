@@ -968,6 +968,15 @@ export function buildWorld(R, M) {
     group.add(m);
   }
   R.scene.add(group); R.setupTree(group);
+  // Near a tree its modelled leaves cast no shadow: the old leaf cards stay in its place, drawn unseen (no colour, no
+  // depth) by a proxy material, and cast the canopy's shadow (render.js cull) instead of thousands of leaves in every cascade.
+  for (const m of meshes) {
+    if (m.userData.kitLod === 'near' && (m.name === 'leaf' || m.name === 'palm_leaf')) m.castShadow = false;
+    if (m.userData.kitLod === 'far' && (m.name === 'leaves' || m.name === 'frond')) {
+      const p = m.material.clone(); p.userData = m.material.userData; p.colorWrite = false; p.depthWrite = false;
+      m.userData.baseMaterial = m.material; m.userData.shadowProxy = R.setup(p);
+    }
+  }
 
   const nav = new NavGrid(B.colliders, -48, -82, 113, 82);
   const spawns = {

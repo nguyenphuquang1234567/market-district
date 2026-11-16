@@ -73,7 +73,8 @@ const BUDGET = { wall_lamp: 1800, barrier: 6000, barrier2: 4500, car: 12000, she
 // The props whose outline the cut above spoils (a pot's rim, a basket's weave, a crate's handles) are cut a second time,
 // finer and closer to the scan, for drawing (proto.near). Their hull, size and physics stay those of the cut above.
 // (the woven basket is left out: its open weave cannot be cut below about 2000 triangles anyway)
-const NEAR_BUDGET = { pot: 900, basket_tall: 1200, plastic_crate: 2200, jerrycan: 1400, cardboard: 1200, wall_lamp: 2600, lpg: 2800 };
+// (wall lamps and gas tanks too: their finer cut cost more frame time than it showed)
+const NEAR_BUDGET = { pot: 750, basket_tall: 950, plastic_crate: 1800, jerrycan: 1150, cardboard: 1100 };
 // The detail pass (props.glb, finer props, rounder rods and cables) is on unless ?detail=0, which draws the map as it was
 // before it, for A/B timings in the same build.
 export const DETAIL = new URLSearchParams(location.search).get('detail') !== '0';

@@ -235,9 +235,26 @@ export function impacts(G, eye, at, n = 60, spread = 1.2) {
   return { shots: n, impacts: rec.length, floating, worst: +worst.toFixed(3) };
 }
 
+// Near a tree its modelled leaves cast no shadow; the old leaf cards stay, unseen (no colour, no depth), and cast the
+// canopy's shadow instead. From eye, after a frame: problems found.
+export function shadowProxies(G, eye) {
+  const out = [], W = G.world.group.children;
+  G.goto(eye[0], eye[1], 0, 0); G.step(2, 1 / 60);
+  for (const m of W) {
+    if ((m.name === 'leaf' || m.name === 'palm_leaf') && m.userData.kitLod === 'near' && m.castShadow) out.push(`near ${m.name} casts a shadow`);
+    if ((m.name === 'leaves' || m.name === 'frond') && m.userData.kitLod === 'far') {
+      if (!m.userData.shadowProxy) { out.push(`far ${m.name} has no shadow proxy`); continue; }
+      const near = !G.R.kitShown(m);
+      if (near && (!m.visible || m.material.colorWrite !== false || m.material.depthWrite !== false)) out.push(`far ${m.name} near the camera is not an unseen shadow caster`);
+      if (!near && m.material.colorWrite === false) out.push(`far ${m.name} far off is drawn unseen`);
+    }
+  }
+  return out;
+}
+
 // scanned props cut finer for drawing (assets.js NEAR_BUDGET): each kind has proto.near, finer than its parts (which
 // stay as they were: hull, size and physics)
-export const SCANNED = ['pot', 'basket_tall', 'plastic_crate', 'jerrycan', 'cardboard', 'wall_lamp', 'lpg'];
+export const SCANNED = ['pot', 'basket_tall', 'plastic_crate', 'jerrycan', 'cardboard'];
 export function scanned() {
   const out = [];
   for (const k of SCANNED) {

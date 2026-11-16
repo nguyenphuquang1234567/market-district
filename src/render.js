@@ -389,7 +389,11 @@ export function createRenderer(canvas, skyTex, presetName) {
       const p = camera.position, k = api.lodScale;
       for (const { o, s } of api.lodList) {
         const u = o.userData; let vis = !u.lod || p.distanceTo(s.center) - s.radius < u.lod * k;
-        if (u.kitLod) vis = vis && api.kitShown(o);      // the kit: detailed pieces near, plain stand-ins beyond
+        if (u.kitLod) {                                   // the kit: detailed pieces near, plain stand-ins beyond
+          const shown = api.kitShown(o);
+          if (u.shadowProxy) o.material = shown ? u.baseMaterial : u.shadowProxy;   // (a tree's old leaf cards: near, unseen, they cast its shadow)
+          else vis = vis && shown;
+        }
         o.visible = vis;
       }
       api.zoneHidden = 0;

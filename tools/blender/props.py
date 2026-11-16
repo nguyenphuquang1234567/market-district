@@ -258,7 +258,7 @@ SACKS = {
 @piece
 def sack(name):
     r = stream(name); prof = SACKS[name]; SPICE0 = 17                   # bands from profile point 17 on are spice
-    ph = [r.uniform(0, 6.283) for _ in range(6)]; freq = [r.choice((5, 6, 7)), r.choice((9, 11)), r.choice((13, 15, 17))]
+    ph = [r.uniform(0, 6.283) for _ in range(6)]; freq = [r.choice((4, 5)), r.choice((6, 7)), 8]     # (up to 8 round: 16 segments)
     off = Vector((r.uniform(0, 50), r.uniform(0, 50), r.uniform(0, 50)))
     def fold(a, z):                                                       # creases: a little near the base, more under the cuff
         k = 0.0035 + 0.011 * min(1.0, max(0.0, (z - 0.12) / 0.28)) ** 1.5
@@ -277,7 +277,7 @@ def sack(name):
         if 10 <= i <= 15: s *= 1.06                                         # the cuff, rolled out, cleaner
         return (s, s * 0.98, s * 0.94, 1.0)
     P = Piece(name)
-    revolve(P, prof, 36, 'burlap', disp=disp, col=col, slots=lambda i: 'spice' if i >= SPICE0 else 'burlap')
+    revolve(P, prof, 16, 'burlap', disp=disp, col=col, slots=lambda i: 'spice' if i >= SPICE0 else 'burlap')
     return P.build(smooth=55)
 
 for k in SACKS: sack(k)
