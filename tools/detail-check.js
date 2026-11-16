@@ -93,7 +93,7 @@ const planter = parts => {
   for (const p of parts) { const a = p.geometry.attributes.position; for (let i = 0; i < a.count; i++) if (a.getY(i) < 0.5 && Math.hypot(a.getX(i), a.getZ(i)) > 0.75) bad++; }
   return bad ? `${bad} vertices below 0.5 m outside the planter` : null;
 };
-add(['laurel_a', 'laurel_b'], { cap: 60000, box: [[-3.4, 0, -3.4], [3.4, 6.6, 3.4]], slots: ['bark', 'leaf'], ownUV: ['bark', 'leaf'], wind: ['leaf'], check: planter });
+add(['laurel_a', 'laurel_b'], { cap: 60000, box: [[-3.4, 0, -3.4], [3.4, 6.6, 3.4]], slots: ['bark', 'leaf', 'leaf_mass'], ownUV: ['bark', 'leaf', 'leaf_mass'], wind: ['leaf'], check: planter });
 TOTALS.palm = () => [tris('palm_base') + 13 * Math.max(tris('palm_seg_a'), tris('palm_seg_b')) + tris('palm_crown') + 32 * Math.max(...['up', 'mid', 'low', 'dry'].map(k => tris('palm_frond_' + k))) + 4 * tris('palm_dates'), 65000];
 
 export function builder() {
@@ -272,7 +272,7 @@ export function shadowProxies(G, eye) {
   const out = [], W = G.world.group.children;
   G.goto(eye[0], eye[1], 0, 0); G.step(2, 1 / 60);
   for (const m of W) {
-    if ((m.name === 'leaf' || m.name === 'palm_leaf') && m.userData.kitLod === 'near' && m.castShadow) out.push(`near ${m.name} casts a shadow`);
+    if ((m.name === 'leaf' || m.name === 'leaf_mass' || m.name === 'palm_leaf') && m.userData.kitLod === 'near' && m.castShadow) out.push(`near ${m.name} casts a shadow`);
     if ((m.name === 'leaves' || m.name === 'frond') && m.userData.kitLod === 'far') {
       if (!m.userData.shadowProxy) { out.push(`far ${m.name} has no shadow proxy`); continue; }
       const near = !G.R.kitShown(m);
@@ -303,7 +303,7 @@ export function swapCells(G) {
   }
   if (!feet.length) return ['no modelled trees found'];
   for (const f of feet) { f.x = f.sx / f.n; f.z = f.sz / f.n; }
-  const OLD = ['bark', 'frond', 'leaves'], NEW = ['bark', 'palm_leaf', 'leaf', 'glossy', 'matte'];
+  const OLD = ['bark', 'frond', 'leaves'], NEW = ['bark', 'palm_leaf', 'leaf', 'leaf_mass', 'glossy', 'matte'];
   for (const m of W) {
     const lod = m.userData.kitLod;
     if (!lod || !(lod === 'far' ? OLD : NEW).includes(m.name)) continue;

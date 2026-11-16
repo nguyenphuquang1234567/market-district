@@ -28,7 +28,7 @@ scene = bpy.context.scene
 SHOW = {'stone': (0.62, 0.6, 0.56), 'burlap': (0.62, 0.5, 0.34), 'spice': (0.8, 0.45, 0.15), 'concrete': (0.66, 0.65, 0.62),
         'brick': (0.62, 0.3, 0.2), 'plaster': (0.86, 0.82, 0.72), 'iron': (0.3, 0.16, 0.1), 'gravel': (0.55, 0.52, 0.47),
         'body': (0.9, 0.7, 0.2), 'steel': (0.75, 0.76, 0.78), 'tin': (0.6, 0.62, 0.6), 'rubber': (0.08, 0.08, 0.08), 'bottle': (0.7, 0.72, 0.7),
-        'glass': (0.55, 0.7, 0.75), 'plastic': (0.9, 0.9, 0.88), 'pot': (0.78, 0.8, 0.82), 'wood': (0.45, 0.4, 0.35), 'tank': (0.62, 0.64, 0.62), 'porcelain': (0.92, 0.93, 0.95), 'chile': (0.6, 0.06, 0.04), 'stem': (0.42, 0.4, 0.2), 'wall': (0.95, 0.72, 0.4), 'glaze_y': (0.95, 0.75, 0.3), 'glaze_b': (0.3, 0.42, 0.85), 'dark': (0.03, 0.03, 0.03), 'trim': (0.45, 0.62, 0.5), 'finial': (0.75, 0.62, 0.3), 'bark': (0.55, 0.45, 0.35), 'leaf': (0.35, 0.5, 0.2), 'fruit': (0.9, 0.45, 0.12), 'stalk': (0.85, 0.6, 0.2)}
+        'glass': (0.55, 0.7, 0.75), 'plastic': (0.9, 0.9, 0.88), 'pot': (0.78, 0.8, 0.82), 'wood': (0.45, 0.4, 0.35), 'tank': (0.62, 0.64, 0.62), 'porcelain': (0.92, 0.93, 0.95), 'chile': (0.6, 0.06, 0.04), 'stem': (0.42, 0.4, 0.2), 'wall': (0.95, 0.72, 0.4), 'glaze_y': (0.95, 0.75, 0.3), 'glaze_b': (0.3, 0.42, 0.85), 'dark': (0.03, 0.03, 0.03), 'trim': (0.45, 0.62, 0.5), 'finial': (0.75, 0.62, 0.3), 'bark': (0.55, 0.45, 0.35), 'leaf': (0.35, 0.5, 0.2), 'leaf_mass': (0.18, 0.32, 0.14), 'fruit': (0.9, 0.45, 0.12), 'stalk': (0.85, 0.6, 0.2)}
 MATS = {}
 def mat(name):
     if name not in MATS:
@@ -940,12 +940,33 @@ def laurel(name):
         p = LAUREL_C + Vector((dirn.x * LAUREL_R, dirn.y * LAUREL_R, dirn.z * LAUREL_H)) * rho
         if p.z < 2.75: p.z = 2.75 - (2.75 - p.z) * 0.35             # (clipped: the underside is nearly flat)
         return p
+    # The crown's core: a lumpy closed hull just inside the leaves (slot leaf_mass: an opaque texture of leaves deeper in),
+    # so a gap between the modelled leaves shows foliage, not sky, from outside and from under the tree alike. Mapped flat
+    # per face, 1.2 m to the texture's square; darker low in the crown; it sways a little with its leaves.
+    off_l = Vector((r.uniform(0, 50), r.uniform(0, 50), r.uniform(0, 50)))
+    core = lambda d: 0.84 + 0.06 * noise.noise(d * 2.2 + off_l) + 0.03 * noise.noise(d * 5.0 + off_l)   # (of the dome's size, along d)
+    rings, segs, hull = 18, 40, []
+    for i in range(rings + 1):
+        u = -1 + 2 * i / rings; q = math.sqrt(max(0.0, 1 - u * u))
+        hull.append([P.vert(shell(d, core(d))) for d in [Vector((q * math.cos(2 * math.pi * j / segs), q * math.sin(2 * math.pi * j / segs), u)) for j in range(segs if 0 < i < rings else 1)]])
+    def hull_face(vs):
+        out = sum((x.co for x in vs), Vector()) / len(vs) - LAUREL_C; n = (vs[1].co - vs[0].co).cross(vs[2].co - vs[0].co)
+        ax = max(range(3), key=lambda a: abs((n if n.length > 1e-9 else out)[a]))
+        uvs = [((x.co.x, x.co.y) if ax == 2 else (x.co.y, x.co.z) if ax == 0 else (x.co.x, x.co.z)) for x in vs]
+        cols = [(*((0.5 + 0.3 * min(1.0, max(0.0, (x.co.z - 2.6) / 3.0))),) * 3, 0.15) for x in vs]
+        P.face_toward(vs, 'leaf_mass', out, uvs=[(a / 1.2, b / 1.2) for a, b in uvs], cols=cols)
+    for i in range(rings):
+        for j in range(segs):
+            k = (j + 1) % segs
+            if i == 0: hull_face([hull[0][0], hull[1][k], hull[1][j]])
+            elif i == rings - 1: hull_face([hull[i][j], hull[i][k], hull[rings][0]])
+            else: hull_face([hull[i][j], hull[i][k], hull[i + 1][k], hull[i + 1][j]])
     nleaf = 0
-    for c in range(960):                                            # clusters of leaves over the shell (960: the perf rule in the plan)
+    for c in range(1500):                                           # clusters of leaves on the core and out from it (about 16,500 leaves)
         u, v = r.uniform(-1, 1), r.uniform(0, 2 * math.pi); dirn = Vector((math.sqrt(1 - u * u) * math.cos(v), math.sqrt(1 - u * u) * math.sin(v), u))
-        rho = r.uniform(0.93, 1.0); centre = shell(dirn, rho)        # (on the outer shell: what is seen from outside)
+        out = r.uniform(0.0, 0.11); rho = core(dirn) + out; centre = shell(dirn, rho)     # (from the core's surface out to the crown's edge)
         nrm = Vector((dirn.x / LAUREL_R, dirn.y / LAUREL_R, dirn.z / LAUREL_H)).normalized()
-        depth = (rho - 0.93) / 0.07; low = min(1.0, max(0.0, (centre.z - 2.6) / 2.6))
+        depth = out / 0.11; low = min(1.0, max(0.0, (centre.z - 2.6) / 2.6))
         cs = r.uniform(0.9, 1.1)
         for k in range(11):
             b = centre + Vector((r.uniform(-0.18, 0.18), r.uniform(-0.18, 0.18), r.uniform(-0.13, 0.13)))

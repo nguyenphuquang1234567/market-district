@@ -1,6 +1,37 @@
 // Procedural textures for the market quarter, drawn on canvases at boot: hand-painted shop signs, papel picado, glazed
 // talavera tiles, plastic tarps and laurel leaves. Every word is a generic Spanish trade name; no real business or brand.
+import * as THREE from 'three';
 import { canvasTexture, rng } from './util.js';
+
+// Mipmaps for an alpha-tested canvas that keep its coverage: each level is the one above averaged (colour weighted by
+// alpha, and spread a little into the clear texels so no dark fringe creeps in), then its alpha scaled so as many texels
+// pass the cutoff as at full size. Built by the GPU, a cut-out thins away with distance (a laurel's leaves fade to sky).
+function coverageMips(src, cutoff = 0.5) {
+  const levels = [src], cov = d => { let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i] >= cutoff * 255) n++; return n / (d.length / 4); };
+  let prev = src.getContext('2d').getImageData(0, 0, src.width, src.height), w = src.width, h = src.height;
+  const target = cov(prev.data);
+  while (w > 1 || h > 1) {
+    const nw = Math.max(1, w >> 1), nh = Math.max(1, h >> 1), out = new ImageData(nw, nh), p = prev.data, o = out.data, base = new Float32Array(nw * nh);
+    for (let y = 0; y < nh; y++) for (let x = 0; x < nw; x++) {
+      let r = 0, g = 0, b = 0, a = 0;
+      for (let dy = 0; dy < 2; dy++) for (let dx = 0; dx < 2; dx++) {
+        const i = (Math.min(h - 1, y * 2 + dy) * w + Math.min(w - 1, x * 2 + dx)) * 4, al = p[i + 3] + 1e-3;
+        r += p[i] * al; g += p[i + 1] * al; b += p[i + 2] * al; a += al;
+      }
+      const j = (y * nw + x) * 4; o[j] = r / a; o[j + 1] = g / a; o[j + 2] = b / a; base[y * nw + x] = a / 4;
+    }
+    let lo = 0.5, hi = 16;
+    for (let it = 0; it < 18; it++) {
+      const s = (lo + hi) / 2; let n = 0;
+      for (const al of base) if (al * s >= cutoff * 255) n++;
+      if (n / base.length < target) lo = s; else hi = s;
+    }
+    for (let k = 0; k < base.length; k++) o[k * 4 + 3] = Math.min(255, base[k] * hi);
+    const c = document.createElement('canvas'); c.width = nw; c.height = nh; c.getContext('2d').putImageData(out, 0, 0);
+    levels.push(c); prev = out; w = nw; h = nh;
+  }
+  return levels;
+}
 
 // Painted shop signs (rótulos). Each is one cell of the atlas: 4 columns x 8 rows of 512 x 256 px.
 // bg: panel colour (null = letters straight on the wall), fg: letters, ln: outline / shadow, f: lettering style.
@@ -232,6 +263,29 @@ export function leafTexture() {
     }
   });
   t.anisotropy = 8;
+  t.mipmaps = coverageMips(t.image, 0.5); t.generateMipmaps = false;           // (the material's alphaTest: 0.5)
+  return t;
+}
+
+// A laurel crown's core (props.py laurel: a lumpy hull just inside the modelled leaves): overlapping leaves on dark green,
+// opaque and tiling every way, deeper leaves darker, so a gap between the modelled leaves shows more leaves, not sky.
+// About 30 px a leaf: the hull maps 1.2 m to the square, so they come out the size of the modelled ones.
+export function leafMassTexture() {
+  const R = rng(7272), tones = [[46, 94, 36], [58, 110, 41], [84, 134, 48], [67, 101, 38]];
+  const leaves = Array.from({ length: 520 }, () => ({ x: R() * 256, y: R() * 256, len: 22 + R() * 16, ang: R() * Math.PI * 2, tone: tones[R() * 4 | 0], k: 0.45 + R() * 0.6 }))
+    .sort((a, b) => a.k - b.k);                                                // (the darker, deeper ones first)
+  const t = canvasTexture(256, 256, (g, W, H) => {
+    g.fillStyle = 'rgb(22,42,18)'; g.fillRect(0, 0, W, H);
+    for (const { x, y, len, ang, tone: [r, gg, b], k } of leaves) for (const ox of [-W, 0, W]) for (const oy of [-H, 0, H]) {
+      const cx = x + ox, cy = y + oy; if (cx < -len || cx > W + len || cy < -len || cy > H + len) continue;   // (again across each edge: it tiles)
+      g.save(); g.translate(cx, cy); g.rotate(ang);
+      g.beginPath(); g.moveTo(0, 0); g.quadraticCurveTo(len * 0.24, -len * 0.5, 0, -len); g.quadraticCurveTo(-len * 0.24, -len * 0.5, 0, 0);
+      g.fillStyle = `rgb(${r * k | 0},${gg * k | 0},${b * k | 0})`; g.fill();
+      g.strokeStyle = `rgba(150,190,110,${(0.2 * k).toFixed(2)})`; g.lineWidth = 0.8; g.beginPath(); g.moveTo(0, -1); g.lineTo(0, -len * 0.9); g.stroke();
+      g.restore();
+    }
+  });
+  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8;
   return t;
 }
 
