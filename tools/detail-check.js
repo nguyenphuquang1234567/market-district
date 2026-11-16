@@ -55,6 +55,12 @@ add(['chapel_drum'], { cap: 25000, box: [[-3.7, 0, -3.7], [3.7, 1.8, 3.7]], slot
 add(['chapel_dome'], { cap: 25000, box: [[-3.3, 1.6, -3.3], [3.3, 5.4, 3.3]], slots: ['glaze_y', 'glaze_b', 'stone'], ownUV: ['glaze_y', 'glaze_b'] });
 add(['chapel_lantern'], { cap: 25000, box: [[-0.75, 4.8, -0.75], [0.75, 8.2, 0.75]], slots: ['stone', 'glaze_y', 'iron', 'dark'], ownUV: ['glaze_y'] });
 TOTALS.chapel = () => [tris('chapel_drum') + tris('chapel_dome') + tris('chapel_lantern'), 25000];
+// the plazuela's kiosk (quarter.js plazuela()): origin at the platform's top centre; a column at its foot; a bracket
+// modelled along +X from the kiosk's centre, turned to each column
+add(['kiosk_roof'], { cap: 30000, box: [[-4.3, 2.9, -4.3], [4.3, 5.7, 4.3]], slots: ['tin', 'trim', 'finial'] });
+add(['kiosk_column'], { cap: 30000, box: [[-0.13, 0, -0.13], [0.13, 3.4, 0.13]], slots: ['iron'] });
+add(['kiosk_bracket'], { cap: 30000, box: [[3.2, 2.6, -0.06], [4.0, 3.45, 0.06]], slots: ['iron'] });
+TOTALS.kiosk = () => [tris('kiosk_roof') + 8 * tris('kiosk_column') + 8 * tris('kiosk_bracket'), 30000];
 
 export function builder() {
   const out = [], fail = m => out.push(m);

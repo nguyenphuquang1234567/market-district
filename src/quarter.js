@@ -289,7 +289,8 @@ export function buildQuarter({ B, M, buildings, anchors, ghosts, gates, architec
     const top = Hp + 0.06, Hc = 3.4;
     for (let k = 0; k < 8; k++) {
       const a = Math.PI / 8 + k * Math.PI / 4, px = cx + Math.cos(a) * (R0 - 0.3), pz = cz + Math.sin(a) * (R0 - 0.3);
-      B.geom('metal_green', new THREE.CylinderGeometry(0.07, 0.09, Hc, 10), mat4(V(px, top + Hc / 2, pz)), { color: [0.55, 0.72, 0.6], uvScale: 0.5, uvScaleY: Hc });
+      B.swap('kiosk_column', () => B.geom('metal_green', new THREE.CylinderGeometry(0.07, 0.09, Hc, 10), mat4(V(px, top + Hc / 2, pz)), { color: [0.55, 0.72, 0.6], uvScale: 0.5, uvScaleY: Hc }),
+        () => B.kit('kiosk_column', mat4(V(px, top, pz)), { iron: 'metal_green' }, { lod: 'near', slot: { iron: { color: [0.55, 0.72, 0.6], tile: 1 } } }));   // a cast-iron column near (tools/blender/props.py)
       B.rail(px, top + Hc / 2, pz, 0.18, Hc, 0.18, a);                          // (a slim post: no cover either)
       const a2 = a + Math.PI / 4, qx = cx + Math.cos(a2) * (R0 - 0.3), qz = cz + Math.sin(a2) * (R0 - 0.3);
       const stair = Math.abs(Math.cos((a + a2) / 2)) > 0.9;                       // the two sides with steps are left open
@@ -301,10 +302,16 @@ export function buildQuarter({ B, M, buildings, anchors, ghosts, gates, architec
       }
       rod(V(px, top + Hc - 0.35, pz), V(qx, top + Hc - 0.35, qz), 0.03, 'metal_green', [0.55, 0.72, 0.6]);
     }
-    const roof = new THREE.ConeGeometry(R0 + 0.6, 1.9, 8, 1, true), under = roof.clone();                    // painted sheet metal, and its underside
-    { const ix = under.index.array; for (let i = 0; i < ix.length; i += 3) { const t = ix[i]; ix[i] = ix[i + 2]; ix[i + 2] = t; } const nr = under.attributes.normal; for (let i = 0; i < nr.count; i++) nr.setXYZ(i, -nr.getX(i), -nr.getY(i), -nr.getZ(i)); }
-    for (const g of [roof, under]) B.geom('metal_green', g, mat4(V(cx, top + Hc + 0.95, cz), Math.PI / 8), { uvScale: 8, uvScaleY: 1.6, color: [0.8, 0.95, 0.82] });
-    B.geom('metal_green', new THREE.SphereGeometry(0.22, 10, 8), mat4(V(cx, top + Hc + 2.0, cz)), { color: [0.75, 0.62, 0.3] });
+    B.swap(['kiosk_roof', 'kiosk_bracket'], () => {                           // far off, a cone and a ball; near, pressed tin, a valance and scrolled brackets (tools/blender/props.py)
+      const roof = new THREE.ConeGeometry(R0 + 0.6, 1.9, 8, 1, true), under = roof.clone();                  // painted sheet metal, and its underside
+      { const ix = under.index.array; for (let i = 0; i < ix.length; i += 3) { const t = ix[i]; ix[i] = ix[i + 2]; ix[i + 2] = t; } const nr = under.attributes.normal; for (let i = 0; i < nr.count; i++) nr.setXYZ(i, -nr.getX(i), -nr.getY(i), -nr.getZ(i)); }
+      for (const g of [roof, under]) B.geom('metal_green', g, mat4(V(cx, top + Hc + 0.95, cz), Math.PI / 8), { uvScale: 8, uvScaleY: 1.6, color: [0.8, 0.95, 0.82] });
+      B.geom('metal_green', new THREE.SphereGeometry(0.22, 10, 8), mat4(V(cx, top + Hc + 2.0, cz)), { color: [0.75, 0.62, 0.3] });
+    }, () => {
+      const tin = [0.8, 0.95, 0.82];
+      B.kit('kiosk_roof', mat4(V(cx, top, cz)), { tin: 'metal_green', trim: 'metal_green', finial: 'metal_green' }, { lod: 'near', slot: { tin: { color: tin, tile: 2 }, trim: { color: tin, tile: 1.5 }, finial: { color: [0.75, 0.62, 0.3], tile: 0.5 } } });
+      for (let k = 0; k < 8; k++) B.kit('kiosk_bracket', mat4(V(cx, top, cz), -(Math.PI / 8 + k * Math.PI / 4)), { iron: 'metal_green' }, { lod: 'near', slot: { iron: { color: [0.55, 0.72, 0.6], tile: 1 } } });
+    });
     // laurels at the corners, benches round the edge, a fountain basin-cum-planter and food under umbrellas
     for (const [x, z] of [[x0 + 3, z0 + 3], [x1 - 3, z0 + 3], [x0 + 3, z1 - 3], [x1 - 3, z1 - 3]]) { laurel(x, z, rnd.range(0.9, 1.15)); B.box('cantera', x, 0.22, z, 1.7, 0.44, 1.7, stone); B.collide(x, 0.22, z, 1.7, 0.44, 1.7, 0, 'concrete'); }
     for (const [x, z, r] of [[cx - 6, z0 + 1.1, 0], [cx + 6, z0 + 1.1, 0], [cx - 6, z1 - 1.1, Math.PI], [cx + 6, z1 - 1.1, Math.PI], [x1 - 1.1, cz, -Math.PI / 2]]) bench(x, z, r);

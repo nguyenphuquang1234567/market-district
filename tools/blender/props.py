@@ -27,7 +27,7 @@ scene = bpy.context.scene
 SHOW = {'stone': (0.62, 0.6, 0.56), 'burlap': (0.62, 0.5, 0.34), 'spice': (0.8, 0.45, 0.15), 'concrete': (0.66, 0.65, 0.62),
         'brick': (0.62, 0.3, 0.2), 'plaster': (0.86, 0.82, 0.72), 'iron': (0.3, 0.16, 0.1), 'gravel': (0.55, 0.52, 0.47),
         'body': (0.9, 0.7, 0.2), 'steel': (0.75, 0.76, 0.78), 'tin': (0.6, 0.62, 0.6), 'rubber': (0.08, 0.08, 0.08), 'bottle': (0.7, 0.72, 0.7),
-        'glass': (0.55, 0.7, 0.75), 'plastic': (0.9, 0.9, 0.88), 'pot': (0.78, 0.8, 0.82), 'wood': (0.45, 0.4, 0.35), 'tank': (0.62, 0.64, 0.62), 'porcelain': (0.92, 0.93, 0.95), 'chile': (0.6, 0.06, 0.04), 'stem': (0.42, 0.4, 0.2), 'wall': (0.95, 0.72, 0.4), 'glaze_y': (0.95, 0.75, 0.3), 'glaze_b': (0.3, 0.42, 0.85), 'dark': (0.03, 0.03, 0.03)}
+        'glass': (0.55, 0.7, 0.75), 'plastic': (0.9, 0.9, 0.88), 'pot': (0.78, 0.8, 0.82), 'wood': (0.45, 0.4, 0.35), 'tank': (0.62, 0.64, 0.62), 'porcelain': (0.92, 0.93, 0.95), 'chile': (0.6, 0.06, 0.04), 'stem': (0.42, 0.4, 0.2), 'wall': (0.95, 0.72, 0.4), 'glaze_y': (0.95, 0.75, 0.3), 'glaze_b': (0.3, 0.42, 0.85), 'dark': (0.03, 0.03, 0.03), 'trim': (0.45, 0.62, 0.5), 'finial': (0.75, 0.62, 0.3)}
 MATS = {}
 def mat(name):
     if name not in MATS:
@@ -644,6 +644,82 @@ def chapel_lantern(name):
 
 for n in ('chapel_drum', 'chapel_dome', 'chapel_lantern'): globals()[n](n)
 PREVIEW_FOCUS['chapel_lantern'] = ((-0.8, -0.8, 5.0), (0.8, 0.8, 8.2))
+
+# ---------------------------------------------------------------------------------------------------- the kiosk ---------
+# The plazuela's kiosk (quarter.js plazuela()): origin at the platform's top centre. The old roof's octagon (corners at
+# pi/8 + k pi/4 in line with the columns, 4.2 m to a corner at the eave 3.4 m up, apex 5.3) and columns (3.4 m) are kept.
+K_EAVE, K_APEX, K_R = 3.4, 5.3, 4.2
+@piece
+def kiosk_roof(name):
+    """Pressed tin with standing seams fading to the apex, rolled hip ribs, a fascia and a scalloped valance all round,
+    a painted underside, and a little lantern for a finial. Slots: tin, trim, finial."""
+    P = Piece(name, recalc=False); W = (1.0, 1.0, 1.0, 1.0)
+    corner = lambda k, rad=K_R, z=K_EAVE: Vector((rad * math.cos(math.pi / 8 + k * math.pi / 4), rad * math.sin(math.pi / 8 + k * math.pi / 4), z))
+    apex = Vector((0, 0, K_APEX))
+    for k in range(8):
+        a, b = corner(k), corner(k + 1); mid = (a + b) / 2
+        n = (b - a).cross(apex - a).normalized()
+        if n.dot(mid) < 0: n = -n
+        cols, rows, seams = 24, 10, 8
+        grid = []
+        for i in range(rows + 1):
+            h = i / rows; row = []
+            for j in range(cols + 1):
+                sx = j / cols; e = a.lerp(b, sx); p = e.lerp(apex, h * 0.985)
+                f = abs((sx * seams) % 1 - 0.5); lift = 0.022 * max(0.0, 1 - f * 7) * (1 - h)   # a standing seam every eighth of the facet
+                row.append(P.vert(p + n * lift))
+            grid.append(row)
+        for i in range(rows):
+            for j in range(cols):
+                P.face_toward([grid[i][j], grid[i][j + 1], grid[i + 1][j + 1], grid[i + 1][j]], 'tin', n, cols=(1.0 - 0.12 * (i / rows) ** 2,) * 3 + (1.0,))
+        under = [P.vert(a - Vector((0, 0, 0.04))), P.vert(b - Vector((0, 0, 0.04))), P.vert(apex - Vector((0, 0, 0.1)))]   # the painted underside
+        P.face_toward(under, 'trim', -n, cols=(0.85, 0.85, 0.85, 1.0))
+        top, bot = K_EAVE + 0.01, K_EAVE - 0.08                                                        # the fascia
+        fa = [P.vert(corner(k, K_R + 0.01, top)), P.vert(corner(k + 1, K_R + 0.01, top)), P.vert(corner(k + 1, K_R + 0.01, bot)), P.vert(corner(k, K_R + 0.01, bot))]
+        out = Vector((mid.x, mid.y, 0)).normalized(); P.face_toward(fa, 'trim', out, cols=W)
+        sc = 6                                                                                         # the scalloped valance, both faces
+        for side in (1, -1):
+            for j in range(sc * 6):
+                s0, s1 = j / (sc * 6), (j + 1) / (sc * 6)
+                lo = lambda sx: K_EAVE - 0.08 - 0.14 - 0.07 * abs(math.sin(math.pi * sx * sc))
+                p0, p1 = corner(k, K_R - 0.02 * side + 0.005, 0).lerp(corner(k + 1, K_R - 0.02 * side + 0.005, 0), s0), corner(k, K_R - 0.02 * side + 0.005, 0).lerp(corner(k + 1, K_R - 0.02 * side + 0.005, 0), s1)
+                vs = [P.vert((p0.x, p0.y, bot)), P.vert((p1.x, p1.y, bot)), P.vert((p1.x, p1.y, lo(s1))), P.vert((p0.x, p0.y, lo(s0)))]
+                P.face_toward(vs, 'trim', out * side, cols=W)
+    for k in range(8):                                                                                 # hip ribs
+        tube(P, [corner(k, K_R + 0.02, K_EAVE + 0.03).lerp(apex + Vector((0, 0, 0.03)), t / 10) for t in range(11)], 0.03, 6, 'trim', W)
+    revolve(P, [(0.0, K_APEX - 0.05), (0.2, K_APEX - 0.05), (0.2, K_APEX + 0.02), (0.16, K_APEX + 0.05), (0.0, K_APEX + 0.05)], 8, 'finial', matrix=Matrix.Rotation(math.pi / 8, 4, 'Z'))
+    for k in range(8):
+        c = Vector((0.13 * math.cos(math.pi / 8 + k * math.pi / 4), 0.13 * math.sin(math.pi / 8 + k * math.pi / 4), 0))
+        tube(P, [c + Vector((0, 0, K_APEX + 0.05)), c + Vector((0, 0, K_APEX + 0.2))], 0.012, 4, 'finial', W)
+    revolve(P, [(0.0, K_APEX + 0.2), (0.18, K_APEX + 0.2), (0.12, K_APEX + 0.27), (0.04, K_APEX + 0.31), (0.03, K_APEX + 0.33), (0.045, K_APEX + 0.36), (0.0, K_APEX + 0.38)], 8, 'finial',
+            matrix=Matrix.Rotation(math.pi / 8, 4, 'Z'))
+    return P.build(smooth=35)
+
+@piece
+def kiosk_column(name):
+    """A cast-iron column, 3.4 m: an octagonal plinth, a torus, a fluted shaft tapering 0.085 -> 0.07, a necking ring,
+    a bell capital and an abacus. Slot: iron."""
+    P = Piece(name)
+    prof = [(0.0, 0.0), (0.12, 0.0), (0.12, 0.1), (0.1, 0.12), (0.1, 0.16), (0.11, 0.18), (0.11, 0.22), (0.09, 0.25)]
+    prof += [(0.085 - 0.015 * (z - 0.25) / 2.85, z) for z in [0.25 + 2.85 * i / 12 for i in range(1, 13)]]
+    prof += [(0.08, 3.12), (0.08, 3.15), (0.075, 3.16), (0.085, 3.22), (0.11, 3.28), (0.12, 3.3), (0.12, 3.36), (0.0, 3.4)]
+    revolve(P, prof, 16, 'iron', disp=lambda a, i, r0, z0: ((0.006 * math.cos(8 * a) if 8 <= i <= 19 else 0.0), 0.0),
+            col=lambda a, i, co: (*(0.88 + 0.12 * math.cos(8 * a) if 8 <= i <= 19 else 1.0,) * 3, 1.0))
+    return P.build(smooth=40)
+
+@piece
+def kiosk_bracket(name):
+    """A scrolled iron bracket between a column's head and the eave, along +X from the kiosk's centre: a bar under the
+    eave, a curved strut up to it ending in a curl, and a ring in the angle. Slot: iron."""
+    P = Piece(name); W = (1.0, 1.0, 1.0, 1.0)
+    tube(P, [Vector((3.3, 0, 3.36)), Vector((3.95, 0, 3.36))], 0.014, 4, 'iron', W)
+    strut = [Vector((3.3 + 0.62 * t ** 1.4, 0, 2.72 + 0.64 * math.sin(t * math.pi / 2))) for t in [i / 14 for i in range(15)]]
+    curl = [Vector((3.3 + 0.07 * (1 - 0.5 * i / 10) * math.cos(-math.pi / 2 - i * 0.6), 0, 2.79 + 0.07 * (1 - 0.5 * i / 10) * math.sin(-math.pi / 2 - i * 0.6))) for i in range(11)]
+    tube(P, curl[::-1] + strut[1:], 0.012, 4, 'iron', W)
+    tube(P, [Vector((3.58 + 0.08 * math.cos(2 * math.pi * i / 16), 0, 3.2 + 0.08 * math.sin(2 * math.pi * i / 16))) for i in range(17)], 0.009, 4, 'iron', W)
+    return P.build(smooth=50)
+
+for n in ('kiosk_roof', 'kiosk_column', 'kiosk_bracket'): globals()[n](n)
 
 class HeightField:
     """The heap's top surface on a grid, raised as each piece settles, so pieces rest on the mound and on each other."""
