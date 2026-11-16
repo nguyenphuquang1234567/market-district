@@ -24,7 +24,7 @@ bpy.ops.wm.read_factory_settings(use_empty=True)
 scene = bpy.context.scene
 
 # slot -> the colour it shows in the preview renders (the game's materials replace them)
-SHOW = {'stone': (0.62, 0.6, 0.56)}
+SHOW = {'stone': (0.62, 0.6, 0.56), 'burlap': (0.62, 0.5, 0.34), 'spice': (0.8, 0.45, 0.15)}
 MATS = {}
 def mat(name):
     if name not in MATS:
@@ -92,6 +92,34 @@ def piece(fn):
         ob = fn(name, *a); pieces.append(ob); return ob
     return run
 
+def revolve(P, prof, segs, slot, disp=None, col=None, slots=None, uv=None):
+    """A surface of revolution about z into piece P. prof: [(r, z)] from the bottom up (r = 0 ends close to the axis).
+    disp(a, i, r, z) -> (dr, dz) bends each ring vertex (a = angle, i = profile index); col(a, i, co) -> rgba;
+    slots(i) -> the slot of the band between profile points i and i + 1 (default: slot); uv(a, i, co) -> (u, v)."""
+    rings = []
+    for i, (r0, z0) in enumerate(prof):
+        ring = []
+        for j in range(segs):
+            a = 2 * math.pi * j / segs
+            dr, dz = disp(a, i, r0, z0) if disp else (0.0, 0.0)
+            r = max(0.0, r0 + dr) if r0 > 0 else 0.0
+            ring.append(Vector((r * math.cos(a), r * math.sin(a), z0 + dz)))
+        rings.append(ring)
+    vs = [[P.vert(c) for c in ring] if prof[i][0] > 0 else [P.vert(sum(ring, Vector()) / segs)] for i, ring in enumerate(rings)]
+    for i in range(len(prof) - 1):
+        A, Bv, s = vs[i], vs[i + 1], slots(i) if slots else slot
+        for j in range(segs):
+            k = (j + 1) % segs
+            a0, a1 = 2 * math.pi * j / segs, 2 * math.pi * (j + 1) / segs      # (a1 reaches 2 pi on the last: u does not wrap)
+            quad = []
+            for ring, idx, a, ii in ((A, j, a0, i), (A, k, a1, i), (Bv, k, a1, i + 1), (Bv, j, a0, i + 1)):
+                v = ring[0] if len(ring) == 1 else ring[idx]
+                if not any(v is q[0] for q in quad): quad.append((v, a, ii))     # (a point on the axis is used once)
+            if len(quad) < 3: continue
+            P.face([q[0] for q in quad], s, [uv(q[1], q[2], q[0].co) for q in quad] if uv else None,
+                   [col(q[1], q[2], q[0].co) for q in quad] if col else None)
+    return vs
+
 def fit_box(bm, lo, hi):
     """Scale and move a bmesh, each axis on its own, so its bounds are exactly lo..hi."""
     mn = [min(v.co[a] for v in bm.verts) for a in range(3)]; mx = [max(v.co[a] for v in bm.verts) for a in range(3)]
@@ -120,6 +148,46 @@ def pebble(name):
     return P.build(smooth=48)
 
 for k in 'abcd': pebble('pebble_' + k)
+
+# ---------------------------------------------------------------------------------------------------- spice sacks ------
+# A burlap sack of spice (dressing.js sack()), standing on the ground at the origin inside the old lathe's 0.275 m radius
+# and 0.5 m height: the cloth slumps and creases more towards the neck, its mouth is rolled down into a cuff, and the
+# spice is heaped in it. One closed profile turned about the axis: up the outside, over the cuff, down the inside, across
+# the spice. Slots: burlap (world-projected weave), spice (tinted per sack by the game). Two variants.
+SACKS = {
+    'sack_a': [(0.0, 0.0), (0.12, 0.0), (0.2, 0.004), (0.235, 0.025), (0.258, 0.07), (0.27, 0.14), (0.272, 0.21), (0.268, 0.28),
+               (0.258, 0.34), (0.248, 0.395), (0.252, 0.425), (0.266, 0.447), (0.271, 0.468), (0.264, 0.484), (0.25, 0.49),
+               (0.236, 0.482), (0.228, 0.462), (0.224, 0.442), (0.205, 0.44), (0.16, 0.452), (0.1, 0.47), (0.04, 0.488), (0.0, 0.495)],
+    'sack_b': [(0.0, 0.0), (0.14, 0.0), (0.218, 0.006), (0.25, 0.03), (0.268, 0.08), (0.275, 0.13), (0.272, 0.19), (0.262, 0.25),
+               (0.25, 0.31), (0.24, 0.36), (0.244, 0.39), (0.258, 0.41), (0.264, 0.43), (0.258, 0.447), (0.244, 0.452),
+               (0.23, 0.444), (0.222, 0.425), (0.218, 0.406), (0.2, 0.404), (0.155, 0.415), (0.1, 0.432), (0.04, 0.45), (0.0, 0.456)],
+}
+@piece
+def sack(name):
+    r = stream(name); prof = SACKS[name]; SPICE0 = 17                   # bands from profile point 17 on are spice
+    ph = [r.uniform(0, 6.283) for _ in range(6)]; freq = [r.choice((5, 6, 7)), r.choice((9, 11)), r.choice((13, 15, 17))]
+    off = Vector((r.uniform(0, 50), r.uniform(0, 50), r.uniform(0, 50)))
+    def fold(a, z):                                                       # creases: a little near the base, more under the cuff
+        k = 0.0035 + 0.011 * min(1.0, max(0.0, (z - 0.12) / 0.28)) ** 1.5
+        return k * (math.sin(freq[0] * a + ph[0]) + 0.6 * math.sin(freq[1] * a + ph[1] + z * 9) + 0.35 * math.sin(freq[2] * a + ph[2] - z * 14))
+    def disp(a, i, r0, z0):
+        if i >= SPICE0 + 1:                                                # the heap: granular, a little uneven
+            return 0.0, 0.007 * noise.noise(Vector((math.cos(a) * r0, math.sin(a) * r0, 0)) * 26 + off) + 0.004 * math.sin(2 * a + ph[3])
+        dr = fold(a, z0) + 0.007 * math.sin(a + ph[4]) * (1 - z0 / 0.5)    # slumped a little to one side
+        dz = 0.006 * math.sin(4 * a + ph[5]) * (1 if 10 <= i <= 15 else 0)  # the cuff does not lie level
+        return min(dr, 0.279 - r0), dz
+    def col(a, i, co):
+        if i >= SPICE0 + 1 or (i == SPICE0 and co.z < 0.45 and math.hypot(co.x, co.y) < 0.215):
+            g = 0.78 + 0.32 * (0.5 + 0.5 * noise.noise(co * 60 + off)); return (g, g, g, 1.0)
+        s = 0.9 + 22 * fold(a, co.z)                                       # fold valleys darker, ridges lighter
+        if co.z < 0.08: s *= 0.82 + 0.18 * co.z / 0.08                      # dirt at the foot
+        if 10 <= i <= 15: s *= 1.06                                         # the cuff, rolled out, cleaner
+        return (s, s * 0.98, s * 0.94, 1.0)
+    P = Piece(name)
+    revolve(P, prof, 36, 'burlap', disp=disp, col=col, slots=lambda i: 'spice' if i >= SPICE0 else 'burlap')
+    return P.build(smooth=55)
+
+for k in SACKS: sack(k)
 
 # ---------------------------------------------------------------------------------------------------- export ---------
 for ob in pieces: ob.location = (0, 0, 0)

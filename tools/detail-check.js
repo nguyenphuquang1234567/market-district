@@ -18,6 +18,8 @@ export const PIECES = {};
 const add = (names, spec) => { for (const n of names) PIECES[n] = spec; };
 // pebbles (dressing.js scatter): unit stones placed by the old box's matrix
 add(['pebble_a', 'pebble_b', 'pebble_c', 'pebble_d'], { cap: 80, min: 40, box: [[-0.5, -0.5, -0.5], [0.5, 0.5, 0.5]], slots: ['stone'] });
+// spice sacks (dressing.js sack()): on the ground at the origin, the old lathe's 0.275 m radius and 0.5 m height
+add(['sack_a', 'sack_b'], { cap: 2500, box: [[-0.28, 0, -0.28], [0.28, 0.52, 0.28]], slots: ['burlap', 'spice'] });
 // name -> () => [triangles, cap], for things drawn as several pieces
 export const TOTALS = {};
 

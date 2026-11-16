@@ -103,12 +103,15 @@ export function dressKit({ B, M, rnd, buildings, anchors, low, rs = null }) {
     }
   }
 
+  // a sack of spice: a plain lathe far off, near it a modelled burlap sack (tools/blender/props.py) with its mouth rolled down
   function sack(x, y, z, col) {
     const pr = [[0, 0], [0.2, 0], [0.265, 0.1], [0.275, 0.26], [0.25, 0.42], [0.265, 0.47], [0.24, 0.5], [0.2, 0.46]].map(([a, b]) => new THREE.Vector2(a, b));
-    const s = rnd.range(0.85, 1.15);
-    B.geom('burlap', new THREE.LatheGeometry(pr, 12), mat4(V(x, y, z), rnd() * 6.28, V(s, s * rnd.range(0.85, 1.1), s)), { uvScale: 3 });
-    const top = new THREE.CircleGeometry(0.215 * s, 12); top.rotateX(-Math.PI / 2);
-    B.geom('matte', top, mat4(V(x, y + 0.455 * s * 0.92, z)), { color: col });
+    const s = rnd.range(0.85, 1.15), yaw = rnd() * 6.28, m = mat4(V(x, y, z), yaw, V(s, s * rnd.range(0.85, 1.1), s)), v = fhash(x, z, 23) < 0.5 ? 'sack_a' : 'sack_b';
+    B.swap(v, () => {
+      B.geom('burlap', new THREE.LatheGeometry(pr, 12), m, { uvScale: 3 });
+      const top = new THREE.CircleGeometry(0.215 * s, 12); top.rotateX(-Math.PI / 2);
+      B.geom('matte', top, mat4(V(x, y + 0.455 * s * 0.92, z)), { color: col });
+    }, () => B.kit(v, m, { burlap: 'burlap', spice: 'matte' }, { lod: 'near', slot: { burlap: { tile: 0.6 }, spice: { color: col, tile: 0.3 } } }));
     B.detail(x, y + 0.23 * s, z, 0.48 * s, 0.46 * s, 0.48 * s, 0, 'fabric');
   }
 
