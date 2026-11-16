@@ -133,13 +133,15 @@ Key bindings live in the same saved settings object (`binds`, including `frag` a
   coordinates and vertex colours (a shade, and how freely each vertex moves in the wind), with three new canvas-drawn
   textures (laurel leaves, palm leaflets, tissue paper). The old code still runs for every piece, with all its random
   draws, colliders and detail solids, so the layout, cover, dressing and routes are unchanged (`tools/layout-fingerprint.js`
-  checks it). The large pieces (rubble, carts, the dome, the kiosk, palms, laurels) are drawn near the camera, as the kit
-  is, and the old geometry beyond (`Builder.swap`); the small, numerous ones (pebbles, sacks, ristras, piñatas, poles)
-  are drawn detailed out to their material's own cull distance, the old geometry only generated for its random draws
-  (`Builder.replace`), because a near/far pair of each would add two meshes, and their draw calls, to every cell. Rods
-  are 10-sided and cables 6-sided now, and seven scanned props are drawn from a finer cut (their hull and physics from
-  the old one). Rounds, HUD markers and thrown things meet the version of a piece that is on screen (`R.kitShown`).
-  `?detail=0` draws the map exactly as before the pass, for A/B timings.
+  checks it). Palms and laurels are drawn near the camera, as the kit is, and the old geometry beyond (`Builder.swap`,
+  both versions in the cell of the tree's foot, so a whole tree switches at once); every other piece (rubble, carts, the
+  dome, the kiosk, pebbles, sacks, ristras, piñatas, poles) is drawn detailed out to its material's own cull distance,
+  the old geometry generated only for its random draws and the solids it records (`Builder.replace`), because a near/far
+  pair of each would add two meshes, and their draw calls, to every cell. Rods are 10-sided and cables 6-sided now, and
+  five scanned props (pots, tall baskets, plastic crates, jerrycans, cardboard boxes) are drawn from a finer cut (their
+  hull and physics from the old one). Rounds, HUD markers and thrown things meet the version of a piece that is on
+  screen (`R.kitShown`). `?detail=0` draws the map exactly as before the pass, for A/B timings; it takes the light bake
+  as it is and never re-bakes or saves one.
 - **Facade colour** — painted the way Mexican market streets actually are (`src/facades.js`). In 59 photographs of
   streets in seven towns (Guanajuato, Dolores Hidalgo, Puebla, Mexico City, Oaxaca, Querétaro, San Cristóbal de las
   Casas; Wikimedia Commons), half of what is wall is below 0.18 HSV saturation and one pixel in twenty above 0.6: the
@@ -474,7 +476,8 @@ In the browser console, with the dev server running:
   and parapet stopping sight while the open railing does not. (One check fails and did before the
   throwables were added, on `main` as well: the empty-magazine reload is sampled 0.13 s before the reload finishes.)
   `?selftest=1` in the URL runs it by itself once loaded and saves the results to `captures/selftest.json`.
-  `?nogi=1` skips the indirect light (no bake) for a quick look while the geometry changes.
+  `?nogi=1` skips the indirect light (no bake) for a quick look while the geometry changes; `?stalegi=1` uses the last
+  bake even if the map has changed since (nothing is baked or saved).
 - `src/clipcheck.js` (also `tools/clip-probe.js`) — how far each loose prop sits inside the collision boxes and behind
   the drawn surfaces: `clip.scan(G)` for all of them, `clip.prop(G, item)` for one, `clip.shove(G, { z })` walks a
   soldier's pusher into a chair against a wall.
@@ -494,7 +497,8 @@ In the browser console, with the dev server running:
   rebuilds the detail pass's pieces (and a render of each into `dir`; `--only` renders those pieces and exports nothing).
   In the page, `(await import('/tools/detail-check.js')).report()` checks every piece against its triangle cap and the
   space the old geometry took, and the Builder's near/far plumbing; `impacts(G, eye, at)` fires rounds at a spot and
-  counts impacts that land off what is drawn. `(await import('/tools/layout-fingerprint.js')).fingerprint(G, tag)` saves
+  counts impacts that land off what is drawn; `swapCells(G)` checks that each palm and laurel keeps both its versions
+  in one cell. `(await import('/tools/layout-fingerprint.js')).fingerprint(G, tag)` saves
   hashes of everything that decides how the map plays; `node tools/compare-fingerprints.mjs A.json B.json` compares two.
 - `tools/locomotion-probe.js` — measures how the soldiers move over minutes of play (see the top of the file):
   `probe.patrol(G, 150)` reports acceleration, turn rates, sole drift, wall clearance, stops and wall contacts;

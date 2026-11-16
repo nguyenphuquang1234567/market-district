@@ -1,6 +1,7 @@
 # Detail pieces for Market District (the 2026-11-16 detail pass), modelled procedurally in Blender and exported as one
-# GLB, assets/kit/props.glb. The game draws them within the kit's near distance in place of the plain geometry it still
-# builds for farther off (src/builder.js swap(); the old code keeps every random draw, so the map plays the same).
+# GLB, assets/kit/props.glb. The game draws palms and laurels within the kit's near distance and its plain geometry
+# farther off (src/builder.js swap()), and every other piece in place of the plain geometry at every distance (replace());
+# the old code keeps every random draw and the solids it records, so the map plays the same.
 #   /Applications/Blender.app/Contents/MacOS/Blender --background --factory-startup --python tools/blender/props.py -- \
 #       assets/kit/props.glb [--preview captures/props] [--only pebble_a,cart]
 #
