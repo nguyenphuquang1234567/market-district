@@ -230,4 +230,19 @@ export function impacts(G, eye, at, n = 60, spread = 1.2) {
   return { shots: n, impacts: rec.length, floating, worst: +worst.toFixed(3) };
 }
 
-export const report = () => ({ builder: builder(), pieces: pieces(), totals: totals() });
+// scanned props cut finer for drawing (assets.js NEAR_BUDGET): each kind has proto.near, finer than its parts (which
+// stay as they were: hull, size and physics)
+export const SCANNED = ['pot', 'basket_tall', 'plastic_crate', 'jerrycan', 'cardboard', 'wall_lamp', 'lpg'];
+export function scanned() {
+  const out = [];
+  for (const k of SCANNED) {
+    const p = assets.proto[k];
+    if (!p?.near) { out.push(`${k}: no near geometry`); continue; }
+    const a = trisOf(p.parts), b = trisOf(p.near);
+    if (!(b > a * 1.2)) out.push(`${k}: near ${b} triangles, parts ${a}`);
+    if (p.near.length !== p.parts.length) out.push(`${k}: near has ${p.near.length} parts, parts ${p.parts.length}`);
+  }
+  return out;
+}
+
+export const report = () => ({ builder: builder(), pieces: pieces(), totals: totals(), scanned: scanned() });

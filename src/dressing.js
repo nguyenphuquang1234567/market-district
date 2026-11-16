@@ -4,6 +4,7 @@ import { FLOOR0, PARAPET, SIDEWALK } from './world.js';
 import { tarpV, papelUV, PAPEL_COLOURS, SIGNS, signUV } from './mexico.js';
 import { rng } from './util.js';
 import { hash as fhash } from './facades.js';
+import { DETAIL } from './assets.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 const I = new THREE.Matrix4();
@@ -28,12 +29,12 @@ export function dressKit({ B, M, rnd, buildings, anchors, low, rs = null }) {
   const rod = (a, b, r, key = 'iron', color) => {
     const d = b.clone().sub(a), len = d.length();
     const m = new THREE.Matrix4().compose(a.clone().add(b).multiplyScalar(0.5), new THREE.Quaternion().setFromUnitVectors(UP, d.normalize()), V(1, 1, 1));
-    B.geom(key, new THREE.CylinderGeometry(r, r, len, r >= 0.01 && !B.lodDefault ? 10 : 6), m, { color, uvScaleY: len });
+    B.geom(key, new THREE.CylinderGeometry(r, r, len, DETAIL && r >= 0.01 && !B.lodDefault ? 10 : 6), m, { color, uvScaleY: len });
   };
   const cable = (a, b, sag, r = 0.012) => {
     const pts = [];
     for (let i = 0; i <= 10; i++) { const t = i / 10, p = a.clone().lerp(b, t); p.y -= sag * 4 * t * (1 - t); pts.push(p); }
-    const fine = !B.lodDefault;                                                 // (6 sides and 16 segments; 4 and 14 as before inside a far version)
+    const fine = DETAIL && !B.lodDefault;                                       // (6 sides and 16 segments; 4 and 14 as before inside a far version)
     B.geom('cable', new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), fine ? 16 : 14, r, fine ? 6 : 4, false), I);
     return pts;
   };

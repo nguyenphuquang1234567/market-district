@@ -85,7 +85,7 @@ export class Rigid {
     this.kinds = [];                                                          // per prop kind: its instanced meshes and items, for distance culling
     for (const [name, list] of byName) {
       const proto = assets.proto[name], def = DYNAMIC[name], pts = hullPoints(proto), fr = MATS[def.mat];
-      const meshes = proto.parts.map(part => { const m = new THREE.InstancedMesh(part.geometry, part.material, list.length); m.castShadow = !proto.small; m.receiveShadow = true; m.frustumCulled = false; m.name = 'dyn:' + name; m.userData.lod = Infinity; this.group.add(m); return m; });
+      const meshes = (proto.near || proto.parts).map(part => { const m = new THREE.InstancedMesh(part.geometry, part.material, list.length); m.castShadow = !proto.small; m.receiveShadow = true; m.frustumCulled = false; m.name = 'dyn:' + name; m.userData.lod = Infinity; this.group.add(m); return m; });   // (drawn with the finer cut; the hull is the parts')
       const kind = { meshes, items: [], shown: -1 }; this.kinds.push(kind);
       list.forEach((d, i) => {
         q.setFromEuler(e.set(d.tilt ? d.tilt[0] : 0, d.rot, d.tilt ? d.tilt[1] : 0, 'YXZ'));

@@ -219,7 +219,7 @@ export class Builder {
     const m = new THREE.Matrix4().compose(V(x, y, z),
       new THREE.Quaternion().setFromEuler(new THREE.Euler(tilt ? tilt[0] : 0, rot, tilt ? tilt[1] : 0, 'YXZ')), V(scale, scale, scale));
     const chunk = this.cell(x, z) * 2 + ((pr.small && scale < 1.6) || /^(weed|bush|shelves|basket)/.test(name) ? 1 : 0);   // odd = too small to cast shadows
-    for (const part of pr.parts) {
+    for (const part of pr.near || pr.parts) {                                      // (the finer cut for drawing, when there is one)
       let per = this.props.get(part.material);
       if (!per) this.props.set(part.material, per = new Map());
       if (!per.has(chunk)) per.set(chunk, []);

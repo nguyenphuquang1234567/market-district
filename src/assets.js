@@ -70,6 +70,13 @@ function blueInsignia(map) {
 
 // The scans are film-resolution; cut each prop to a triangle budget that suits its size on screen.
 const BUDGET = { wall_lamp: 1800, barrier: 6000, barrier2: 4500, car: 12000, shelves: 1400, power_box: 500, ac: 2200, ac_rust: 2200, pot: 420, crate: 1400, cardboard: 900, basket: 700, basket_tall: 700, jerrycan: 800, chair: 2600, plastic_crate: 1300 };
+// The props whose outline the cut above spoils (a pot's rim, a basket's weave, a crate's handles) are cut a second time,
+// finer and closer to the scan, for drawing (proto.near). Their hull, size and physics stay those of the cut above.
+// (the woven basket is left out: its open weave cannot be cut below about 2000 triangles anyway)
+const NEAR_BUDGET = { pot: 900, basket_tall: 1200, plastic_crate: 2200, jerrycan: 1400, cardboard: 1200, wall_lamp: 2600, lpg: 2800 };
+// The detail pass (props.glb, finer props, rounder rods and cables) is on unless ?detail=0, which draws the map as it was
+// before it, for A/B timings in the same build.
+export const DETAIL = new URLSearchParams(location.search).get('detail') !== '0';
 function simplify(g, target, err = 0.12) {
   const tris = g.index.count / 3;
   if (tris <= target * 1.15) return g;
@@ -105,13 +112,14 @@ function bake(scene, re, name) {
   const box = new THREE.Box3();
   for (const gs of byMat.values()) for (const g of gs) { g.computeBoundingBox(); box.union(g.boundingBox); }
   const c = box.getCenter(new THREE.Vector3());
-  const parts = [], size = box.getSize(new THREE.Vector3());
+  const parts = [], near = [], size = box.getSize(new THREE.Vector3());
   const total = [...byMat.values()].flat().reduce((t, g) => t + g.index.count / 3, 0);
   const budget = BUDGET[name] || Math.max(260, 3000 * Math.max(size.x, size.y, size.z));
   for (const [material, gs] of byMat) {
     let g = gs.length > 1 ? (mergeGeometries(gs) || gs[0]) : gs[0];
     g.translate(-c.x, -box.min.y, -c.z);
     const foliage = (material.transparent || material.alphaTest > 0) && /^(shrub|weed|bush)/.test(name);
+    if (!foliage && DETAIL && NEAR_BUDGET[name]) near.push({ geometry: simplify(g, NEAR_BUDGET[name] * (g.index.count / 3 / total), 0.05), material });
     if (!foliage) g = simplify(g, budget * (g.index.count / 3 / total), /basket|plastic_crate/.test(name) ? 0.35 : 0.12);
     if (!foliage && (material.transparent || material.alphaTest > 0)) { material.transparent = false; material.alphaTest = 0.4; material.depthWrite = true; }
     if (foliage) {
@@ -125,10 +133,10 @@ function bake(scene, re, name) {
   }
   if (size.y > 6) {                               // a few scans are authored in decimetres
     const k = 2.0 / size.y;
-    for (const part of parts) part.geometry.scale(k, k, k);
+    for (const part of [...parts, ...near]) part.geometry.scale(k, k, k);
     size.multiplyScalar(k);
   }
-  return { parts, size, small: Math.max(size.x, size.y, size.z) < 0.56 };
+  return { parts, size, small: Math.max(size.x, size.y, size.z) < 0.56, ...(near.length ? { near } : {}) };
 }
 
 // Textures are KTX2 (Basis UASTC, see tools/encode-ktx2.mjs): transcoded off the main thread to whatever block format
@@ -197,7 +205,7 @@ export async function loadAssets(renderer, onProgress) {
     }
   }, e => { if (!optional) throw e; console.warn(`${url} not loaded (${e.message || e}): the old geometry stands in`); });
   jobs.push(loadKit('assets/kit/kit.glb'));
-  if (new URLSearchParams(location.search).get('detail') !== '0') jobs.push(loadKit('assets/kit/props.glb', true));   // (?detail=0: the old geometry only, for A/B timings)
+  if (DETAIL) jobs.push(loadKit('assets/kit/props.glb', true));
   jobs.push(gl.loadAsync('assets/models/soldier.glb').then(g => {
     const body = g.scene.getObjectByName('vanguard_Mesh');
     g.allyMap = blueInsignia(body.material.map);
