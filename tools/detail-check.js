@@ -15,6 +15,9 @@ const close = (a, b) => a.length === b.length && a.every((v, i) => Math.abs(v - 
 //           wind: [slots whose vertex alpha is wind freedom], ownUV: [slots mapped by their own UVs],
 //           check(parts) -> a problem or null }
 export const PIECES = {};
+const add = (names, spec) => { for (const n of names) PIECES[n] = spec; };
+// pebbles (dressing.js scatter): unit stones placed by the old box's matrix
+add(['pebble_a', 'pebble_b', 'pebble_c', 'pebble_d'], { cap: 80, min: 40, box: [[-0.5, -0.5, -0.5], [0.5, 0.5, 0.5]], slots: ['stone'] });
 // name -> () => [triangles, cap], for things drawn as several pieces
 export const TOTALS = {};
 

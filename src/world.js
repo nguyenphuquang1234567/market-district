@@ -7,7 +7,7 @@ import { dress } from './dressing.js';
 import { buildQuarter, HALL, PLAZUELA, ATRIUM, QUARTER_SPAWNS, QUARTER_HOTSPOTS } from './quarter.js';
 import { rng, clamp } from './util.js';
 import { facadeStyle, roomData, tint, hash as fhash } from './facades.js';
-import { noise } from './materials.js';
+import { noise, FOLIAGE } from './materials.js';
 
 THREE.BufferGeometry.prototype.computeBoundsTree = computeBoundsTree;
 THREE.BufferGeometry.prototype.disposeBoundsTree = disposeBoundsTree;
@@ -57,7 +57,7 @@ function frame(side, b) {
 const LOD = {
   d_stain: 45, d_patch: 45, d_scars: 35, matte: 40, glossy: 60, flowers: 90, cable: 70, bulb: 45, cloth_papel: 75, sign: 70, iron: 70, planks: 75, door: 80, dark: 80, glass: 85,
   shutter_wood: 80, shutter_metal: 85, shutter_paint: 85, metal_white: 80, metal_green: 90, metal_plate: 70, corrugated: 85, tiles: 55, interior: 55, burlap: 55,
-  rubble: 70, plastic: 60, cloth_red: 90, cloth_green: 90, cloth_plain: 90, cloth_tarp: 95, rug: 70,
+  rubble: 70, plastic: 60, cloth_red: 90, cloth_green: 90, cloth_plain: 90, cloth_tarp: 95, rug: 70, paper: 60,
 };
 export const lodRange = m => {
   if (m.name.startsWith('prop:')) return m.userData.noShadow ? 45 : 100;                   // small props (odd chunks) and the rest
@@ -960,11 +960,11 @@ export function buildWorld(R, M) {
     m.castShadow = !m.name.startsWith('d_') && !water && !['ground', 'cable', 'dark', 'glass', 'room', 'matte', 'paint', 'sign', 'bulb'].includes(m.name) && !m.userData.noShadow; m.receiveShadow = true;    // (paint and signs lie flat on walls: nothing to cast)
     const lod = lodRange(m); if (lod) m.userData.lod = lod;
     m.matrixAutoUpdate = false;
-    if (m.name === 'frond' || m.name === 'leaves' || m.name === 'flowers' || m.name.startsWith('d_') || water) m.userData.noAO = true;
+    if (FOLIAGE.includes(m.name) || m.name.startsWith('d_') || water) m.userData.noAO = true;
     if (water) m.renderOrder = m.name === 'water' ? 1 : m.name === 'water_foam' ? 2 : 3;   // the surface, then the foam on it, then the falls
     if (m.name.startsWith('d_')) m.renderOrder = 2;
     if (!m.material.userData.noBVH && !m.userData.noBVH && !m.name.startsWith('d_')) { m.geometry.computeBoundsTree({ maxLeafTris: 8 }); rayMeshes.push(m); }
-    else if (m.material.userData.noBVH && !water && m.name !== 'frond' && m.name !== 'leaves' && m.name !== 'flowers' && !m.name.startsWith('d_')) { m.geometry.computeBoundsTree({ maxLeafTris: 8 }); m.userData.cloth = true; clothMeshes.push(m); }
+    else if (m.material.userData.noBVH && !water && !FOLIAGE.includes(m.name) && !m.name.startsWith('d_')) { m.geometry.computeBoundsTree({ maxLeafTris: 8 }); m.userData.cloth = true; clothMeshes.push(m); }
     group.add(m);
   }
   R.scene.add(group); R.setupTree(group);

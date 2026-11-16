@@ -2,10 +2,12 @@
 import * as THREE from 'three';
 import { assets } from './assets.js';
 import { noiseTexture, canvasTexture, rng } from './util.js';
-import { signAtlas, papelTexture, talaveraTexture, tarpTexture, leavesTexture, flowersTexture } from './mexico.js';
+import { signAtlas, papelTexture, talaveraTexture, tarpTexture, leavesTexture, flowersTexture, leafTexture, palmLeafTexture, paperTexture } from './mexico.js';
 
 export const noise = noiseTexture(256, 11);
 export const windUniforms = { uTime: { value: 0 } };
+// Foliage drawn as alpha-tested cards and blades: no ambient occlusion, no ray trees, not an occluder in the light bake.
+export const FOLIAGE = ['frond', 'leaves', 'flowers', 'leaf', 'palm_leaf'];
 
 function pbr(id, o = {}) {
   const t = assets.tex[id];
@@ -433,9 +435,14 @@ export function createMaterials() {
     water: waterMaterial(), water_fall: fallMaterial(), water_foam: foamMaterial(),       // the plaza fountain
     room: roomMaterial(),                                                                 // window glass with a room behind it
     glassblock: new THREE.MeshStandardMaterial({ map: repeat(glassBlockTexture()), roughness: 0.18, vertexColors: true, emissive: 0x2b3432, emissiveMap: null, envMapIntensity: 1.2 }),
+
+    // ---- the detail pass (tools/blender/props.py), mapped by the pieces' own texture coordinates -------------------------
+    leaf: windy(new THREE.MeshStandardMaterial({ map: leafTexture(), alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.45, vertexColors: true }), 0.03, 0.45),             // laurel leaves
+    palm_leaf: windy(new THREE.MeshStandardMaterial({ map: palmLeafTexture(), alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.6, vertexColors: true }), 0.14, 0.6),     // palm leaflets and rachis
+    paper: windy(new THREE.MeshStandardMaterial({ map: paperTexture(), alphaTest: 0.45, side: THREE.DoubleSide, roughness: 0.9, vertexColors: true }), 0.05, 0.85),          // piñata tissue
   };
   M.glass.roughnessMap = null; M.glass.roughness = 0.09;
-  for (const k of ['frond', 'cloth_red', 'cloth_green', 'cloth_plain', 'rug', 'cloth_papel', 'cloth_tarp', 'leaves', 'flowers']) M[k].userData.noBVH = true;
+  for (const k of ['frond', 'cloth_red', 'cloth_green', 'cloth_plain', 'rug', 'cloth_papel', 'cloth_tarp', 'leaves', 'flowers', 'leaf', 'palm_leaf', 'paper']) M[k].userData.noBVH = true;
   // what a bullet sees
   const surf = {
     w_brick: 'brick', planks: 'wood', shutter_wood: 'wood', door: 'wood', shutter_metal: 'metal', corrugated: 'metal',
@@ -443,7 +450,7 @@ export function createMaterials() {
     ground: 'dirt', bark: 'wood', cable: 'fabric', plastic: 'wood', rubble: 'concrete', tiles: 'concrete', dark: 'none',
     cobble: 'concrete', terracotta: 'concrete', brick: 'brick', cantera: 'concrete', shutter_paint: 'metal', roof_tin: 'metal', sign: 'plaster',
     talavera: 'concrete', cloth_papel: 'fabric', cloth_tarp: 'fabric', leaves: 'wood', bulb: 'glass', paint: 'plaster', flowers: 'wood', glossy: 'wood', teja: 'concrete',
-    room: 'glass', glassblock: 'glass',
+    room: 'glass', glassblock: 'glass', leaf: 'wood', palm_leaf: 'wood', paper: 'fabric',
   };
   for (const [k, m] of Object.entries(M)) { m.userData.surf = surf[k] || (k.startsWith('w_') ? 'plaster' : 'concrete'); m.name = k; }
   return M;

@@ -198,3 +198,95 @@ export function flowersTexture() {
   t.anisotropy = 4;
   return t;
 }
+
+// ---- the detail pass (tools/blender/props.py): textures mapped by the pieces' own texture coordinates ----------------
+// Each is drawn the way up Blender's UVs count (base of a blade at the bottom of the canvas, its tip at the top), which
+// is how Builder.kit() hands them over.
+
+// Laurel (Ficus microcarpa) leaves: four blades side by side, one per quarter of the width (u = i / 4 ... (i + 1) / 4),
+// glossy dark green with a paler midrib and fine veins, on transparent ground. A blade fills its column, base at the bottom.
+export function leafTexture() {
+  const R = rng(6161), tones = [[38, 78, 30], [48, 92, 34], [70, 112, 40], [56, 84, 32]];
+  const t = canvasTexture(256, 256, (g, W, H) => {
+    g.clearRect(0, 0, W, H);
+    const cw = W / 4;
+    for (let i = 0; i < 4; i++) {
+      const cx = cw * i + cw / 2, [r, gg, b] = tones[i], half = cw * 0.44, y0 = H - 3, y1 = 3, len = y0 - y1;
+      const edge = s => { const t = s / len; return half * Math.pow(Math.sin(Math.PI * Math.min(1, t * 1.08)), 0.75) * (1 - 0.25 * t); };   // widest a little below the middle, an acuminate tip
+      const blade = new Path2D(); blade.moveTo(cx, y0);
+      for (let s = 0; s <= len; s += 2) blade.lineTo(cx - edge(s), y0 - s);
+      for (let s = len; s >= 0; s -= 2) blade.lineTo(cx + edge(s), y0 - s);
+      blade.closePath();
+      const grad = g.createLinearGradient(cx - half, 0, cx + half, 0);       // the blade folds on its midrib: one half catches more light
+      grad.addColorStop(0, `rgb(${r * 0.78 | 0},${gg * 0.8 | 0},${b * 0.8 | 0})`); grad.addColorStop(0.5, `rgb(${r * 1.1 | 0},${gg * 1.08 | 0},${b | 0})`); grad.addColorStop(1, `rgb(${r * 0.92 | 0},${gg * 0.94 | 0},${b * 0.9 | 0})`);
+      g.fillStyle = grad; g.fill(blade);
+      g.save(); g.clip(blade);
+      g.strokeStyle = `rgba(${150 + R() * 30 | 0},${190 + R() * 30 | 0},${110 + R() * 20 | 0},0.55)`; g.lineWidth = 2;
+      g.beginPath(); g.moveTo(cx, y0); g.lineTo(cx, y1 + 6); g.stroke();                        // midrib
+      g.lineWidth = 0.8; g.strokeStyle = 'rgba(170,205,120,0.28)';
+      for (let s = 14; s < len - 10; s += 9 + R() * 3) for (const sd of [-1, 1]) {               // side veins, curving up to the edge
+        g.beginPath(); g.moveTo(cx, y0 - s); g.quadraticCurveTo(cx + sd * edge(s) * 0.5, y0 - s - 8, cx + sd * edge(s + 10) * 0.92, y0 - s - 16); g.stroke();
+      }
+      if (i === 3) { g.strokeStyle = 'rgba(120,90,40,0.55)'; g.lineWidth = 3; g.stroke(blade); }   // one with a dry edge
+      g.restore();
+    }
+  });
+  t.anisotropy = 8;
+  return t;
+}
+
+// Canary palm leaflets: four long narrow leaflets in u 0 ... 0.8 (columns 0.2 wide, base at the bottom), with parallel
+// veins and a paler midrib, the last yellowing to a brown tip; the rachis's colour in u 0.85 ... 1 (fibrous, pale green).
+export function palmLeafTexture() {
+  const R = rng(7272), tones = [[62, 96, 36], [74, 108, 40], [86, 116, 44], [110, 118, 50]];
+  const t = canvasTexture(256, 512, (g, W, H) => {
+    g.clearRect(0, 0, W, H);
+    const cw = W * 0.2;
+    for (let i = 0; i < 4; i++) {
+      const cx = cw * i + cw / 2, half = cw * 0.4, y0 = H - 2, y1 = 4, len = y0 - y1, [r, gg, b] = tones[i];
+      const edge = s => half * Math.min(1, (s / len) * 9) * Math.pow(1 - s / len, 0.6);   // narrow at the base, widest a tenth up, tapering to a sharp tip
+      const leaf = new Path2D(); leaf.moveTo(cx, y0);
+      for (let s = 0; s <= len; s += 3) leaf.lineTo(cx - edge(s), y0 - s);
+      for (let s = len; s >= 0; s -= 3) leaf.lineTo(cx + edge(s), y0 - s);
+      leaf.closePath();
+      const grad = g.createLinearGradient(0, y0, 0, y1);
+      grad.addColorStop(0, `rgb(${r * 0.85 | 0},${gg * 0.85 | 0},${b * 0.8 | 0})`); grad.addColorStop(0.6, `rgb(${r},${gg},${b})`);
+      grad.addColorStop(1, i === 3 ? 'rgb(150,112,60)' : `rgb(${r * 1.1 | 0},${gg * 1.05 | 0},${b | 0})`);
+      g.fillStyle = grad; g.fill(leaf);
+      g.save(); g.clip(leaf);
+      g.lineWidth = 0.7;
+      for (let k = -3; k <= 3; k++) { if (!k) continue; g.strokeStyle = `rgba(${40 + R() * 20 | 0},${70 + R() * 20 | 0},30,0.35)`; g.beginPath(); g.moveTo(cx + k * half * 0.22, y0); g.lineTo(cx + k * half * 0.05, y1); g.stroke(); }
+      g.strokeStyle = 'rgba(205,215,150,0.6)'; g.lineWidth = 1.6; g.beginPath(); g.moveTo(cx, y0); g.lineTo(cx, y1 + 10); g.stroke();
+      g.restore();
+    }
+    const x0 = W * 0.85;                                                       // the rachis: pale green-yellow, fibrous
+    g.fillStyle = 'rgb(150,150,86)'; g.fillRect(x0, 0, W - x0, H);
+    for (let k = 0; k < 90; k++) { const x = x0 + R() * (W - x0); g.strokeStyle = `rgba(${90 + R() * 60 | 0},${100 + R() * 50 | 0},${50 + R() * 30 | 0},0.5)`; g.lineWidth = 0.6 + R(); g.beginPath(); g.moveTo(x, 0); g.lineTo(x + (R() - 0.5) * 3, H); g.stroke(); }
+  });
+  t.anisotropy = 8;
+  return t;
+}
+
+// Piñata tissue: rows of fringed paper in v 0 ... 0.75 (six rows, each a solid band with its lower part cut into a fringe;
+// the piece lays them overlapping round the body and the cones), crêpe streamer in v 0.75 ... 1. White, tinted per slot.
+export function paperTexture() {
+  const R = rng(8383);
+  const t = canvasTexture(256, 256, (g, W, H) => {
+    g.clearRect(0, 0, W, H);
+    const rows = 6, band = H * 0.75 / rows;
+    for (let k = 0; k < rows; k++) {
+      const y1 = H - k * band, y0 = y1 - band, solid = y0 + band * 0.3;          // canvas y grows downwards: the row's top is y0
+      g.fillStyle = 'rgb(238,236,232)'; g.fillRect(0, y0, W, solid - y0 + 1);
+      for (let x = 0; x < W; x += 4) {                                           // fringe strips, 3 px wide, slightly ragged ends
+        const c = 222 + R() * 30 | 0, l = (y1 - solid) * (0.82 + R() * 0.18);
+        g.fillStyle = `rgb(${c},${c - 2},${c - 6})`; g.fillRect(x, solid, 3, l);
+      }
+      g.fillStyle = 'rgba(0,0,0,0.12)'; g.fillRect(0, solid - 1, W, 2);         // the fold where the fringe hangs from
+    }
+    const s0 = 0, s1 = H * 0.25;                                                 // crêpe streamer: fine horizontal crinkles
+    g.fillStyle = 'rgb(236,234,230)'; g.fillRect(0, s0, W, s1 - s0);
+    for (let y = s0; y < s1; y += 2) { g.fillStyle = `rgba(0,0,0,${0.04 + R() * 0.08})`; g.fillRect(0, y, W, 1); }
+  });
+  t.anisotropy = 4;
+  return t;
+}

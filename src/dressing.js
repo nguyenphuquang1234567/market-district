@@ -596,11 +596,15 @@ export function dress(ctx) {
   for (let i = 0; i < 20; i++) { B.mute = false; const p = edgePoint(rnd.range(0.15, 0.45)); B.prop(rnd.pick(['bush_a', 'bush_b', 'bush_c']), p.x, p.y - 0.02, p.z, rnd() * 6.28, rnd.range(0.8, 1.5)); }
   B.mute = false;
   for (const [x, z, s] of [[-17.6, 16.2, 1.0], [-7.2, -16.2, 0.8], [-30.6, -57.6, 1.0], [30.4, 57.4, 0.9], [-26.2, 57.6, 0.8], [5.2, -62.6, 0.7], [-45, 0, 1.2]]) B.prop(rnd.pick(['shrub_a', 'shrub_b', 'shrub_c', 'shrub_d']), x, 0, z, rnd() * 6.28, s);
-  const peb = new THREE.BoxGeometry(1, 1, 1);
+  // pebbles: a box far off, near it one of four modelled stones (tools/blender/props.py) placed by the box's own matrix
+  const peb = new THREE.BoxGeometry(1, 1, 1), PEBBLES = ['pebble_a', 'pebble_b', 'pebble_c', 'pebble_d'];
   for (let i = 0; i < 320; i++) {
     B.mute = false;
     const p = rnd.chance(0.7) ? edgePoint(rnd.range(0.05, 0.9)) : V(rnd.range(-31, 31), 0, rnd.range(-63, 63)), s = rnd.range(0.025, 0.1), g = rnd.range(0.55, 0.95);
-    B.geom(rnd.pick(['concrete', 'concrete', 'w_brick']), peb, mat4(V(p.x, p.y + s * 0.3, p.z), rnd() * 6.28, V(s * rnd.range(0.8, 2), s * rnd.range(0.4, 0.9), s), rnd.range(-0.5, 0.5), rnd.range(-0.5, 0.5)), { uvScale: 0.2, color: [g, g * 0.97, g * 0.92] });
+    const key = rnd.pick(['concrete', 'concrete', 'w_brick']), color = [g, g * 0.97, g * 0.92];
+    const m = mat4(V(p.x, p.y + s * 0.3, p.z), rnd() * 6.28, V(s * rnd.range(0.8, 2), s * rnd.range(0.4, 0.9), s), rnd.range(-0.5, 0.5), rnd.range(-0.5, 0.5));
+    const v = PEBBLES[Math.floor(fhash(p.x, p.z, 17) * 4)];
+    B.swap(v, () => B.geom(key, peb, m, { uvScale: 0.2, color }), () => B.kit(v, m, { stone: key }, { lod: 'near', tile: 0.35, color }));
   }
   for (let i = 0; i < 70; i++) {
     B.mute = false;

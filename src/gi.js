@@ -5,6 +5,7 @@
 import * as THREE from 'three';
 import { MeshBVH } from 'three-mesh-bvh';
 import { giUniforms } from './render.js';
+import { FOLIAGE } from './materials.js';
 
 const GRID = { x0: -46, y0: 0.35, z0: -80, sx: 1, sy: 1.1, sz: 1, nx: 158, ny: 8, nz: 161 };       // x -46…111: the old district and the market quarter
 // 96 rays a probe, the set turned by a different angle at every probe so neighbours do not share the same gaps (the
@@ -46,7 +47,7 @@ async function occluders(world, M) {
   const avg = textureAverages();
   const use = world.group.children.filter(m => {
     const n = m.name;
-    if (n.startsWith('d_') || n === 'frond' || n === 'leaves' || n === 'flowers' || n === 'cable' || n === 'iron' || n === 'bulb') return false;
+    if (n.startsWith('d_') || FOLIAGE.includes(n) || n === 'paper' || n === 'cable' || n === 'iron' || n === 'bulb') return false;
     return /^(cloth_|rug)/.test(n) || n === 'ground' || m.castShadow;
   });
   await avg.prepare([M.ground.map, giUniformsGround(M, 'tC2'), giUniformsGround(M, 'tC3'), ...use.map(m => m.material.map)]);
