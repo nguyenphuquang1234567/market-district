@@ -34,6 +34,16 @@ export const VIEWS = {
   plazuela: [74.6, -27.5, 135, 3],
   atrium: [74, 18, 200, 3],
   east_street: [93, 0, 0, 2],
+  // ---- close views of the pieces modelled in tools/blender/props.py (near versions), see the detail-pass plan
+  sack_near: [24.4, -45.4, 231, -32],             // two spice sacks beside a shop on the market lane
+  rubble_near: [-2.0, 6.0, 323, -12],             // the rubble heap on the main street north of the arch
+  cart_near: [58.8, -18.4, 142, -5],              // a vendor's cart on Calle Sur
+  pole_near: [-21.5, -20.0, 279, 38],             // a utility pole on the south cross street, up at its transformer
+  pinata_near: [74.4, -34.0, 270, 9],             // the two piñatas over the plazuela's fruit stall
+  chapel_dome: [78.5, 9.5, 36, 4, 14],            // the chapel's drum, dome and lantern, from above the hall's roof
+  kiosk_near: [74.6, -30.2, 125, 22],             // the kiosk's roof and columns
+  palm_near: [-11.0, -8.0, 226, 40],              // a plaza palm, up into its crown
+  laurel_near: [76.5, -38.0, 221, 20],            // a laurel at the plazuela's corner
 };
 
 const park = G => { for (const b of G.bots.list) { b.alive = false; b.root.visible = false; b.gun.visible = false; b.respawnT = 1e9; } };
@@ -46,11 +56,19 @@ function roomView(G) {
 
 // exposure: null (the auto exposure, as the player sees it), a number, or { view: value } (e.g. the `exposure` map a
 // previous run returned and saved as captures/cmp_<tag>_exposure.json), so two builds can be compared at one exposure.
+// capture size first: exposure settles on the framing that is saved (a square pane would meter a different picture)
+function begin(G, w, h) {
+  const R = G.R, canvas = R.renderer.domElement; canvas.style.width = w + 'px'; canvas.style.height = h + 'px'; R.renderScale = 1; R.adaptive = false; R.resize();
+  G.manual = true; G.auto = true; G.frozen = true; G.resetMatch(); G.playing = true; G.hud.show(null); park(G);
+}
+function end(G) {
+  G.R.autoExposure = true;
+  park(G); G.resetMatch(); G.playing = false; G.manual = false; G.auto = false; G.frozen = false; G.matchLive = false; G.hud.show('start');
+}
+
 export async function shots(G, tag, { names = Object.keys(VIEWS), w = 1536, h = 864, settle = 2.0, clock = 120, exposure = null } = {}) {
   const out = [], R = G.R, cam = R.camera, deg = Math.PI / 180, used = {};
-  // capture size first: exposure settles on the framing that is saved (a square pane would meter a different picture)
-  const canvas = R.renderer.domElement; canvas.style.width = w + 'px'; canvas.style.height = h + 'px'; R.renderScale = 1; R.adaptive = false; R.resize();
-  G.manual = true; G.auto = true; G.frozen = true; G.resetMatch(); G.playing = true; G.hud.show(null); park(G);
+  begin(G, w, h);
   // lets an exposure read still in flight from the menu land first. (A hidden page has its timers held to one a minute
   // after five minutes; a message is not held, so a run in a hidden browser pane goes on at full speed.)
   const yieldToLoop = () => new Promise(r => { if (!document.hidden) return setTimeout(r, 40); const ch = new MessageChannel(); ch.port1.onmessage = () => r(); ch.port2.postMessage(0); });
@@ -79,9 +97,25 @@ export async function shots(G, tag, { names = Object.keys(VIEWS), w = 1536, h = 
     used[name] = +R.exposure.toFixed(4);
     out.push(await G.capture(`cmp_${tag}_${name}`, w, h));
   }
-  R.autoExposure = true;
   out.exposure = used;
   await fetch(`/__capture/cmp_${tag}_exposure.json`, { method: 'POST', body: JSON.stringify(used, null, 1) }).catch(() => {});
-  park(G); G.resetMatch(); G.playing = false; G.manual = false; G.auto = false; G.frozen = false; G.matchLive = false; G.hud.show('start');
+  end(G);
+  return out;
+}
+
+// Frames walking from a to b ([x, z] each) looking along yaw/pitch, the exposure held at the first frame's, for judging
+// where and how hard the near/far switch of the props.py pieces shows: captures/film_<tag>_<00..>.jpg.
+export async function film(G, tag, a, b, yaw, pitch, n = 12, { w = 1536, h = 864, settle = 0.5, clock = 120 } = {}) {
+  const R = G.R, out = [];
+  begin(G, w, h);
+  for (let i = 0; i < n; i++) {
+    const t = n > 1 ? i / (n - 1) : 0;
+    G.setClock(clock); G.goto(a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, yaw, pitch); G.weapon.root.visible = false;
+    G.step(Math.round((i ? settle : 2.5) * 60), 1 / 60);
+    if (i === 0) { R.autoExposure = false; R.exposureTarget = R.exposure; }
+    G.weapon.root.visible = false;
+    out.push(await G.capture(`film_${tag}_${String(i).padStart(2, '0')}`, w, h));
+  }
+  end(G);
   return out;
 }

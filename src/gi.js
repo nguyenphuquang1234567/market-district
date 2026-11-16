@@ -230,7 +230,9 @@ function upload(sh, skyRef) {
 }
 
 // Loads the cached bake if it matches this build of the map, otherwise bakes (and offers the result to the dev server).
-export async function setupGI(R, world, M, onProgress, force = false) {
+// stale (dev, ?stalegi=1): take the cached bake even if the map has changed since, for a quick look while geometry is
+// being added; nothing is baked or saved.
+export async function setupGI(R, world, M, onProgress, force = false, stale = false) {
   const N = GRID.nx * GRID.ny * GRID.nz;
   // (the colliders, the sun, the lamps and how much is drawn: a change to any of them means a fresh bake)
   const drawn = world.group.children.reduce((a, m) => a + (m.geometry.index ? m.geometry.index.count : 0), 0);
@@ -239,8 +241,9 @@ export async function setupGI(R, world, M, onProgress, force = false) {
     const res = await fetch('assets/gi.bin', { cache: 'no-store' });
     if (res.ok) {
       const buf = await res.arrayBuffer(), head = new Float32Array(buf, 0, 8);
-      if (head[0] === MAGIC && head[1] === VERSION && head[2] === N && Math.abs(head[3] - sig) < 1e-3 * Math.max(1, Math.abs(sig))) {
-        upload(new Float32Array(buf, 32, N * 12), head[4]); return 'cached';
+      const fresh = Math.abs(head[3] - sig) < 1e-3 * Math.max(1, Math.abs(sig));
+      if (head[0] === MAGIC && head[1] === VERSION && head[2] === N && (fresh || stale)) {
+        upload(new Float32Array(buf, 32, N * 12), head[4]); return fresh ? 'cached' : 'stale';
       }
     }
   } catch { /* fall through to a fresh bake */ }

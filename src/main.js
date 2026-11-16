@@ -46,7 +46,7 @@ async function start() {
   const world = buildWorld(R, M); performance.mark('boot:world');
   $('bootText').textContent = 'Lighting'; $('bootBar').style.width = '90%';
   await new Promise(r => setTimeout(r, 30));
-  const gi = params.get('nogi') ? 'off' : await setupGI(R, world, M, p => { $('bootText').textContent = `Baking light ${Math.round(p * 100)}%`; }, !!params.get('bake'));   // (?nogi=1: no indirect light, for a quick look while the geometry changes)
+  const gi = params.get('nogi') ? 'off' : await setupGI(R, world, M, p => { $('bootText').textContent = `Baking light ${Math.round(p * 100)}%`; }, !!params.get('bake'), !!params.get('stalegi'));   // (?nogi=1: no indirect light, for a quick look while the geometry changes; ?stalegi=1: the last bake, even if out of date)
   performance.mark('boot:gi');
   const G = window.G = { R, M, world, settings, THREE, gi, time: 0, playing: false, matchLive: false, score: [0, 0], timeLeft: MATCH.time, stats: { shots: 0, hits: 0 } };
   G.audio = new Audio();
