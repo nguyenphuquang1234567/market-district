@@ -365,6 +365,9 @@ const RELOAD = {
   mag: [[0, 0], [0.36, 0], [0.52, -0.2], [0.94, -0.2], [1.3, -0.016], [1.4, 0]],
 };
 const RELOAD_BOLT_RELEASE = 1.43;
+const RESERVE_CAPACITY = 120;
+const RESERVE_REFILL = 30;
+const RESERVE_REFILL_SECONDS = 30;
 const INSPECT = [[0, 0, 0, 0, 0, 0, 0], [0.35, -0.05, 0.025, 0.03, 0.05, 0.85, -0.45], [1.05, -0.05, 0.028, 0.03, 0.02, 0.9, -0.5], [1.5, 0.0, 0.03, 0.02, -0.25, -0.75, 0.75], [2.15, 0.0, 0.03, 0.02, -0.22, -0.8, 0.8], [2.6, 0, 0, 0, 0, 0, 0]];
 
 export class Weapon {
@@ -414,15 +417,18 @@ export class Weapon {
     R.setupTree(root);
 
     this.rnd = rng(4242);
-    this.mode = 'auto'; this.magSize = 30; this.ammo = 30; this.reserve = 120;
+    this.mode = 'auto'; this.magSize = 30; this.ammo = 30; this.reserve = RESERVE_CAPACITY; this.reserveRefillTime = 0;
     this.cool = 0; this.shots = 0; this.sinceShot = 9; this.heat = 0; this.triggerHeld = false;
     this.ads = 0; this.sprint = 0; this.nextShotSpread = 0; this.reloadT = -1; this.reloadLen = 0; this.reloadEmpty = false; this.reloaded = false; this.inspectT = -1;
     this.kick = 0; this.kickV = 0; this.kickRot = V(0, 0, 0); this.sway = V(0, 0, 0); this.bobT = 0; this.land = 0; this.wall = 0; this.flashT = 0; this.boltT = 1; this.time = 0;
     this.stage = 0; this.away = false; this.stow = 0;
   }
 
-  reset() { this.away = false; this.stow = 0; this.gun.visible = true; this.ammo = this.magSize; this.reserve = 120; this.reloadT = -1; this.inspectT = -1; this.heat = 0; this.shots = 0; this.mag.position.set(0, 0, 0); this.lh.position.copy(this.lhGrip); this.lh.quaternion.identity(); }
+  reset() { this.away = false; this.stow = 0; this.gun.visible = true; this.ammo = this.magSize; this.reserve = RESERVE_CAPACITY; this.reserveRefillTime = 0; this.reloadT = -1; this.inspectT = -1; this.heat = 0; this.shots = 0; this.mag.position.set(0, 0, 0); this.lh.position.copy(this.lhGrip); this.lh.quaternion.identity(); }
   get reloading() { return this.reloadT >= 0; }
+  get reserveRefillRemaining() {
+    return this.reserve < RESERVE_CAPACITY ? Math.ceil(RESERVE_REFILL_SECONDS - this.reserveRefillTime) : 0;
+  }
   toggleMode() { this.mode = this.mode === 'auto' ? 'semi' : 'auto'; this.cb.sound('select'); }
   startReload() {
     if (this.away || this.reloading || this.ammo >= this.magSize || this.reserve <= 0) return;
@@ -447,8 +453,19 @@ export class Weapon {
     return spread;
   }
 
+  refillReserve(dt) {
+    if (this.reserve >= RESERVE_CAPACITY) return;
+    this.reserveRefillTime += dt;
+    while (this.reserveRefillTime >= RESERVE_REFILL_SECONDS && this.reserve < RESERVE_CAPACITY) {
+      this.reserve = Math.min(RESERVE_CAPACITY, this.reserve + RESERVE_REFILL);
+      this.reserveRefillTime -= RESERVE_REFILL_SECONDS;
+    }
+    if (this.reserve === RESERVE_CAPACITY) this.reserveRefillTime = 0;
+  }
+
   // input: { fire, ads, sprinting, moving (0..1), speed, crouch, grounded, lookDX, lookDY, wallDist }
   update(dt, inp) {
+    this.refillReserve(dt);
     this.time += dt; this.cool -= dt; this.sinceShot += dt;
     if (this.away) inp = { ...inp, fire: false, ads: false };
     this.stow = damp(this.stow, this.away ? 1 : 0, this.away ? 12 : 9, dt); this.gun.visible = this.stow < 0.97;

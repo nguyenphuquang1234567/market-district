@@ -39,6 +39,8 @@ export class HUD {
     this.set('hp', hp); this.cls('health', 'low', hp < 35);
     if (this.last.hpSeg !== Math.ceil(hp / 10)) { this.last.hpSeg = Math.ceil(hp / 10); [...$('hpbar').children].forEach((e, i) => e.classList.toggle('on', i < this.last.hpSeg)); }
     this.set('mag', W.ammo); this.set('res', W.reserve); this.set('fmode', W.mode === 'auto' ? 'AUTO' : 'SEMI'); this.cls('ammo', 'low', W.ammo <= 8); this.cls('ammo', 'reload', W.reloading);
+    const reserveSeconds = W.reserveRefillRemaining;
+    this.set('resRefill', reserveSeconds ? `${reserveSeconds}s` : '');
     if (this.last.ammoSeg !== W.ammo) { this.last.ammoSeg = W.ammo; [...$('abar').children].forEach((e, i) => e.classList.toggle('on', i < W.ammo)); }
     const T = G.throw;
     this.set('nFragN', T.count.frag); this.set('nSmokeN', T.count.smoke);
