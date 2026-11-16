@@ -140,7 +140,10 @@ export function builder() {
         if (ran !== 1 || ret !== 5) fail('replace: the old version did not run once / return its value');
         if (ids.some(i => i.startsWith('concrete|'))) fail('replace: the old version was kept: ' + ids);
         if (!ids.some(i => /^iron\|\d+$/.test(i))) fail('replace: the piece is not drawn untagged: ' + ids);
-        if (B.mute !== false) fail('replace: mute not restored');
+        if (B.muteDraw !== false) fail('replace: muteDraw not restored');
+        const E = new Builder();                                          // a throw in old() still restores it
+        try { E.replace('__t', () => { throw new Error('x'); }, () => {}); } catch { /* expected */ }
+        if (E.muteDraw !== false) fail('replace: muteDraw left set after old() threw');
         const C = new Builder(); C.replace('__missing__', () => quad(C), () => fail('replace(missing): detailed() called'));
         if (![...C.buckets.keys()].some(i => /^concrete\|\d+$/.test(i))) fail('replace(missing): the old version is not drawn');
         // what the old version records besides drawing is kept: colliders, details, keep-outs and low drawn boxes
