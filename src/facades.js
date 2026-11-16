@@ -25,24 +25,27 @@ const TONES = {                 // natural plasters and limewashes, coolest to w
 const ORDER = Object.keys(TONES);
 // (no blue and no pink: even faded, a blue wall reads as sea blue in the sun and a pink one as pink, and the district
 // is not to have either)
-const ACCENTS = { turquoise: '#6e9e8f', red: '#9c5a3c', green: '#879d7f' };   // (the turquoise a jade, leaning green, not blue)
+// (the earthy red a fired brick, its hue held toward orange (a duller or redder one reads as dusty pink in the
+// shade), the sage pale, as light as the plaster round them; no turquoise: even pale it read as
+// mint going on blue among the warm tones)
+const ACCENTS = { red: '#a16c48', green: '#a9b094' };
 // a base band that is not simply the wall a step darker: deep earths and greys
 const DEEP = { oxide: '#7a3a2a', umber: '#5a4332', slate: '#5b6168', moss: '#4b5a46', wine: '#5d2c2c', charcoal: '#4a4845' };
-const COOL = new Set(['limestone', 'offwhite', 'cream', 'turquoise', 'green']);
+const COOL = new Set(['limestone', 'offwhite', 'cream', 'green']);
 // each kind of street: how much of each tone, its accents, and how often a house takes one
 const STREET_PAL = {
   plaza:  { tones: { limestone: 3, offwhite: 3, cream: 2, straw: 1, beige: 1, sand: 1, ochre: 3, terracotta: 2 }, accents: { red: 3 }, rate: 0.16 },
-  main:   { tones: { limestone: 2, offwhite: 3, cream: 2, straw: 1, beige: 2, sand: 1, clay: 2, ochre: 3, terracotta: 3 }, accents: { red: 3, turquoise: 2, green: 1 }, rate: 0.24 },
-  market: { tones: { offwhite: 1, cream: 2, straw: 2, beige: 2, sand: 2, clay: 2, ochre: 3, terracotta: 3 }, accents: { turquoise: 3, red: 2, green: 1 }, rate: 0.3 },
-  calle:  { tones: { offwhite: 2, cream: 2, straw: 2, beige: 1, sand: 1, clay: 2, ochre: 3, terracotta: 3 }, accents: { turquoise: 2, red: 3, green: 2 }, rate: 0.27 },
-  cross:  { tones: { limestone: 1, offwhite: 3, cream: 2, straw: 1, beige: 1, sand: 1, clay: 3, ochre: 2, terracotta: 2 }, accents: { red: 2, green: 2, turquoise: 2 }, rate: 0.27 },
-  lane:   { tones: { limestone: 3, offwhite: 3, cream: 2, beige: 1, sand: 1, clay: 1, ochre: 2, terracotta: 1 }, accents: { green: 1, red: 1, turquoise: 1 }, rate: 0.18 },
-  alley:  { tones: { limestone: 2, offwhite: 3, cream: 2, beige: 1, sand: 1, clay: 2, ochre: 1, terracotta: 1 }, accents: { turquoise: 1, green: 1, red: 1 }, rate: 0.2 },
+  main:   { tones: { limestone: 2, offwhite: 3, cream: 2, straw: 1, beige: 2, sand: 1, clay: 2, ochre: 3, terracotta: 3 }, accents: { red: 3, green: 2 }, rate: 0.24 },
+  market: { tones: { offwhite: 1, cream: 2, straw: 2, beige: 2, sand: 2, clay: 2, ochre: 3, terracotta: 3 }, accents: { red: 2, green: 3 }, rate: 0.3 },
+  calle:  { tones: { offwhite: 2, cream: 2, straw: 2, beige: 1, sand: 1, clay: 2, ochre: 3, terracotta: 3 }, accents: { red: 3, green: 3 }, rate: 0.27 },
+  cross:  { tones: { limestone: 1, offwhite: 3, cream: 2, straw: 1, beige: 1, sand: 1, clay: 3, ochre: 2, terracotta: 2 }, accents: { red: 2, green: 3 }, rate: 0.27 },
+  lane:   { tones: { limestone: 3, offwhite: 3, cream: 2, beige: 1, sand: 1, clay: 1, ochre: 2, terracotta: 1 }, accents: { green: 2, red: 1 }, rate: 0.18 },
+  alley:  { tones: { limestone: 2, offwhite: 3, cream: 2, beige: 1, sand: 1, clay: 2, ochre: 1, terracotta: 1 }, accents: { green: 2, red: 1 }, rate: 0.2 },
 };
 // and each kind of building leans its own way within it (only: the accents it may take)
 const KIND_PAL = {
   casona:    { tones: { limestone: 1.4, offwhite: 0.9, cream: 1.2, straw: 0.9, sand: 0.8, clay: 0.6, ochre: 1.4, terracotta: 1.3 }, accent: 0.8, only: ['red'] },
-  comercial: { tones: { limestone: 1.6, offwhite: 1.6, cream: 1.1, straw: 0.8, sand: 0.8, clay: 0.6, ochre: 0.6, terracotta: 0.4 }, accent: 0.6, only: ['green', 'turquoise'] },
+  comercial: { tones: { limestone: 1.6, offwhite: 1.6, cream: 1.1, straw: 0.8, sand: 0.8, clay: 0.6, ochre: 0.6, terracotta: 0.4 }, accent: 0.6, only: ['green'] },
   vecindad:  { tones: {}, accent: 1 },
   barrio:    { tones: { limestone: 0.6, straw: 1.2, sand: 1.1, clay: 1.3, ochre: 1.3, terracotta: 1.3 }, accent: 1.5 },
   obra:      { tones: { limestone: 1.5, beige: 1.2, sand: 1.2, clay: 0.6, ochre: 0.6, terracotta: 0.5 }, accent: 0.5 },
@@ -161,27 +164,32 @@ export function facadeStyle(bd, prev = null) {
   const pal = STREET_PAL[main] || STREET_PAL.cross, K = KIND_PAL[kind], cx = (bd.x0 + bd.x1) / 2, cz = (bd.z0 + bd.z1) / 2;
   // the street's warmth drifts slowly along it: neighbours share a family of tones, the next few houses move on
   const warm = Math.min(1, Math.max(0, (vnoise(cx / 36, cz / 36, 5) - 0.5) * 1.9 + 0.5)) * (ORDER.length - 1);   // (stretched: value noise sits mid-way)
-  // an accent stands between quiet neighbours: next to one, the strong earth tones give way to the light ones
-  const STRONG = new Set(['clay', 'ochre', 'terracotta']), afterAccent = !!prev?.colors?.accent;
-  const toneW = Object.fromEntries(ORDER.map((t, i) => [t, afterAccent ? (STRONG.has(t) ? 0 : (pal.tones[t] || 0.5) * (K.tones[t] ?? 1)) : (pal.tones[t] || 0) * (K.tones[t] ?? 1) * Math.exp(-((i - warm) ** 2) / 10.5)]));
-  // an accent here and there (more often where a slow field runs high), never two houses in a row, and seldom next to
-  // a strong earth tone
-  const pool = K.only ? Object.fromEntries(Object.entries(pal.accents).filter(([k]) => K.only.includes(k))) : pal.accents;
-  // and only on a small house (two floors), a touch of colour in the row: a whole block of three or four floors in an
-  // accent stands out of its street instead of into it
-  const small = bd.floors <= 2;
-  const accentP = Object.keys(pool).length && !afterAccent && small ? pal.rate * K.accent * (0.5 + vnoise(cx / 22, cz / 22, 9)) * (STRONG.has(prev?.colors?.tone) ? 0 : 1.6) : 0;
+  // Value steps along a row stay gentle, so nothing looks dropped in from another street. The dark colours (terracotta and
+  // the earthy red) go only on a small house (two floors) and only next to a mid-toned neighbour, and the house after one
+  // takes a mid tone as well; a whole block of three or four floors in a dark colour stands out of its street instead of
+  // into it. The pale accents (sage, jade) are as light as the plaster round them and may stand anywhere but next to
+  // another accent.
+  const LIGHT = new Set(['limestone', 'offwhite', 'cream']), MID = new Set(['straw', 'beige', 'sand', 'clay', 'ochre']);
+  const prevTone = prev?.colors?.tone, prevAccent = prev?.colors?.accent, prevDark = prevTone === 'terracotta' || prevAccent === 'red';
+  const small = bd.floors <= 2, darkOK = small && !!prevTone && MID.has(prevTone);
+  const toneW = Object.fromEntries(ORDER.map((t, i) => {
+    let w = (pal.tones[t] || 0) * (K.tones[t] ?? 1) * Math.exp(-((i - warm) ** 2) / 10.5);
+    if (t === 'terracotta' && !darkOK) w = 0;
+    if (prevDark && !MID.has(t)) w = 0;
+    return [t, w];
+  }));
+  if (!Object.values(toneW).some(v => v > 0)) for (const t of MID) toneW[t] = 1;
+  const pool = Object.fromEntries(Object.entries(pal.accents).filter(([k]) => (!K.only || K.only.includes(k)) && (k !== 'red' || darkOK)));
+  const accentP = Object.keys(pool).length && !prevAccent && !prevDark && small ? pal.rate * K.accent * (0.5 + vnoise(cx / 22, cz / 22, 9)) * 1.6 : 0;
   let tone = null, accent = null;
   if (cr() < accentP) accent = wpick(pool);
-  else { tone = wpick(toneW); for (let k = 0; k < 4 && tone === prev?.colors?.tone; k++) tone = wpick(toneW); }
-  const a = jitter(accent ? ACCENTS[accent] : TONES[tone], cr), cool = COOL.has(accent || tone);
+  else { tone = wpick(toneW); for (let k = 0; k < 4 && tone === prevTone; k++) tone = wpick(toneW); }
+  let a = jitter(accent ? ACCENTS[accent] : TONES[tone], cr), cool = COOL.has(accent || tone);
   // B, on the base band and what is picked out: the wall's own colour a good step darker, or a deep earth that goes with it
-  const b = cr() < 0.45 ? deepen(a) : DEEP[cpick(cool ? ['oxide', 'slate', 'moss', 'charcoal', 'umber'] : ['umber', 'oxide', 'charcoal', 'slate', 'wine'])];
+  const ownB = cr() < 0.45, deepK = ownB ? null : cpick(cool ? ['oxide', 'slate', 'moss', 'charcoal', 'umber'] : ['umber', 'oxide', 'charcoal', 'slate', 'wine']);
   const frames = kind === 'casona' ? (cr() < 0.7 ? 'stone' : 'white') : accent ? (cr() < 0.75 ? 'white' : 'b') : cr() < { comercial: 0.75, barrio: 0.6, vecindad: 0.45, obra: 0.3 }[kind] ? 'white' : 'b';
-  const F = frames === 'white' ? WHITE : frames === 'stone' ? CANTERA : b;
   const woodK = kind === 'casona' ? cpick(['natural', 'dark', 'natural', 'oxblood']) : kind === 'barrio' ? cpick(cool ? ['natural', 'oxblood', 'natural', 'dark'] : ['green', 'grey', 'natural', 'dark'])
     : kind === 'comercial' ? cpick(['dark', 'grey']) : cpick(['natural', 'dark', 'grey', cool ? 'oxblood' : 'green']);
-  st.colors = { a, b, frames, f: F, wood: WOOD[woodK], tone, accent };
   // age, for the wall shader (attribute aAge): how far the sun has bleached the paint, how much road dust and damp it has
   // taken, and up to what height the street floor was repainted (a shop front, often: fresher than the coat above it)
   const wearK = { casona: 0.7, comercial: 0.85, vecindad: 1.25, barrio: 0.95, obra: 1.3 }[kind], fresh = cr() < 0.12;
@@ -190,6 +198,15 @@ export function facadeStyle(bd, prev = null) {
   // the wall: smooth painted plaster; a worn tenement, an unfinished house or an odd barrio house has its paint peeling
   // off to the grey plaster (w_white: the tint takes only on the paint); the 1950s blocks have a smooth cement render
   const peel = !fresh && cr() < (kind === 'vecindad' ? 0.35 : kind === 'obra' ? 0.4 : kind === 'barrio' ? 0.15 : 0);
+  // a dark colour flaking off grey plaster reads as salmon pink: a peeling wall keeps to the mid tones
+  if (peel && (tone === 'terracotta' || accent)) {
+    const hr = rng(Math.floor(hash(bd.x0, bd.z1, 23) * 1e9) + 5);
+    tone = ['sand', 'ochre', 'straw', 'beige'][Math.floor(hr() * 4)]; accent = null;
+    a = jitter(TONES[tone], hr); cool = COOL.has(tone);
+  }
+  const b = ownB ? deepen(a) : DEEP[deepK];
+  const F = frames === 'white' ? WHITE : frames === 'stone' ? CANTERA : b;
+  st.colors = { a, b, frames, f: F, wood: WOOD[woodK], tone, accent };
   st.wallKey = kind === 'comercial' ? 'w_plaster2' : peel ? 'w_white' : 'w_plaster';
   st.wallTile = st.wallKey === 'w_white' ? 5.2 : st.wallKey === 'w_plaster2' ? 3.2 : 2.9;
   st.tint = wallTint(a, st.wallKey);

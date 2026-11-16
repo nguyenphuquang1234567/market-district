@@ -124,16 +124,18 @@ Key bindings live in the same saved settings object (`binds`, including `frag` a
   Casas; Wikimedia Commons), half of what is wall is below 0.18 HSV saturation and one pixel in twenty above 0.6: the
   walls are natural limewash and plaster colours, and a strong colour is a house here and there, red-orange and ochre
   far more often than blue or pink. So the palette is nine plaster tones, coolest to warmest (limestone, off-white,
-  cream, straw, beige, sand, clay, ochre, weathered terracotta), and three muted accents (a jade turquoise, earthy red,
-  faded green): no blue and no pink walls (even faded, in the sun they read as sea blue and pink). Nothing is picked per house at random: each kind of street has its own mix of tones,
+  cream, straw, beige, sand, clay, ochre, weathered terracotta), and two accents, an earthy red (a fired brick, its hue held
+  toward orange) and a pale sage: no blue, pink or turquoise walls (even faded, in sun or shade they read as sea blue,
+  pink or mint). Nothing is picked per house at random: each kind of street has its own mix of tones,
   accents and how often a house takes one (the plaza civic and light, the main street and the quarter's streets warmer,
   the market street the liveliest, the lanes and alleys pale); along a street the warmth drifts slowly (a smooth noise
   field about 36 m across), so a few houses share a family of tones and the next few move on; each kind of building
   leans its own way within that (casonas to limestone, ochre and terracotta with cantera and only the earthy red as an
   accent, 1950s blocks to the pale tones, barrio houses to the warm ones and more accents); a house is
-  never the same tone as its neighbour, an accent goes only on a small two-storey house, a touch of colour in its row (a
-  whole block of three or four floors in an accent stands out of its street instead of into it), and stands between
-  quiet light-toned neighbours (never next to another accent or a strong earth tone), and no two houses have quite the same
+  never the same tone as its neighbour, value steps along a row stay gentle: the dark colours (terracotta, the earthy red) go only
+  on a small two-storey house with smooth paint, between mid-toned neighbours (a whole block of three or four floors in a
+  dark colour, or a dark colour flaking off grey plaster, stood out of its street instead of into it), and the pale
+  sage only on a small house, never next to another accent, and no two houses have quite the same
   paint (a few percent of lightness and the faintest hue shift). The colour roles follow the heritage rules of
   Zapopan (art. 60 and its *Gama de color* annex) and Zacatlán (its illustrated guide): two matte colours to a facade,
   A on the wall and B on the base band (*guardapolvo*), the frames and what is picked out, B either the wall's own colour
