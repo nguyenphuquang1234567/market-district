@@ -75,8 +75,8 @@ export function dressKit({ B, M, rnd, buildings, anchors, low, rs = null }) {
     }
     g.computeVertexNormals();
     const yaw = rnd() * 6.28, kz = rnd.range(0.7, 1), m = mat4(V(x, -0.03, z), yaw, V(r, h, r * kz)), v = ['rubble_a', 'rubble_b', 'rubble_c'][Math.floor(fhash(x, z, 31) * 3)];
-    // far off, a noise-bent dome and box chunks; near, a modelled heap of broken slab, brick and plaster (tools/blender/props.py)
-    B.swap(v, () => {
+    // a modelled heap of broken slab, brick and plaster (tools/blender/props.py) where the noise-bent dome and box chunks were
+    B.replace(v, () => {
       B.geom('rubble', g, m, { uvScale: r * 0.9, color: [0.62, 0.57, 0.5] });
       // a stepped core for clutter to fetch up against, and the whole skirt kept clear when dressing
       B.detail(x, h * 0.25, z, r * 1.5, h * 0.5, r * kz * 1.5, yaw, 'concrete'); B.detail(x, h * 0.45, z, r * 0.9, h * 0.9, r * kz * 0.9, yaw, 'concrete');
@@ -87,7 +87,7 @@ export function dressKit({ B, M, rnd, buildings, anchors, low, rs = null }) {
           mat4(V(x + Math.cos(a) * d, hh + s * 0.2, z + Math.sin(a) * d), rnd() * 6.28, 1, rnd.range(-0.6, 0.6), rnd.range(-0.6, 0.6)), { uvScale: 0.35, color: [0.9, 0.88, 0.84] });
       }
     }, () => B.kit(v, m, { concrete: 'concrete', brick: 'brick', plaster: 'w_damaged', iron: 'iron', gravel: 'rubble' },
-      { lod: 'near', slot: { concrete: { tile: 1.0, color: [0.9, 0.88, 0.84] }, brick: { tile: 5, color: [0.95, 0.9, 0.86] }, plaster: { tile: 1.0 }, iron: {}, gravel: { tile: 1.6, color: [0.62, 0.57, 0.5] } } }));
+      { lod: null, slot: { concrete: { tile: 1.0, color: [0.9, 0.88, 0.84] }, brick: { tile: 5, color: [0.95, 0.9, 0.86] }, plaster: { tile: 1.0 }, iron: {}, gravel: { tile: 1.6, color: [0.62, 0.57, 0.5] } } }));
     anchors.push({ kind: 'stain', x, z, r: r * 2.2, s: 0.35 });
   }
 

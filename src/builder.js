@@ -55,6 +55,7 @@ export class Builder {
     this.dropped = [];          // loose props that could not be dressed clear of anything solid
     this.mute = false;          // while set, everything is generated as usual (same random draws) but nothing is kept
     this.lodDefault = null;     // the lod of anything drawn without one (see swap())
+    this.muteDraw = false;      // while set, nothing is drawn but solids are still recorded (see replace())
   }
 
   // Merged geometry is split into 24 m cells so the camera frustum and each shadow cascade only draw what they cover.
@@ -75,7 +76,7 @@ export class Builder {
   // Quad a,b,c,d counter-clockwise seen from the front. UVs are projected in world space (o.tile metres per repeat)
   // unless o.uv = [u0,v0,u1,v1] is given. o.color tints, o.colors gives per-corner tints, o.x = extra vec3 attribute.
   quad(key, a, b, c, d, o = {}) {
-    if (this.mute) return;
+    if (this.mute || this.muteDraw) return;
     const k = this._b(key, (a.x + c.x) / 2, (a.z + c.z) / 2, o.far, o.lod), base = k.p.length / 3, tile = o.tile || 2.6;
     e1.subVectors(b, a); e2.subVectors(d, a); nrm.crossVectors(e1, e2).normalize();
     const floor = Math.abs(nrm.y) > 0.7, uo = o.uo || 0, vo = o.vo || 0;
@@ -128,7 +129,7 @@ export class Builder {
 
   // Arbitrary geometry with its own UVs (cylinders, lathes, extrusions…). o.far, o.lod as in quad().
   geom(key, g, m, o = {}) {
-    if (this.mute) return;
+    if (this.mute || this.muteDraw) return;
     tmp.fromBufferAttribute(g.attributes.position, 0).applyMatrix4(m);            // any vertex will do to pick the cell
     const k = this._b(key, tmp.x, tmp.z, o.far, o.lod), base = k.p.length / 3, us = o.uvScale || 1;
     const pos = g.attributes.position, nor = g.attributes.normal, uv = g.attributes.uv;
@@ -154,7 +155,7 @@ export class Builder {
   // bark, paper. A slot's wind: phase fills the wind attribute (wind materials) from the piece's vertex alpha, how freely
   // each vertex moves (times windAmp, default 1).
   kit(name, m, slots, o = {}) {
-    if (this.mute) return;
+    if (this.mute || this.muteDraw) return;
     const piece = assets.kit?.[name]; if (!piece) return;
     const nm = new THREE.Matrix3().getNormalMatrix(m), e = m.elements;
     for (const part of piece) {
@@ -192,15 +193,16 @@ export class Builder {
     return ret;
   }
 
-  // The same for small, numerous things (pebbles, sacks, chiles, piñatas, poles): old() runs only to make its random draws
-  // (what it draws is discarded) and detailed() draws the modelled piece untagged, out to the distance its material is
-  // drawn to anyway; a near/far pair for each would add two meshes, and their draw calls, to every cell they are in. With a
-  // piece missing old() is drawn as before. old() may only draw: a collider or detail it recorded would be lost.
+  // The same without a far version (pebbles, sacks, chiles, piñatas, poles, carts, rubble, the chapel's dome, the kiosk):
+  // old() runs for its random draws and for the solids it records (colliders, detail solids, keep-outs, low drawn boxes)
+  // but draws nothing, and detailed() draws the modelled piece untagged, out to the distance its material is drawn to
+  // anyway. A near/far pair would add two meshes, and their draw calls, to every cell the thing is in. With a piece
+  // missing old() is drawn as before.
   replace(names, old, detailed) {
     if (![].concat(names).every(n => assets.kit?.[n])) return old();
-    const mute = this.mute; this.mute = true;
+    const muteDraw = this.muteDraw; this.muteDraw = true;
     let ret;
-    try { ret = old(); } finally { this.mute = mute; }
+    try { ret = old(); } finally { this.muteDraw = muteDraw; }
     detailed();
     return ret;
   }

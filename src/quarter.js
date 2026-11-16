@@ -243,7 +243,7 @@ export function buildQuarter({ B, M, buildings, anchors, ghosts, gates, architec
     // the dome over the east end: an octagonal drum with windows, glazed tiles, a lantern and a cross
     {
       const cx = 86.2, cz = 20, y0 = H, r = 3.2, PIECES = ['chapel_drum', 'chapel_dome', 'chapel_lantern'];
-      B.swap(PIECES, () => {                                                   // far off, the plain drum, dome and lantern; near, the modelled ones (tools/blender/props.py)
+      B.replace(PIECES, () => {                                                // the modelled drum, dome and lantern (tools/blender/props.py) where the plain ones were
         const drum = new THREE.CylinderGeometry(r + 0.1, r + 0.2, 1.6, 8, 1, true); B.geom('w_plaster', drum, mat4(V(cx, y0 + 0.8, cz), Math.PI / 8), { color: wall.color, uvScale: 1.5, uvScaleY: 0.4 });
         const lid = new THREE.CircleGeometry(r + 0.2, 8); lid.rotateX(-Math.PI / 2); B.geom('concrete', lid, mat4(V(cx, y0 + 0.02, cz), Math.PI / 8));
         for (let k = 0; k < 8; k++) { const a = Math.PI / 8 + k * Math.PI / 4 + Math.PI / 8, p = V(cx + Math.sin(a) * (r + 0.13), y0 + 0.8, cz + Math.cos(a) * (r + 0.13)); B.box('dark', p.x, p.y, p.z, 0.5, 0.9, 0.5, { rot: a }); }
@@ -255,7 +255,7 @@ export function buildQuarter({ B, M, buildings, anchors, ghosts, gates, architec
         B.box('iron', cx, y0 + 1.72 + r * 1.12 + 2.3, cz, 0.06, 1.0, 0.06); B.box('iron', cx, y0 + 1.72 + r * 1.12 + 2.5, cz, 0.06, 0.06, 0.55);
       }, () => {
         const slots = { wall: 'w_plaster', stone: 'cantera', glass: 'glass', iron: 'iron', glaze_y: 'talavera', glaze_b: 'talavera', dark: 'dark' };
-        const o = { lod: 'near', slot: { wall: { ...wall }, stone: { ...stone }, glass: {}, iron: {}, dark: {}, glaze_y: { uv: 'own', tile: 1, color: [1.08, 0.84, 0.34] }, glaze_b: { uv: 'own', tile: 1, color: [0.5, 0.64, 1.05] } } };
+        const o = { lod: null, slot: { wall: { ...wall }, stone: { ...stone }, glass: {}, iron: {}, dark: {}, glaze_y: { uv: 'own', tile: 1, color: [1.08, 0.84, 0.34] }, glaze_b: { uv: 'own', tile: 1, color: [0.5, 0.64, 1.05] } } };
         for (const n of PIECES) B.kit(n, mat4(V(cx, y0, cz)), slots, o);
       });
     }
@@ -290,8 +290,8 @@ export function buildQuarter({ B, M, buildings, anchors, ghosts, gates, architec
     const top = Hp + 0.06, Hc = 3.4;
     for (let k = 0; k < 8; k++) {
       const a = Math.PI / 8 + k * Math.PI / 4, px = cx + Math.cos(a) * (R0 - 0.3), pz = cz + Math.sin(a) * (R0 - 0.3);
-      B.swap('kiosk_column', () => B.geom('metal_green', new THREE.CylinderGeometry(0.07, 0.09, Hc, 10), mat4(V(px, top + Hc / 2, pz)), { color: [0.55, 0.72, 0.6], uvScale: 0.5, uvScaleY: Hc }),
-        () => B.kit('kiosk_column', mat4(V(px, top, pz)), { iron: 'metal_green' }, { lod: 'near', slot: { iron: { color: [0.55, 0.72, 0.6], tile: 1 } } }));   // a cast-iron column near (tools/blender/props.py)
+      B.replace('kiosk_column', () => B.geom('metal_green', new THREE.CylinderGeometry(0.07, 0.09, Hc, 10), mat4(V(px, top + Hc / 2, pz)), { color: [0.55, 0.72, 0.6], uvScale: 0.5, uvScaleY: Hc }),
+        () => B.kit('kiosk_column', mat4(V(px, top, pz)), { iron: 'metal_green' }, { lod: null, slot: { iron: { color: [0.55, 0.72, 0.6], tile: 1 } } }));   // a cast-iron column near (tools/blender/props.py)
       B.rail(px, top + Hc / 2, pz, 0.18, Hc, 0.18, a);                          // (a slim post: no cover either)
       const a2 = a + Math.PI / 4, qx = cx + Math.cos(a2) * (R0 - 0.3), qz = cz + Math.sin(a2) * (R0 - 0.3);
       const stair = Math.abs(Math.cos((a + a2) / 2)) > 0.9;                       // the two sides with steps are left open
@@ -303,15 +303,15 @@ export function buildQuarter({ B, M, buildings, anchors, ghosts, gates, architec
       }
       rod(V(px, top + Hc - 0.35, pz), V(qx, top + Hc - 0.35, qz), 0.03, 'metal_green', [0.55, 0.72, 0.6]);
     }
-    B.swap(['kiosk_roof', 'kiosk_bracket'], () => {                           // far off, a cone and a ball; near, pressed tin, a valance and scrolled brackets (tools/blender/props.py)
+    B.replace(['kiosk_roof', 'kiosk_bracket'], () => {                        // pressed tin, a valance and scrolled brackets (tools/blender/props.py) where the cone and ball were
       const roof = new THREE.ConeGeometry(R0 + 0.6, 1.9, 8, 1, true), under = roof.clone();                  // painted sheet metal, and its underside
       { const ix = under.index.array; for (let i = 0; i < ix.length; i += 3) { const t = ix[i]; ix[i] = ix[i + 2]; ix[i + 2] = t; } const nr = under.attributes.normal; for (let i = 0; i < nr.count; i++) nr.setXYZ(i, -nr.getX(i), -nr.getY(i), -nr.getZ(i)); }
       for (const g of [roof, under]) B.geom('metal_green', g, mat4(V(cx, top + Hc + 0.95, cz), Math.PI / 8), { uvScale: 8, uvScaleY: 1.6, color: [0.8, 0.95, 0.82] });
       B.geom('metal_green', new THREE.SphereGeometry(0.22, 10, 8), mat4(V(cx, top + Hc + 2.0, cz)), { color: [0.75, 0.62, 0.3] });
     }, () => {
       const tin = [0.8, 0.95, 0.82];
-      B.kit('kiosk_roof', mat4(V(cx, top, cz)), { tin: 'metal_green', trim: 'metal_green', finial: 'metal_green' }, { lod: 'near', slot: { tin: { color: tin, tile: 2 }, trim: { color: tin, tile: 1.5 }, finial: { color: [0.75, 0.62, 0.3], tile: 0.5 } } });
-      for (let k = 0; k < 8; k++) B.kit('kiosk_bracket', mat4(V(cx, top, cz), -(Math.PI / 8 + k * Math.PI / 4)), { iron: 'metal_green' }, { lod: 'near', slot: { iron: { color: [0.55, 0.72, 0.6], tile: 1 } } });
+      B.kit('kiosk_roof', mat4(V(cx, top, cz)), { tin: 'metal_green', trim: 'metal_green', finial: 'metal_green' }, { lod: null, slot: { tin: { color: tin, tile: 2 }, trim: { color: tin, tile: 1.5 }, finial: { color: [0.75, 0.62, 0.3], tile: 0.5 } } });
+      for (let k = 0; k < 8; k++) B.kit('kiosk_bracket', mat4(V(cx, top, cz), -(Math.PI / 8 + k * Math.PI / 4)), { iron: 'metal_green' }, { lod: null, slot: { iron: { color: [0.55, 0.72, 0.6], tile: 1 } } });
     });
     // laurels at the corners, benches round the edge, a fountain basin-cum-planter and food under umbrellas
     for (const [x, z] of [[x0 + 3, z0 + 3], [x1 - 3, z0 + 3], [x0 + 3, z1 - 3], [x1 - 3, z1 - 3]]) { laurel(x, z, rnd.range(0.9, 1.15)); B.box('cantera', x, 0.22, z, 1.7, 0.44, 1.7, stone); B.collide(x, 0.22, z, 1.7, 0.44, 1.7, 0, 'concrete'); }
@@ -377,14 +377,14 @@ export function buildQuarter({ B, M, buildings, anchors, ghosts, gates, architec
   // A street vendor's cart: a painted box on bicycle wheels with a little tin roof (corn, fruit cups, ice).
   function cart(x, z, rot) {
     const c = Math.cos(rot), s = Math.sin(rot), L = (lx, ly, lz) => V(x + lx * c + lz * s, ly, z - lx * s + lz * c), col = rnd.pick([[0.95, 0.75, 0.2], [0.2, 0.55, 0.85], [0.9, 0.3, 0.25], [0.3, 0.7, 0.4]]);
-    B.swap('cart', () => {                                                       // far off, a painted box on rings; near, the modelled cart (tools/blender/props.py)
+    B.replace('cart', () => {                                                    // the modelled cart (tools/blender/props.py) where the painted box on rings was
       const bx = L(0, 0.75, 0); B.box('metal_white', bx.x, bx.y, bx.z, 1.5, 0.7, 0.8, { rot, color: col, tile: 1 });
       const tp = L(0, 1.12, 0); B.box('metal_plate', tp.x, tp.y, tp.z, 1.56, 0.04, 0.86, { rot, tile: 1 });
       for (const [lx, lz] of [[-0.55, -0.42], [-0.55, 0.42], [0.6, 0]]) { const w = new THREE.TorusGeometry(0.28, 0.025, 6, 18); const m = mat4(L(lx, 0.3, lz), rot); B.geom('cable', w, m); }
       for (const [lx, lz] of [[-0.7, -0.38], [0.7, -0.38], [-0.7, 0.38], [0.7, 0.38]]) rod(L(lx, 1.12, lz), L(lx, 2.0, lz), 0.015, 'iron');
       const rf = L(0, 2.05, 0); B.box('corrugated', rf.x, rf.y, rf.z, 1.8, 0.03, 1.05, { rot, tile: 1.2, color: [0.9, 0.9, 0.9] });
     }, () => B.kit('cart', mat4(V(x, 0, z), rot), { body: 'metal_white', steel: 'metal_plate', tin: 'roof_tin', iron: 'iron', rubber: 'cable', bottle: 'metal_white', plastic: 'plastic', pot: 'glossy' },
-      { lod: 'near', slot: { body: { color: col, tile: 1 }, steel: { tile: 1 }, tin: { tile: 1.2, color: [0.9, 0.9, 0.9] }, iron: {}, rubber: {}, bottle: { color: [0.72, 0.74, 0.72], tile: 0.6 }, plastic: { color: [0.92, 0.94, 0.96] }, pot: { color: [0.78, 0.8, 0.82] } } }));
+      { lod: null, slot: { body: { color: col, tile: 1 }, steel: { tile: 1 }, tin: { tile: 1.2, color: [0.9, 0.9, 0.9] }, iron: {}, rubber: {}, bottle: { color: [0.72, 0.74, 0.72], tile: 0.6 }, plastic: { color: [0.92, 0.94, 0.96] }, pot: { color: [0.78, 0.8, 0.82] } } }));
     B.collide(x, 0.6, z, 1.5, 1.2, 0.8, rot, 'metal');
     const si = rnd.pick([11, 12, 28, 25]), q = (u, v) => L(u, 0.48 + v, 0.405 + 0.012);
     B.quad('sign', q(-0.6, 0), q(0.6, 0), q(0.6, 0.6), q(-0.6, 0.6), { uv: signUV(si) });

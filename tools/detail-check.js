@@ -131,6 +131,11 @@ export function builder() {
         if (B.mute !== false) fail('replace: mute not restored');
         const C = new Builder(); C.replace('__missing__', () => quad(C), () => fail('replace(missing): detailed() called'));
         if (![...C.buckets.keys()].some(i => /^concrete\|\d+$/.test(i))) fail('replace(missing): the old version is not drawn');
+        // what the old version records besides drawing is kept: colliders, details, keep-outs and low drawn boxes
+        const D = new Builder();
+        D.replace('__t', () => { D.box('planks', 0, 0.5, 0, 1, 1, 1); D.collide(0, 0.5, 0, 1, 1, 1); D.detail(2, 0.5, 0, 1, 1, 1); D.keepOut(4, 0.5, 0, 1, 1, 1); }, () => {});
+        if (D.colliders.length !== 1 || D.details.length !== 1 || (D.keepOuts || []).length !== 1 || D.drawnBoxes.length !== 1) fail(`replace: old version's solids lost (colliders ${D.colliders.length}, details ${D.details.length}, keep-outs ${(D.keepOuts || []).length}, drawn boxes ${D.drawnBoxes.length})`);
+        if ([...D.buckets.keys()].length) fail('replace: the old box was drawn: ' + [...D.buckets.keys()]);
       }
     } finally { assets.kit = keep; }
   }

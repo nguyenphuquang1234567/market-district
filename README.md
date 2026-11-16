@@ -119,6 +119,27 @@ Key bindings live in the same saved settings object (`binds`, including `frag` a
   grazing angles. Rain stains run down from the sills. The street floor's openings, the shops, the street props, the
   collision and the soldiers' routes are the district's own and stayed exactly where they were: the old floors above
   the shops are still generated for their random draws and thrown away, and the new ones draw from the building's stream.
+- **Detail pass** — what was still coarse, modelled in Blender from a second script (`tools/blender/props.py`,
+  `assets/kit/props.glb`): rubble heaps of broken slab with bent rebar, whole and half bricks, mortared brick, painted
+  plaster flakes and grit; vendors' carts (a riveted sheet-metal body under the painted sign, a stainless counter and
+  rail with a pot and tubs, a corrugated roof on posts, spoked bicycle wheels, a caster, a push bar, a gas bottle);
+  utility poles (a weathered pole, a braced crossarm with pin insulators, a finned transformer on straps with porcelain
+  bushings and leads); piñatas wrapped in rows of fringed tissue with crêpe streamers, and ristras of wrinkled chiles;
+  the chapel's drum (arched windows in cantera surrounds with glass and grilles, pilasters, a cornice), ribbed talavera
+  dome and arcaded lantern; the kiosk's pressed-tin roof with a scalloped valance, cast-iron columns and scrolled
+  brackets; Canary date palms (trunks of leaf-scar segments along the old curve, a crown of cut leaf bases, fronds of
+  folded leaflets laid one for one on the old fronds, dates); Indian laurels (a buttressed trunk, branching limbs and a
+  clipped dome of single leaves); spice sacks with their mouths rolled down; pebbles. The pieces carry texture
+  coordinates and vertex colours (a shade, and how freely each vertex moves in the wind), with three new canvas-drawn
+  textures (laurel leaves, palm leaflets, tissue paper). The old code still runs for every piece, with all its random
+  draws, colliders and detail solids, so the layout, cover, dressing and routes are unchanged (`tools/layout-fingerprint.js`
+  checks it). The large pieces (rubble, carts, the dome, the kiosk, palms, laurels) are drawn near the camera, as the kit
+  is, and the old geometry beyond (`Builder.swap`); the small, numerous ones (pebbles, sacks, ristras, piñatas, poles)
+  are drawn detailed out to their material's own cull distance, the old geometry only generated for its random draws
+  (`Builder.replace`), because a near/far pair of each would add two meshes, and their draw calls, to every cell. Rods
+  are 10-sided and cables 6-sided now, and seven scanned props are drawn from a finer cut (their hull and physics from
+  the old one). Rounds, HUD markers and thrown things meet the version of a piece that is on screen (`R.kitShown`).
+  `?detail=0` draws the map exactly as before the pass, for A/B timings.
 - **Facade colour** — painted the way Mexican market streets actually are (`src/facades.js`). In 59 photographs of
   streets in seven towns (Guanajuato, Dolores Hidalgo, Puebla, Mexico City, Oaxaca, Querétaro, San Cristóbal de las
   Casas; Wikimedia Commons), half of what is wall is below 0.18 HSV saturation and one pixel in twenty above 0.6: the
@@ -446,6 +467,12 @@ In the browser console, with the dev server running:
   downloaded one is empty (done for `cobblestone_floor_13`, whose shaded cobbles had come out nearly black).
 - `Blender --background --factory-startup --python tools/blender/kit.py -- assets/kit/kit.glb [--preview file.png]` —
   rebuilds the architectural kit (and a contact sheet of its pieces).
+- `Blender --background --factory-startup --python tools/blender/props.py -- assets/kit/props.glb [--preview dir] [--only a,b]` —
+  rebuilds the detail pass's pieces (and a render of each into `dir`; `--only` renders those pieces and exports nothing).
+  In the page, `(await import('/tools/detail-check.js')).report()` checks every piece against its triangle cap and the
+  space the old geometry took, and the Builder's near/far plumbing; `impacts(G, eye, at)` fires rounds at a spot and
+  counts impacts that land off what is drawn. `(await import('/tools/layout-fingerprint.js')).fingerprint(G, tag)` saves
+  hashes of everything that decides how the map plays; `node tools/compare-fingerprints.mjs A.json B.json` compares two.
 - `tools/locomotion-probe.js` — measures how the soldiers move over minutes of play (see the top of the file):
   `probe.patrol(G, 150)` reports acceleration, turn rates, sole drift, wall clearance, stops and wall contacts;
   `probe.posture(G)` how far pelvis, shoulders, head and rifle swing over a stride; `probe.steps(G)` how hard the legs
@@ -528,8 +555,10 @@ src/hud.js            HUD and menus
 src/selftest.js       scripted checks and capture set
 tools/                asset downloader, static server, native window (tools/shell), audio-report.mjs, death-probe.js, build-voices.py,
                       locomotion-probe.js, perf-probe.js, clip-probe.js, compare-shots.js, compare-montage.py, encode-ktx2.mjs,
-                      blender/kit.py (the architectural kit)
+                      blender/kit.py (the architectural kit), blender/props.py (the detail pass), detail-check.js,
+                      layout-fingerprint.js, compare-fingerprints.mjs
 assets/kit/kit.glb    the architectural kit, modelled by tools/blender/kit.py
+assets/kit/props.glb  the detail pass's pieces, modelled by tools/blender/props.py
 assets/audio/         recorded voices of dying soldiers and body thuds, built by tools/build-voices.py
 ```
 
