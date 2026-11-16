@@ -27,7 +27,7 @@ scene = bpy.context.scene
 SHOW = {'stone': (0.62, 0.6, 0.56), 'burlap': (0.62, 0.5, 0.34), 'spice': (0.8, 0.45, 0.15), 'concrete': (0.66, 0.65, 0.62),
         'brick': (0.62, 0.3, 0.2), 'plaster': (0.86, 0.82, 0.72), 'iron': (0.3, 0.16, 0.1), 'gravel': (0.55, 0.52, 0.47),
         'body': (0.9, 0.7, 0.2), 'steel': (0.75, 0.76, 0.78), 'tin': (0.6, 0.62, 0.6), 'rubber': (0.08, 0.08, 0.08), 'bottle': (0.7, 0.72, 0.7),
-        'glass': (0.55, 0.7, 0.75), 'plastic': (0.9, 0.9, 0.88), 'pot': (0.78, 0.8, 0.82), 'wood': (0.45, 0.4, 0.35), 'tank': (0.62, 0.64, 0.62), 'porcelain': (0.92, 0.93, 0.95), 'chile': (0.6, 0.06, 0.04), 'stem': (0.42, 0.4, 0.2)}
+        'glass': (0.55, 0.7, 0.75), 'plastic': (0.9, 0.9, 0.88), 'pot': (0.78, 0.8, 0.82), 'wood': (0.45, 0.4, 0.35), 'tank': (0.62, 0.64, 0.62), 'porcelain': (0.92, 0.93, 0.95), 'chile': (0.6, 0.06, 0.04), 'stem': (0.42, 0.4, 0.2), 'wall': (0.95, 0.72, 0.4), 'glaze_y': (0.95, 0.75, 0.3), 'glaze_b': (0.3, 0.42, 0.85), 'dark': (0.03, 0.03, 0.03)}
 MATS = {}
 def mat(name):
     if name not in MATS:
@@ -43,8 +43,8 @@ def only(ob):
 
 class Piece:
     """A mesh under construction. Every face carries a material slot, texture coordinates and an RGBA colour per corner."""
-    def __init__(self, name):
-        self.name, self.bm, self.slots = name, bmesh.new(), []
+    def __init__(self, name, recalc=True):
+        self.name, self.bm, self.slots, self.recalc = name, bmesh.new(), [], recalc
         self.uv = self.bm.loops.layers.uv.new('UVMap')
         self.col = self.bm.loops.layers.float_color.new('Col')
 
@@ -63,6 +63,13 @@ class Piece:
             l[self.col] = tuple(c) if len(c) == 4 else (*c, 1.0)
         return f
 
+    def face_toward(self, verts, slot, toward, uvs=None, cols=None):
+        """A face wound so that its normal points along `toward` (for open surfaces, where recalculating cannot know)."""
+        n = (verts[1].co - verts[0].co).cross(verts[2].co - verts[0].co)
+        if n.dot(toward) < 0:
+            verts = verts[::-1]; uvs = uvs[::-1] if uvs else uvs; cols = cols[::-1] if isinstance(cols, list) else cols
+        return self.face(verts, slot, uvs, cols)
+
     def merge(self, bm, slot, col=None, uv=None, matrix=None):
         """Copy a finished bmesh in, placed by matrix. col: one rgba for all, or col(co, normal) -> rgba asked per corner;
         uv(co, normal) -> (u, v); both see the bmesh's own frame (before the matrix)."""
@@ -77,7 +84,7 @@ class Piece:
 
     def build(self, smooth=40):
         me = bpy.data.meshes.new(self.name)
-        bmesh.ops.recalc_face_normals(self.bm, faces=self.bm.faces[:])
+        if self.recalc: bmesh.ops.recalc_face_normals(self.bm, faces=self.bm.faces[:])
         self.bm.to_mesh(me); self.bm.free()
         for s in self.slots: me.materials.append(mat(s))
         me.color_attributes.active_color = me.color_attributes['Col']
@@ -509,6 +516,134 @@ def ristra_seg(name):
     return P.build(smooth=60)
 
 ristra_seg('ristra_seg')
+
+# ---------------------------------------------------------------------------------------------------- the chapel's dome -
+# The dome over the chapel's east end (quarter.js chapel()), three pieces with one origin: the drum's base centre, on the
+# nave's roof. The old drum's octagon (flats facing the axes and diagonals; radius to the corners 3.4 at the foot, 3.3 at
+# the top, 1.6 tall), the dome (radius 3.2 from 1.72 up, raised 1.12) and the lantern stack (5.25 ... 8.1) are kept.
+CH_R0, CH_R1, CH_H = 3.4, 3.3, 1.6
+def ch_R(z): return CH_R0 + (CH_R1 - CH_R0) * min(1.0, max(0.0, z / CH_H))      # radius to the corners at height z (the drum is battered)
+
+@piece
+def chapel_drum(name):
+    """The drum: plastered, battered, a moulded base and cornice; in each face an arched window in a cantera surround, set
+    back in its reveal with glass and a grille, a sill under it; pilasters at the angles. Slots: wall, stone, glass, iron."""
+    P = Piece(name, recalc=False); W = (1.0, 1.0, 1.0, 1.0); cos8 = math.cos(math.pi / 8)
+    def pt(k, t, z, d=0.0):                                  # on face k: t along it, z up, d out of it
+        th = k * math.pi / 4; n = Vector((math.cos(th), math.sin(th), 0)); tt = Vector((-math.sin(th), math.cos(th), 0))
+        return n * (ch_R(z) * cos8 + d) + tt * t + Vector((0, 0, z))
+    hw = lambda z: ch_R(z) * math.sin(math.pi / 8)
+    def quad(k, corners, slot, d=0.0, col=W):               # a quad on face k from (t, z) corners, facing out
+        th = k * math.pi / 4
+        P.face_toward([P.vert(pt(k, t, z, d)) for t, z in corners], slot, Vector((math.cos(th), math.sin(th), 0)), cols=col)
+    zs, zt = 0.15, 1.5                                       # the wall runs from the base moulding to the cornice
+    s0, sp, rr, hwin = 0.32, 1.0, 0.3, 0.3                   # the window: sill, springing, arch radius, half width
+    arch = [(rr * math.cos(math.pi * i / 10), sp + rr * math.sin(math.pi * i / 10)) for i in range(11)]
+    outline = [(-hwin, s0), (hwin, s0)] + arch + [(-hwin, s0)]      # the opening, anticlockwise seen from outside
+    shade = lambda z: (*(0.82 + 0.18 * min(1.0, (z - zs) / 0.5),) * 3, 1.0)
+    for k in range(8):
+        th = k * math.pi / 4; n = Vector((math.cos(th), math.sin(th), 0))
+        quad(k, [(-hw(zs), zs), (hw(zs), zs), (hw(s0), s0), (-hw(s0), s0)], 'wall', col=shade(zs))          # the wall round the opening
+        quad(k, [(-hw(s0), s0), (-hwin, s0), (-hwin, sp), (-hw(sp), sp)], 'wall')
+        quad(k, [(hwin, s0), (hw(s0), s0), (hw(sp), sp), (hwin, sp)], 'wall')
+        for i in range(10):
+            (t0, z0), (t1, z1) = arch[i + 1], arch[i]
+            quad(k, [(t0, z0), (t1, z1), (t1, zt), (t0, zt)], 'wall')
+        quad(k, [(-hw(sp), sp), (-hwin, sp), (-hwin, zt), (-hw(zt), zt)], 'wall')
+        quad(k, [(hwin, sp), (hw(sp), sp), (hw(zt), zt), (hwin, zt)], 'wall')
+        depth = 0.2
+        for (t0, z0), (t1, z1) in zip(outline, outline[1:]):                                 # the reveal, facing into the opening
+            mid = Vector(((t0 + t1) / 2, (z0 + z1) / 2)); inward = -n                      # (oriented below by the opening's centre)
+            vs = [P.vert(pt(k, t0, z0)), P.vert(pt(k, t1, z1)), P.vert(pt(k, t1, z1, -depth)), P.vert(pt(k, t0, z0, -depth))]
+            c = pt(k, 0, sp - 0.1, -depth / 2); P.face_toward(vs, 'wall', c - (vs[0].co + vs[1].co) / 2, cols=(0.85, 0.85, 0.85, 1.0))
+        P.face_toward([P.vert(pt(k, t, z, -depth + 0.02)) for t, z in outline[:-1]], 'glass', n)                    # the glass
+        for t in (-0.1, 0.1): tube(P, [pt(k, t, s0, -0.08), pt(k, t, sp + rr * math.sqrt(1 - (t / rr) ** 2), -0.08)], 0.011, 4, 'iron', W)   # the grille
+        tube(P, [pt(k, -hwin, 0.72, -0.08), pt(k, hwin, 0.72, -0.08)], 0.011, 4, 'iron', W)
+        inner = [(-hwin, s0)] + [(-hwin, sp)] + arch[::-1][1:] + [(hwin, s0)]                # the surround: up one jamb, over, down the other
+        outer = [(-hwin - 0.1, s0 - 0.02)] + [(-hwin - 0.1, sp)] + [((rr + 0.1) * math.cos(math.pi * (10 - i) / 10), sp + (rr + 0.1) * math.sin(math.pi * (10 - i) / 10)) for i in range(1, 11)] + [(hwin + 0.1, s0 - 0.02)]
+        for (a0, a1), (b0, b1) in zip(zip(inner, inner[1:]), zip(outer, outer[1:])):
+            P.face_toward([P.vert(pt(k, *a0, 0.045)), P.vert(pt(k, *a1, 0.045)), P.vert(pt(k, *b1, 0.045)), P.vert(pt(k, *b0, 0.045))], 'stone', n)
+            P.face_toward([P.vert(pt(k, *b0, 0.0)), P.vert(pt(k, *b1, 0.0)), P.vert(pt(k, *b1, 0.045)), P.vert(pt(k, *b0, 0.045))], 'stone',
+                          pt(k, *b0, 0) - pt(k, 0, sp, 0))
+            P.face_toward([P.vert(pt(k, *a0, 0.0)), P.vert(pt(k, *a1, 0.0)), P.vert(pt(k, *a1, 0.045)), P.vert(pt(k, *a0, 0.045))], 'stone',
+                          pt(k, 0, sp, 0) - pt(k, *a0, 0))
+        kz = sp + rr + 0.1                                                                   # keystone
+        bm = cube((-0.06, -0.02, kz - 0.14), (0.06, 0.07, kz + 0.04)); P.merge(bm, 'stone', col=W, matrix=Matrix.Translation(pt(k, 0, 0, 0) * 0 + n * ch_R(kz) * cos8) @ Matrix.Rotation(th - math.pi / 2, 4, 'Z')); bm.free()
+        bm = cube((-hwin - 0.14, -0.0, s0 - 0.07), (hwin + 0.14, 0.09, s0 - 0.01)); P.merge(bm, 'stone', col=W, matrix=Matrix.Translation(n * ch_R(s0) * cos8) @ Matrix.Rotation(th - math.pi / 2, 4, 'Z')); bm.free()   # sill
+    for k in range(8):                                                                   # pilasters at the angles, battered with the drum
+        ph = math.pi / 8 + k * math.pi / 4; rad = Vector((math.cos(ph), math.sin(ph), 0)); tg = Vector((-math.sin(ph), math.cos(ph), 0))
+        corner = lambda z, a, b: rad * (ch_R(z) - 0.05 + a) + tg * b + Vector((0, 0, z))
+        ring = [(0.0, -0.17), (0.07, -0.17), (0.07, 0.17), (0.0, 0.17)]
+        lo = [P.vert(corner(zs, a, b)) for a, b in ring]; hi = [P.vert(corner(zt, a, b)) for a, b in ring]
+        for i in range(3):
+            j = i + 1; mid = (lo[i].co + lo[j].co) / 2 - rad * (ch_R(zs) - 0.3)
+            P.face_toward([lo[i], lo[j], hi[j], hi[i]], 'stone', mid - Vector((0, 0, mid.z)), cols=W)
+    for prof, slot in (([(0.0, 0.0), (0.08, 0.0), (0.08, 0.06), (0.05, 0.09), (0.05, 0.12), (0.0, zs)], 'stone'),          # the base moulding
+                       ([(0.0, zt), (0.04, zt), (0.04, 1.53), (0.1, 1.56), (0.18, 1.6), (0.27, 1.64), (0.35, 1.68), (0.35, 1.74), (-0.6, 1.74)], 'stone')):   # the cornice
+        rings = []
+        for off, z in prof:
+            R = ch_R(min(z, CH_H)) + off / cos8
+            rings.append([P.vert((R * math.cos(math.pi / 8 + k * math.pi / 4), R * math.sin(math.pi / 8 + k * math.pi / 4), z)) for k in range(8)])
+        for i in range(len(rings) - 1):
+            for k in range(8):
+                a, b, c, d = rings[i][k], rings[i][(k + 1) % 8], rings[i + 1][(k + 1) % 8], rings[i + 1][k]
+                mid = (a.co + b.co + c.co + d.co) / 4; up = rings[i + 1][0].co.z - rings[i][0].co.z
+                out = Vector((mid.x, mid.y, 0)).normalized()
+                toward = out if abs(prof[i + 1][0] - prof[i][0]) < 1e-6 else (Vector((0, 0, -1)) if prof[i + 1][0] > prof[i][0] else Vector((0, 0, 1)))
+                if up > 1e-6 and abs(prof[i + 1][0] - prof[i][0]) > 1e-6: toward = (out * up + Vector((0, 0, prof[i][0] - prof[i + 1][0]))).normalized()
+                P.face_toward([a, b, c, d], slot, toward, cols=W)
+    return P.build(smooth=30)
+
+DOME_BANDS = [(0, 6, 'glaze_y'), (6, 12, 'glaze_b'), (12, 33, 'glaze_y'), (33, 39, 'glaze_b'), (39, 60, 'glaze_y'), (60, 66, 'glaze_b'),
+              (66, 87, 'glaze_y'), (87, 90, 'glaze_b')]                                      # degrees from the crown down: the old cobalt rows
+@piece
+def chapel_dome(name):
+    """The dome: talavera glaze in its old yellow with the old cobalt bands (u 24 tiles round, v 8 up, as before), eight
+    cantera ribs over it from the drum to the lantern. Slots: glaze_y, glaze_b, stone."""
+    P = Piece(name, recalc=False); W = (1.0, 1.0, 1.0, 1.0); segs = 64
+    pos = lambda a, th, off=0.0: Vector(((3.2 + off) * math.sin(math.radians(th)) * math.cos(a), (3.2 + off) * math.sin(math.radians(th)) * math.sin(a), 1.72 + (3.2 + off) * 1.12 * math.cos(math.radians(th))))
+    rows = []
+    for t0, t1, slot in DOME_BANDS:
+        n = max(1, round((t1 - t0) / 3))
+        rows += [(t0 + (t1 - t0) * i / n, t0 + (t1 - t0) * (i + 1) / n, slot) for i in range(n)]
+    for t0, t1, slot in rows:
+        for j in range(segs):
+            a0, a1 = 2 * math.pi * j / segs, 2 * math.pi * (j + 1) / segs
+            vs = [P.vert(pos(a0, t1)), P.vert(pos(a1, t1)), P.vert(pos(a1, t0)), P.vert(pos(a0, t0))]
+            uv = lambda a, th: (24 * a / (2 * math.pi), 8 * (90 - th) / 90)
+            P.face_toward(vs, slot, (vs[0].co + vs[2].co) / 2 - Vector((0, 0, 1.72)), uvs=[uv(a0, t1), uv(a1, t1), uv(a1, t0), uv(a0, t0)], cols=W)
+    for k in range(8):                                                                   # ribs, from the drum to the lantern
+        a = math.pi / 8 + k * math.pi / 4; tg = Vector((-math.sin(a), math.cos(a), 0))
+        line = [8 + 82 * i / 24 for i in range(25)]
+        prof = [(-0.08, -0.01), (-0.08, 0.06), (0.08, 0.06), (0.08, -0.01)]
+        rings = [[P.vert(pos(a, th, off) + tg * w) for w, off in prof] for th in line]
+        for i in range(24):
+            for q in range(3):
+                vs = [rings[i][q], rings[i][q + 1], rings[i + 1][q + 1], rings[i + 1][q]]
+                c = (vs[0].co + vs[2].co) / 2; toward = (c - Vector((0, 0, 1.72))).normalized() if q == 1 else tg * (-1 if q == 0 else 1)
+                P.face_toward(vs, 'stone', toward, cols=(0.95, 0.95, 0.95, 1.0))
+    return P.build(smooth=50)
+
+@piece
+def chapel_lantern(name):
+    """The lantern on the crown: a moulded plinth, an open arcade of eight colonnettes round its dark inside, an
+    entablature, a tiled onion cupola, a ball and an iron cross. Slots: stone, glaze_y, iron, dark."""
+    P = Piece(name); W = (1.0, 1.0, 1.0, 1.0)
+    revolve(P, [(0.0, 5.15), (0.66, 5.15), (0.66, 5.3), (0.6, 5.34), (0.6, 5.42), (0.0, 5.42)], 8, 'stone', matrix=Matrix.Rotation(math.pi / 8, 4, 'Z'))
+    revolve(P, [(0.0, 5.42), (0.44, 5.42), (0.44, 6.18), (0.0, 6.18)], 8, 'dark', matrix=Matrix.Rotation(math.pi / 8, 4, 'Z'))
+    for k in range(8):
+        a = k * math.pi / 4; c = Vector((0.53 * math.cos(a), 0.53 * math.sin(a), 0))
+        revolve(P, [(0.0, 5.42), (0.07, 5.42), (0.07, 5.47), (0.045, 5.5), (0.04, 6.08), (0.06, 6.12), (0.07, 6.18), (0.0, 6.18)], 10, 'stone', matrix=Matrix.Translation(c))
+    revolve(P, [(0.0, 6.18), (0.6, 6.18), (0.62, 6.24), (0.66, 6.3), (0.66, 6.36), (0.0, 6.36)], 8, 'stone', matrix=Matrix.Rotation(math.pi / 8, 4, 'Z'))
+    revolve(P, [(0.0, 6.36), (0.56, 6.36), (0.57, 6.46), (0.52, 6.62), (0.4, 6.8), (0.24, 6.95), (0.1, 7.05), (0.05, 7.08), (0.0, 7.1)], 24, 'glaze_y',
+            uv=lambda a, i, co: (6 * a / (2 * math.pi), (co.z - 6.36) * 3))
+    revolve(P, [(0.0, 7.08), (0.05, 7.1), (0.07, 7.16), (0.05, 7.22), (0.0, 7.24)], 12, 'stone')
+    P.merge(cube((-0.03, -0.03, 7.22), (0.03, 0.03, 8.1)), 'iron', col=W)
+    P.merge(cube((-0.03, -0.275, 7.77), (0.03, 0.275, 7.83)), 'iron', col=W)
+    return P.build(smooth=40)
+
+for n in ('chapel_drum', 'chapel_dome', 'chapel_lantern'): globals()[n](n)
+PREVIEW_FOCUS['chapel_lantern'] = ((-0.8, -0.8, 5.0), (0.8, 0.8, 8.2))
 
 class HeightField:
     """The heap's top surface on a grid, raised as each piece settles, so pieces rest on the mound and on each other."""

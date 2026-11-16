@@ -241,16 +241,22 @@ export function buildQuarter({ B, M, buildings, anchors, ghosts, gates, architec
     }
     // the dome over the east end: an octagonal drum with windows, glazed tiles, a lantern and a cross
     {
-      const cx = 86.2, cz = 20, y0 = H, r = 3.2;
-      const drum = new THREE.CylinderGeometry(r + 0.1, r + 0.2, 1.6, 8, 1, true); B.geom('w_plaster', drum, mat4(V(cx, y0 + 0.8, cz), Math.PI / 8), { color: wall.color, uvScale: 1.5, uvScaleY: 0.4 });
-      const lid = new THREE.CircleGeometry(r + 0.2, 8); lid.rotateX(-Math.PI / 2); B.geom('concrete', lid, mat4(V(cx, y0 + 0.02, cz), Math.PI / 8));
-      for (let k = 0; k < 8; k++) { const a = Math.PI / 8 + k * Math.PI / 4 + Math.PI / 8, p = V(cx + Math.sin(a) * (r + 0.13), y0 + 0.8, cz + Math.cos(a) * (r + 0.13)); B.box('dark', p.x, p.y, p.z, 0.5, 0.9, 0.5, { rot: a }); }
-      B.geom('cantera', new THREE.CylinderGeometry(r + 0.45, r + 0.45, 0.16, 8), mat4(V(cx, y0 + 1.66, cz), Math.PI / 8), { color: stone.color, uvScale: 2 });
-      const dome = new THREE.SphereGeometry(r, 24, 10, 0, Math.PI * 2, 0, Math.PI / 2);
-      B.geom('talavera', dome, mat4(V(cx, y0 + 1.72, cz), 0, V(1, 1.12, 1)), { uvScale: 24, uvScaleY: 8, cf: i => (Math.floor(i / 25) % 3 === 1 ? [0.5, 0.64, 1.05] : [1.08, 0.84, 0.34]) });     // yellow glaze with a band of cobalt (rows of 25 vertices)
-      B.geom('w_plaster', new THREE.CylinderGeometry(0.5, 0.55, 1.1, 8), mat4(V(cx, y0 + 1.72 + r * 1.12 + 0.5, cz)), { color: wall.color, uvScale: 1 });
-      B.geom('talavera', new THREE.ConeGeometry(0.62, 0.8, 8), mat4(V(cx, y0 + 1.72 + r * 1.12 + 1.45, cz)), { uvScale: 1.5 });
-      B.box('iron', cx, y0 + 1.72 + r * 1.12 + 2.3, cz, 0.06, 1.0, 0.06); B.box('iron', cx, y0 + 1.72 + r * 1.12 + 2.5, cz, 0.06, 0.06, 0.55);
+      const cx = 86.2, cz = 20, y0 = H, r = 3.2, PIECES = ['chapel_drum', 'chapel_dome', 'chapel_lantern'];
+      B.swap(PIECES, () => {                                                   // far off, the plain drum, dome and lantern; near, the modelled ones (tools/blender/props.py)
+        const drum = new THREE.CylinderGeometry(r + 0.1, r + 0.2, 1.6, 8, 1, true); B.geom('w_plaster', drum, mat4(V(cx, y0 + 0.8, cz), Math.PI / 8), { color: wall.color, uvScale: 1.5, uvScaleY: 0.4 });
+        const lid = new THREE.CircleGeometry(r + 0.2, 8); lid.rotateX(-Math.PI / 2); B.geom('concrete', lid, mat4(V(cx, y0 + 0.02, cz), Math.PI / 8));
+        for (let k = 0; k < 8; k++) { const a = Math.PI / 8 + k * Math.PI / 4 + Math.PI / 8, p = V(cx + Math.sin(a) * (r + 0.13), y0 + 0.8, cz + Math.cos(a) * (r + 0.13)); B.box('dark', p.x, p.y, p.z, 0.5, 0.9, 0.5, { rot: a }); }
+        B.geom('cantera', new THREE.CylinderGeometry(r + 0.45, r + 0.45, 0.16, 8), mat4(V(cx, y0 + 1.66, cz), Math.PI / 8), { color: stone.color, uvScale: 2 });
+        const dome = new THREE.SphereGeometry(r, 24, 10, 0, Math.PI * 2, 0, Math.PI / 2);
+        B.geom('talavera', dome, mat4(V(cx, y0 + 1.72, cz), 0, V(1, 1.12, 1)), { uvScale: 24, uvScaleY: 8, cf: i => (Math.floor(i / 25) % 3 === 1 ? [0.5, 0.64, 1.05] : [1.08, 0.84, 0.34]) });     // yellow glaze with a band of cobalt (rows of 25 vertices)
+        B.geom('w_plaster', new THREE.CylinderGeometry(0.5, 0.55, 1.1, 8), mat4(V(cx, y0 + 1.72 + r * 1.12 + 0.5, cz)), { color: wall.color, uvScale: 1 });
+        B.geom('talavera', new THREE.ConeGeometry(0.62, 0.8, 8), mat4(V(cx, y0 + 1.72 + r * 1.12 + 1.45, cz)), { uvScale: 1.5 });
+        B.box('iron', cx, y0 + 1.72 + r * 1.12 + 2.3, cz, 0.06, 1.0, 0.06); B.box('iron', cx, y0 + 1.72 + r * 1.12 + 2.5, cz, 0.06, 0.06, 0.55);
+      }, () => {
+        const slots = { wall: 'w_plaster', stone: 'cantera', glass: 'glass', iron: 'iron', glaze_y: 'talavera', glaze_b: 'talavera', dark: 'dark' };
+        const o = { lod: 'near', slot: { wall: { ...wall }, stone: { ...stone }, glass: {}, iron: {}, dark: {}, glaze_y: { uv: 'own', tile: 1, color: [1.08, 0.84, 0.34] }, glaze_b: { uv: 'own', tile: 1, color: [0.5, 0.64, 1.05] } } };
+        for (const n of PIECES) B.kit(n, mat4(V(cx, y0, cz)), slots, o);
+      });
     }
   }
 

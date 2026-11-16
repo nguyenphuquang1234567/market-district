@@ -50,6 +50,11 @@ add(['pinata'], { cap: 5000, box: [[-0.64, -0.85, -0.64], [0.64, 0.64, 0.64]], s
 add(['ristra_seg'], { cap: 300, box: [[-0.12, -0.2, -0.12], [0.12, 0.01, 0.12]], slots: ['chile', 'stem'] });
 // name -> () => [triangles, cap], for things drawn as several pieces
 export const TOTALS = {};
+// the chapel's dome (quarter.js chapel()): three pieces with one origin, the drum's base centre (86.2, 10.4, 20)
+add(['chapel_drum'], { cap: 25000, box: [[-3.7, 0, -3.7], [3.7, 1.8, 3.7]], slots: ['wall', 'stone', 'glass', 'iron'] });
+add(['chapel_dome'], { cap: 25000, box: [[-3.3, 1.6, -3.3], [3.3, 5.4, 3.3]], slots: ['glaze_y', 'glaze_b', 'stone'], ownUV: ['glaze_y', 'glaze_b'] });
+add(['chapel_lantern'], { cap: 25000, box: [[-0.75, 4.8, -0.75], [0.75, 8.2, 0.75]], slots: ['stone', 'glaze_y', 'iron', 'dark'], ownUV: ['glaze_y'] });
+TOTALS.chapel = () => [tris('chapel_drum') + tris('chapel_dome') + tris('chapel_lantern'), 25000];
 
 export function builder() {
   const out = [], fail = m => out.push(m);
