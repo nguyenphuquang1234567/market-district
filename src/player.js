@@ -144,7 +144,7 @@ export class Player {
     if (victim) {
       const base = zone === 'head' ? 100 : zone === 'limb' ? 27 : 36, dmg = base * (pen ? 0.3 : 1), p = origin.clone().addScaledVector(dir, vt);
       const killed = victim.damage(dmg, this.pos, this, zone);
-      G.fx.impact('fabric', p, dir.clone().negate(), 0.9, 0.7);
+      G.fx.impact('fabric', p, dir.clone().negate(), 0.9, 0.7); G.audio.bodyHit({ x: p.x, y: p.y, z: p.z }, zone, vt < 30);
       G.hud.hitmarker(killed ? 'kill' : zone === 'head' ? 'head' : pen ? 'weak' : 'hit'); G.audio.ui(zone === 'head' ? 'head' : 'hit');
     }
     if (W.ammo % 3 === 0) G.fx.tracer(muzzle, end, 380);

@@ -14,18 +14,23 @@ export function bakeSounds(SR = 48000, seed = 9001) {
     for (let i = 0; i < x.length; i++) { const v = x[i], y = (b0 * v + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2) / a0; x2 = x1; x1 = v; y2 = y1; y1 = y; x[i] = y; }
     return x;
   };
-  const env = (x, decay, attack = 0) => { const a = Math.max(1, attack * SR); for (let i = 0; i < x.length; i++) x[i] *= Math.exp(-i / (decay * SR)) * Math.min(1, i / a); return x; };
+  const env = (x, decay, attack = 0) => { const a = Math.max(1, attack * SR), r = Math.exp(-1 / (decay * SR)); let e = 1; for (let i = 0; i < x.length; i++) { x[i] *= e * Math.min(1, i / a); e *= r; } return x; };      // (the decay by recurrence: e = exp(-i / (decay * SR)))
   const burst = (secs, type, f, q, decay, attack = 0) => env(biq(white(N(secs)), type, f, q), decay, attack);    // shaped noise
   const add = (dst, src, g = 1, at = 0) => { const o = Math.round(at * SR); for (let i = 0; i < src.length && i + o < dst.length; i++) dst[i + o] += src[i] * g; return dst; };
   // modal bank: [frequency, decay seconds, amplitude] — what makes a struck object sound like its material
   const modes = (dst, list, g = 1, at = 0) => {
     const o = Math.round(at * SR);
-    for (const [f, d, a] of list) { if (f > SR * 0.45) continue; const w = TAU * f / SR, ph = R() * TAU, n = Math.min(dst.length - o, N(d * 7)); for (let i = 0; i < n; i++) dst[i + o] += Math.sin(w * i + ph) * Math.exp(-i / (d * SR)) * a * g * Math.min(1, i / 10); }
+    for (const [f, d, a] of list) {
+      if (f > SR * 0.45) continue; const w = TAU * f / SR, ph = R() * TAU, n = Math.min(dst.length - o, N(d * 7)), r = Math.exp(-1 / (d * SR)), c = 2 * r * Math.cos(w), r2 = r * r, k = a * g;
+      let s0 = Math.sin(ph), s1 = r * Math.sin(w + ph);                         // sin(w i + ph) * exp(-i / (d * SR)), by recurrence
+      if (n > 1) dst[o + 1] += s1 * k * 0.1;
+      for (let i = 2; i < n; i++) { const y = c * s1 - r2 * s0; s0 = s1; s1 = y; dst[i + o] += y * k * Math.min(1, i / 10); }
+    }
     return dst;
   };
   const sweep = (dst, f0, f1, decay, g = 1, at = 0, tau = 0.03) => {      // tone gliding from f0 to f1
-    const o = Math.round(at * SR), n = Math.min(dst.length - o, N(decay * 7)); let ph = 0;
-    for (let i = 0; i < n; i++) { const t = i / SR; ph += TAU * (f1 + (f0 - f1) * Math.exp(-t / tau)) / SR; dst[i + o] += Math.sin(ph) * Math.exp(-t / decay) * g * Math.min(1, i / 30); }
+    const o = Math.round(at * SR), n = Math.min(dst.length - o, N(decay * 7)), rt = Math.exp(-1 / (tau * SR)), rd = Math.exp(-1 / (decay * SR)); let ph = 0, et = 1, ed = 1;
+    for (let i = 0; i < n; i++) { ph += TAU * (f1 + (f0 - f1) * et) / SR; dst[i + o] += Math.sin(ph) * ed * g * Math.min(1, i / 30); et *= rt; ed *= rd; }      // (et, ed: the two exponentials, by recurrence)
     return dst;
   };
   const ticks = (dst, count, t0, t1, fLo, fHi, g, fall = 1) => {            // scatter of tiny grains: debris, grit, splinters
@@ -233,5 +238,225 @@ export function bakeSounds(SR = 48000, seed = 9001) {
     for (let k = 0; k < 7; k++) sweep(x, rr(420, 800), rr(1100, 2300), rr(0.008, 0.02), rr(0.1, 0.25), rr(0.01, 0.2), 0.008);
     fade(x); return norm(x, 0.8);
   });
+
+  // ---- a soldier going down -------------------------------------------------------------------------------------------------
+  // (Baked after everything above, so the takes before this point come out of the seed exactly as they always have.)
+  // His voice, from the larynx up: glottal pulses (the Rosenberg flow shape, differentiated, which is what the lips
+  // radiate) with the cycle-to-cycle wobble of a real throat (jitter, shimmer) and, under strain, every other cycle weaker
+  // and longer (the broken, rough edge of a cry); breath noise leaking through the open glottis in time with each cycle;
+  // and the vocal tract as five resonances that glide as the mouth opens and closes. Contours are [[seconds, value], ...].
+  const gs = () => (R() + R() + R() + R() - 2) * 1.73;                       // about unit gaussian
+  const tween = pts => t => {
+    if (t <= pts[0][0]) return pts[0][1];
+    for (let i = 1; i < pts.length; i++) if (t <= pts[i][0]) { const [a, u] = pts[i - 1], [b, w] = pts[i]; return u + (w - u) * (t - a) / Math.max(1e-6, b - a); }
+    return pts[pts.length - 1][1];
+  };
+  // formants of a man's vowels, Hz: ah, uh, the neutral er, oh, oo, eh, and the closed-mouth hum of "mm"
+  const VOW = { a: [760, 1150, 2450, 3350, 4250], uh: [640, 1190, 2390, 3350, 4200], er: [520, 1420, 2450, 3350, 4250], o: [520, 870, 2420, 3300, 4150],
+    u: [350, 860, 2250, 3250, 4100], e: [560, 1760, 2500, 3400, 4300], m: [270, 1080, 2250, 3250, 4100] };
+  const BW = [75, 95, 135, 210, 270];
+  const vox = (len, p) => {
+    const n = N(len), x = new Float32Array(n), f0 = tween(p.f0), amp = tween(p.amp), br = tween(p.breath || [[0, 0.04]]), oq = tween(p.oq || [[0, 0.55]]), sub = tween(p.sub || [[0, 0]]);
+    const jit = tween(p.jit || [[0, 0.015]]), shut = tween(p.shut || [[0, 0]]), shim = p.shim ?? 0.08, trem = p.trem || 0, tf = p.tremF || 5.5, k = p.tract || 1, bwk = p.bw || 1;
+    const vw = p.vowel.map(([t, v]) => [t, typeof v === 'string' ? VOW[v] : v]), F = [0, 0, 0, 0, 0], hi = p.hi ?? 0.1;
+    const cA = new Float64Array(5), cB = new Float64Array(5), cC = new Float64Array(5), y1 = new Float64Array(5), y2 = new Float64Array(5);
+    let ph = 0, T = 0, A = 0, odd = false, tp = 1, tn = 1, lp = 0, la = 1, ep = 0, hn = 0, np = 0;
+    for (let i = 0; i < n; i++) {
+      const t = i / SR;
+      if (ph >= T) {                                                           // the next glottal cycle
+        ph -= T; odd = !odd;
+        const s = sub(t), f = Math.max(28, f0(t) * (1 + trem * Math.sin(TAU * tf * t)) * (1 + jit(t) * gs()));
+        T = SR / f * (odd ? 1 + s * 0.14 : 1); A = amp(t) * Math.max(0, 1 + shim * gs()) * (odd ? 1 - s * 0.55 : 1);
+        const q = oq(t); tp = Math.max(2, T * q * 0.62); tn = Math.max(1.5, T * q * 0.38);
+      }
+      let d = 0, u = 0;                                                        // flow derivative (scaled to the closing slope) and the flow itself
+      if (ph < tp) { d = 0.5 * Math.PI * Math.sin(Math.PI * ph / tp) * tn / tp; u = 0.5 * (1 - Math.cos(Math.PI * ph / tp)); }
+      else if (ph < tp + tn) { const q = (ph - tp) / tn; d = -0.5 * Math.PI * Math.sin(0.5 * Math.PI * q); u = Math.cos(0.5 * Math.PI * q); }
+      ph++;
+      const v = Math.min(1, A * 4), b = br(t) * (1 - v + v * (0.25 + 0.75 * u)), w = R() * 2 - 1;     // breath, pulsing with the glottis while it vibrates
+      const ex = d * A + w * b * 0.6; let e = ex;                            // the excitation: glottal pulses and breath
+      if ((i & 15) === 0) {                                                    // the mouth moves slowly: retune the tract every 16 samples
+        let j = 1; while (j < vw.length - 1 && vw[j][0] < t) j++; j = Math.min(j, vw.length - 1);
+        const [ta, va] = vw[Math.max(0, j - 1)], [tb, vb] = vw[j], w = j === 0 ? 0 : Math.min(1, Math.max(0, (t - ta) / Math.max(1e-6, tb - ta)));
+        for (let m = 0; m < 5; m++) {
+          F[m] = (va[m] + (vb[m] - va[m]) * w) * k;
+          const r = Math.exp(-Math.PI * BW[m] * bwk / SR); cC[m] = -r * r; cB[m] = 2 * r * Math.cos(TAU * Math.min(F[m], SR * 0.45) / SR); cA[m] = 1 - cB[m] - cC[m];
+        }
+        la = 1 - Math.exp(-TAU * (9500 - 9000 * shut(t)) / SR);                 // lips closing: the sound is let out through the nose and cheeks
+      }
+      for (let m = 0; m < 5; m++) { const o = cA[m] * e + cB[m] * y1[m] + cC[m] * y2[m]; y2[m] = y1[m]; y1[m] = o; e = o; }
+      const pe = e - 0.94 * ep; ep = e;                                        // the resonances above the fifth, left out of the five: about +6 dB an octave above 500 Hz,
+      hn = 0.6 * (hn + ex - np); np = ex;                                      // and what they pass of pulse and breath above 3 kHz
+      lp += (pe + hn * hi - lp) * la; x[i] = lp;
+    }
+    biq(x, 'hp', 75, 0.7); fade(x, 0.02); return norm(x, 0.9);
+  };
+  const who = () => ({ k: rr(0.91, 1.07), fb: rr(0.86, 1.16) });              // a different man each take: length of throat, pitch of voice
+  const pick = (...v) => v[(R() * v.length) | 0];
+  // "Ugh": the round lands and the throat closes on a short pressed grunt, falling away into a breath.
+  S.die_grunt = many(5, () => {
+    const { k, fb } = who(), d = rr(0.2, 0.36), f = 135 * fb, at = rr(0.005, 0.012), v0 = pick('uh', 'a', 'er', 'm'), tail = rr(0.1, 0.18);
+    return vox(d + tail, { tract: k, f0: [[0, f * 0.9], [at + 0.03, f * rr(1.08, 1.25)], [d * 0.55, f * 0.98], [d * 0.85, f * 0.72], [d, f * 0.5]],
+      amp: [[0, 0], [at, 1], [d * 0.45, 0.85], [d * 0.8, 0.3], [d, 0]], breath: [[0, 0.03], [d * 0.6, 0.05], [d * 0.9, 0.22], [d + tail * 0.3, 0.12], [d + tail, 0]],
+      vowel: [[0, v0], [d, 'er']], oq: [[0, 0.4], [d, 0.62]], jit: [[0, 0.02], [d * 0.7, 0.03], [d, 0.12]], sub: [[0, 0.12], [d * 0.35, 0.3], [d * 0.8, 0.05]], shim: 0.1,
+      shut: v0 === 'm' ? [[0, 0.75], [d, 0.6]] : [[0, 0], [d, 0.2]] });
+  });
+  // The wind knocked out of him: a forced "hhuh" with little voice in it.
+  S.die_oof = many(4, () => {
+    const { k, fb } = who(), h = rr(0.045, 0.085), d = h + rr(0.11, 0.2), f = 118 * fb;
+    return vox(d + 0.16, { tract: k, f0: [[0, f], [h + 0.02, f * 1.06], [d, f * 0.7]], amp: [[0, 0], [h * 0.8, 0], [h + 0.025, 0.7], [d * 0.85, 0.35], [d, 0]],
+      breath: [[0, 0], [0.006, 0.9], [h, 0.55], [h + 0.05, 0.25], [d, 0.22], [d + 0.16, 0]], vowel: [[0, pick('uh', 'o')], [d, pick('er', 'u')]], oq: [[0, 0.6], [d, 0.7]], jit: [[0, 0.03], [d, 0.08]], shim: 0.12 });
+  });
+  // A cry: the pitch thrown up by the pain and held, rough with strain, then let go.
+  S.die_cry = many(4, () => {
+    const { k, fb } = who(), d = rr(0.42, 0.7), f = 150 * fb, pk = rr(1.6, 2.2), at = rr(0.015, 0.03);
+    const x = vox(d + 0.16, { tract: k, f0: [[0, f], [0.08, f * pk], [d * 0.45, f * pk * rr(0.86, 0.96)], [d * 0.8, f * pk * 0.7], [d, f * 0.85]],
+      amp: [[0, 0], [at, 0.8], [0.08, 1], [d * 0.6, 0.8], [d * 0.85, 0.35], [d, 0]], breath: [[0, 0.05], [d * 0.7, 0.08], [d, 0.25], [d + 0.16, 0]],
+      vowel: [[0, 'a'], [d * 0.6, 'uh'], [d, 'er']], oq: [[0, 0.36], [d, 0.5]], jit: [[0, 0.02], [d, 0.05]], sub: [[0, 0.05], [0.09, rr(0.3, 0.5)], [d * 0.6, 0.25], [d, 0.05]],
+      trem: 0.025, tremF: rr(5.5, 7.5), shim: 0.09, bw: 0.9 });
+    add(x, biq(x.slice(), 'hp', 1300, 0.7), 2.8);                              // the effort of it: a shouting throat closes harder, and brighter
+    return norm(sat(norm(x, 0.9), 1.5), 0.9);
+  });
+  // A groan: low, slack and breathy, the mouth closing on it, sinking into the creak of a throat with no air behind it.
+  S.die_groan = many(3, () => {
+    const { k, fb } = who(), d = rr(0.65, 1.0), f = 110 * fb;
+    return vox(d + 0.12, { tract: k, f0: [[0, f * 0.92], [0.12, f], [d * 0.6, f * 0.86], [d * 0.85, f * 0.62], [d, 44]], amp: [[0, 0], [0.09, 0.7], [d * 0.5, 0.6], [d * 0.85, 0.32], [d, 0]],
+      breath: [[0, 0.12], [d * 0.5, 0.2], [d, 0.3], [d + 0.12, 0]], vowel: [[0, 'o'], [d * 0.45, 'er'], [d, pick('u', 'm')]], oq: [[0, 0.68], [d * 0.75, 0.55], [d, 0.3]],
+      jit: [[0, 0.02], [d * 0.75, 0.035], [d, 0.18]], shim: 0.12, trem: 0.02, tremF: rr(4, 5.5), shut: [[0, 0], [d * 0.6, 0.15], [d, 0.6]], bw: 1.15 });
+  });
+  // A gasp: air dragged in through a tightening throat and cut off short, then what is left of it let out.
+  S.die_gasp = many(3, () => {
+    const { k } = who(), d = rr(0.15, 0.24), gap = rr(0.12, 0.24), e = rr(0.14, 0.22), f = rr(300, 420);
+    return vox(d + gap + e + 0.05, { tract: k, f0: [[0, f], [d, f * 1.15], [d + gap, 120], [d + gap + e, 90]],
+      amp: [[0, 0], [0.02, 0.16], [d * 0.85, 0.14], [d, 0], [d + gap, 0], [d + gap + 0.02, 0.32], [d + gap + e, 0]],
+      breath: [[0, 0], [0.01, 1], [d * 0.75, 0.75], [d, 0], [d + gap, 0], [d + gap + 0.008, 0.5], [d + gap + e, 0.08], [d + gap + e + 0.05, 0]],
+      vowel: [[0, 'a'], [d, 'e'], [d + gap, 'uh'], [d + gap + e, 'er']], oq: [[0, 0.7]], jit: [[0, 0.08], [d, 0.1], [d + gap, 0.04]], shim: 0.2, hi: 0.12 });
+  });
+  // Choking: a weak voice broken up by what is in the airway.
+  S.die_choke = many(2, () => {
+    const { k, fb } = who(), d = rr(0.4, 0.6), f = 100 * fb, n = N(d + 0.1), fl = biq(white(n), 'lp', rr(18, 30), 0.7); let m = 1e-9; for (let i = 0; i < n; i++) m = Math.max(m, Math.abs(fl[i]));
+    const x = vox(d + 0.1, { tract: k, f0: [[0, f], [d, f * 0.75]], amp: [[0, 0], [0.03, 0.5], [d * 0.7, 0.4], [d, 0]], breath: [[0, 0.15], [d, 0.2], [d + 0.1, 0]], vowel: [[0, 'er'], [d, 'u']], oq: [[0, 0.55]], jit: [[0, 0.05]], shim: 0.25, bw: 1.3 });
+    for (let i = 0; i < n; i++) x[i] *= 0.35 + 0.65 * Math.abs(fl[i]) / m;
+    for (let j = 0; j < 9; j++) sweep(x, rr(350, 650), rr(900, 1700), rr(0.006, 0.014), rr(0.04, 0.09), rr(0.03, d), 0.006);        // bubbling
+    return norm(x, 0.9);
+  });
+  // A scream: the pain throws the voice up hard and holds it there, raw and breaking (every other cycle out of step, the
+  // pitch shaking), the jaw wide open, until it cracks and falls away into what breath is left.
+  S.die_scream = many(5, () => {
+    const { k, fb } = who(), d = rr(0.6, 1), f = 140 * fb, pk = rr(2.5, 3.3), brk = d * rr(0.66, 0.8);
+    const x = vox(d + 0.18, { tract: k, f0: [[0, f * 1.3], [0.05, f * pk], [d * 0.3, f * pk * rr(0.95, 1.05)], [brk, f * pk * rr(0.82, 0.9)], [brk + 0.03, f * pk * 0.5], [d, f * 1.05]],
+      amp: [[0, 0], [0.012, 0.9], [0.05, 1], [brk, 0.85], [brk + 0.05, 0.6], [d * 0.95, 0.25], [d, 0]], breath: [[0, 0.08], [brk, 0.12], [d, 0.3], [d + 0.18, 0]],
+      vowel: [[0, [900, 1650, 2650, 3600, 4400]], [brk * 0.92, [900, 1650, 2650, 3600, 4400]], [brk + 0.04, 'a'], [d, 'uh']], oq: [[0, 0.32], [brk, 0.4], [d, 0.55]], jit: [[0, 0.03], [0.06, 0.05], [brk, 0.06], [d, 0.08]],
+      sub: [[0, 0.2], [0.06, rr(0.4, 0.6)], [brk, 0.35], [d, 0.15]], trem: 0.035, tremF: rr(6, 9), shim: 0.14, bw: 1.8 });       // (wide: at this pitch the harmonics are far apart)
+    add(x, biq(x.slice(), 'hp', 1500, 0.7), 5);                                // a screaming throat slams shut on every cycle: bright and hard
+    return norm(sat(norm(x, 0.9), 1.8), 0.9);
+  });
+  // A yell cut short: "ah!", high and pressed.
+  S.die_yell = many(4, () => {
+    const { k, fb } = who(), d = rr(0.22, 0.36), f = 150 * fb, pk = rr(1.8, 2.3);
+    const x = vox(d + 0.12, { tract: k, f0: [[0, f * 1.2], [0.035, f * pk], [d * 0.6, f * pk * 0.92], [d, f * pk * 0.6]], amp: [[0, 0], [0.008, 1], [d * 0.6, 0.85], [d * 0.9, 0.3], [d, 0]],
+      breath: [[0, 0.06], [d * 0.8, 0.1], [d, 0.25], [d + 0.12, 0]], vowel: [[0, pick('a', 'uh', 'e')], [d, 'er']], oq: [[0, 0.34], [d, 0.5]], jit: [[0, 0.03], [d, 0.06]],
+      sub: [[0, 0.15], [0.04, 0.35], [d, 0.1]], shim: 0.1, bw: 0.9 });
+    add(x, biq(x.slice(), 'hp', 1300, 0.7), 2.6);
+    return norm(sat(norm(x, 0.9), 1.6), 0.9);
+  });
+  // Shot through the head: a sound started and cut off as everything stops, "uh—", and the air going out.
+  S.die_head = many(3, () => {
+    const { k, fb } = who(), d = rr(0.07, 0.13), f = 130 * fb;
+    return vox(d + 0.14, { tract: k, f0: [[0, f * 1.4], [d, f]], amp: [[0, 0], [0.006, 1], [d * 0.8, 0.8], [d, 0]], breath: [[0, 0.05], [d, 0.3], [d + 0.14, 0]],
+      vowel: [[0, pick('uh', 'a')], [d + 0.1, 'er']], oq: [[0, 0.4]], jit: [[0, 0.04]], sub: [[0, 0.2]], shim: 0.12 });
+  });
+  // And on the ground, a last breath going out of him.
+  S.die_breath = many(2, () => { const { k, fb } = who(), d = rr(0.5, 0.8), f = 95 * fb; return vox(d, { tract: k, f0: [[0, f], [d, 50]], amp: [[0, 0], [0.12, 0.14], [d * 0.6, 0.1], [d, 0]], breath: [[0, 0], [0.08, 0.35], [d * 0.6, 0.25], [d, 0]], vowel: [[0, 'er'], [d, 'u']], oq: [[0, 0.7]], jit: [[0, 0.05], [d, 0.2]], shim: 0.2, shut: [[0, 0.1], [d, 0.5]], hi: 0.035 }); });
+
+  // A round going into a man in kit: the cloth snapping, the thump of the body taking it, the wet slap with it.
+  S.hit_body = many(4, () => {
+    const v = rr(0.9, 1.12), x = new Float32Array(N(0.3));
+    add(x, burst(0.012, 'hp', 2800, 0.7, 0.0016), 1.2);                                                          // the cloth snapping
+    sweep(x, rr(170, 210) * v, rr(95, 115), 0.03, 0.22, 0, 0.015); add(x, burst(0.1, 'lp', 520, 0.8, 0.026), 1.6); add(x, burst(0.06, 'bp', rr(180, 240) * v, 0.9, 0.03), 1.4);    // the body taking it
+    add(x, burst(0.05, 'bp', rr(900, 1300) * v, 0.9, 0.012), 1); add(x, burst(0.06, 'bp', rr(1900, 2700), 1.1, 0.014, 0.002), 0.5, 0.003);     // the wet slap
+    fade(x); return norm(x);
+  });
+  // Into the plate in the vest: a hard knock, the carrier's thump behind it and a spit of fragments.
+  S.hit_armor = many(3, () => {
+    const v = rr(0.9, 1.12), x = new Float32Array(N(0.3));
+    add(x, burst(0.01, 'hp', 2400, 0.7, 0.002), 1.3); modes(x, [[rr(700, 900) * v, 0.014, 1], [rr(1500, 1800) * v, 0.011, 0.75], [rr(2600, 3100) * v, 0.008, 0.5]], 0.35);
+    add(x, burst(0.08, 'lp', 520, 0.8, 0.022), 1.3); add(x, burst(0.05, 'bp', rr(200, 260), 0.9, 0.025), 1); ticks(x, 5, 0.005, 0.05, 2500, 6000, 0.2);
+    fade(x); return norm(x);
+  });
+  // Through the helmet: the shell cracking and the dead thud of the head.
+  S.hit_head = many(3, () => {
+    const v = rr(0.9, 1.12), x = new Float32Array(N(0.28));
+    add(x, burst(0.008, 'hp', 3000, 0.7, 0.0012), 1.3); modes(x, [[rr(900, 1200) * v, 0.011, 1], [rr(2000, 2400) * v, 0.008, 0.6]], 0.3);
+    add(x, burst(0.07, 'lp', 600, 0.8, 0.018), 1.3); add(x, burst(0.05, 'bp', rr(250, 330), 0.9, 0.02), 0.9); add(x, burst(0.04, 'bp', 1300, 1, 0.01), 0.6, 0.002);
+    fade(x); return norm(x);
+  });
+
+  // A body landing, by what it lands on. The chest and the kit on it make the thump; the ground gives it its edge:
+  // a slap and grit on concrete, a harder crack on tile, a dull crunch on dirt, boards booming, sheet metal ringing.
+  const fallOn = surf => () => {
+    const v = rr(0.9, 1.1), x = new Float32Array(N(surf === 'metal' ? 0.9 : 0.6)), hard = surf !== 'dirt' && surf !== 'soft';
+    sweep(x, rr(115, 135) * v, rr(75, 88), rr(0.05, 0.07), 0.09, 0, 0.03);                                     // the chest
+    add(x, burst(0.25, 'lp', surf === 'soft' ? 260 : 360, 0.8, 0.055), 1.3); add(x, burst(0.2, 'bp', rr(250, 320) * v, 0.9, 0.045), 1.3);    // the weight going down
+    add(x, burst(0.12, 'bp', rr(520, 650) * v, 0.8, 0.03), hard ? 0.9 : 0.6);
+    add(x, burst(0.05, 'bp', rr(1300, 2000), 0.8, 0.014), hard ? 1 : 0.25);                                     // clothes slapping down
+    if (surf === 'concrete') { add(x, burst(0.012, 'hp', 2000, 0.7, 0.002), 0.6); ticks(x, 12, 0.01, 0.25, 1500, 5000, 0.25, 1.5); }
+    if (surf === 'tile') { add(x, burst(0.012, 'hp', 2600, 0.7, 0.0018), 0.9); add(x, burst(0.04, 'bp', 2600, 1, 0.01), 0.6); modes(x, [[rr(1700, 2000), 0.03, 1], [rr(3000, 3400), 0.02, 0.6]], 0.05); }
+    if (surf === 'dirt') { add(x, burst(0.15, 'bp', 800, 0.6, 0.04), 0.7); ticks(x, 24, 0.005, 0.3, 1200, 4500, 0.3, 1.2); }
+    if (surf === 'wood') modes(x, [[rr(95, 120), 0.09, 1], [rr(170, 210), 0.07, 0.8], [rr(290, 340), 0.05, 0.6], [rr(520, 600), 0.03, 0.4]], 0.25);
+    if (surf === 'metal') { add(x, burst(0.01, 'hp', 1800, 0.7, 0.002), 0.7); modes(x, [[rr(140, 180), 0.25, 1], [rr(330, 380), 0.22, 0.7], [rr(560, 640), 0.18, 0.6], [rr(910, 1020), 0.12, 0.4], [rr(1500, 1700), 0.08, 0.3]], 0.12); }
+    if (surf === 'soft') { add(x, burst(0.2, 'bp', 1100, 0.6, 0.06, 0.01), 0.1); biq(x, 'lp', 1800, 0.7); }
+    fade(x, 0.05); return norm(x, 0.9);
+  };
+  for (const s of ['concrete', 'tile', 'dirt', 'wood', 'metal', 'soft']) S['fall_' + s] = many(s === 'concrete' ? 4 : 3, fallOn(s));
+  // The helmet striking the ground: the shell's hollow knock with the weight of the head behind it, the visor ticking.
+  const helmetOn = surf => () => {
+    const v = rr(0.9, 1.12), x = new Float32Array(N(0.4)), soft = surf === 'soft';
+    add(x, burst(0.006, 'hp', 2500, 0.7, 0.001), soft ? 0.15 : 0.8);
+    modes(x, [[rr(420, 520) * v, 0.03, 1], [rr(780, 900) * v, 0.025, 0.8], [rr(1300, 1500) * v, 0.018, 0.6], [rr(2100, 2500) * v, 0.012, 0.4]], soft ? 0.18 : 0.5);
+    add(x, burst(0.08, 'lp', 380, 0.8, 0.02), 1.1); modes(x, [[rr(2800, 3400), 0.008, 1]], soft ? 0.03 : 0.12, rr(0.02, 0.05));
+    if (surf === 'hard') ticks(x, 6, 0.005, 0.12, 1800, 5000, 0.12, 1.4);
+    if (surf === 'wood') modes(x, [[rr(170, 210), 0.05, 1], [rr(320, 380), 0.04, 0.7]], 0.35);
+    if (surf === 'metal') modes(x, [[rr(330, 380), 0.2, 1], [rr(900, 1000), 0.14, 0.6], [rr(1600, 1750), 0.1, 0.4]], 0.18);
+    fade(x); return norm(x, 0.85);
+  };
+  for (const s of ['hard', 'soft', 'wood', 'metal']) S['helmet_' + s] = many(s === 'hard' ? 3 : 2, helmetOn(s));
+  // A knee going down in its hard pad; an arm flopping down; the kit on the vest jumping as the body lands.
+  S.knee = many(3, () => { const v = rr(0.9, 1.12), x = new Float32Array(N(0.3)); add(x, burst(0.008, 'hp', 2200, 0.7, 0.0015), 0.6); modes(x, [[rr(600, 750) * v, 0.015, 1], [rr(1200, 1450) * v, 0.012, 0.6], [rr(2100, 2500) * v, 0.008, 0.35]], 0.45); add(x, burst(0.08, 'lp', 320, 0.8, 0.02), 0.8); ticks(x, 5, 0.005, 0.1, 1800, 4500, 0.12, 1.4); fade(x); return norm(x, 0.85); });
+  S.limb = many(4, () => { const x = new Float32Array(N(0.25)); add(x, burst(0.05, 'bp', rr(1100, 1700), 0.8, 0.012), 0.7); add(x, burst(0.08, 'lp', 300, 0.8, 0.02), 0.9); add(x, burst(0.01, 'hp', 2000, 0.7, 0.002), 0.25); fade(x); return norm(x, 0.8); });
+  S.gear = many(4, () => {
+    const x = new Float32Array(N(0.4)); add(x, burst(0.06, 'lp', 420, 0.8, 0.015), 0.5);
+    for (let k = 0, m = 3 + (R() * 4 | 0); k < m; k++) modes(x, [[rr(1100, 1600), rr(0.006, 0.012), 1], [rr(2200, 2900), 0.006, 0.6]], rr(0.2, 0.5), rr(0, 0.12) * rr(0.3, 1));      // magazines knocking in their pouches
+    for (let k = 0, m = 2 + (R() * 3 | 0); k < m; k++) modes(x, [[rr(3500, 5200), rr(0.02, 0.04), 1], [rr(6000, 8000), 0.015, 0.5]], rr(0.05, 0.14), rr(0.005, 0.2));          // buckles, a carabiner, sling hardware
+    ticks(x, 8, 0, 0.2, 2500, 6500, 0.3, 1.2); fade(x, 0.04); return norm(x, 0.8);
+  });
+  // The fall itself, before the ground: clothes dragging over each other as the limbs fold, kit shifting on the body.
+  S.collapse = many(3, () => {
+    const n = N(rr(0.6, 0.8)), x = biq(white(n), 'bp', rr(1500, 2300), 0.6), lo = biq(white(n), 'lp', 500, 0.7), cr = biq(white(n), 'lp', rr(60, 110), 0.7), pk = rr(0.18, 0.3);
+    let m = 1e-9; for (let i = 0; i < n; i++) m = Math.max(m, Math.abs(cr[i]));
+    for (let i = 0; i < n; i++) { const t = i / SR, e = t < pk ? (t / pk) ** 1.5 : Math.exp(-(t - pk) / 0.12); x[i] = (x[i] * (0.35 + 0.65 * Math.abs(cr[i]) / m) + lo[i] * 0.35) * e; }
+    for (let k = 0, c = 4 + (R() * 4 | 0); k < c; k++) modes(x, [[rr(1200, 3000), rr(0.006, 0.012), 1], [rr(3500, 6500), 0.012, 0.4]], rr(0.03, 0.1), rr(0.05, pk + 0.2));
+    fade(x, 0.05); return norm(x, 0.7);
+  });
+  // A rifle let go of: it lands on one end and slaps down on the other a moment later; steel receiver, polymer furniture,
+  // the magazine knocking in its well, the sling's swivels. What it lands on colours it, as for a body.
+  const gunOn = surf => () => {
+    const v = rr(0.92, 1.1), x = new Float32Array(N(surf === 'metal' ? 0.8 : 0.5)), soft = surf === 'dirt' || surf === 'soft';
+    for (const [at, g] of [[0, 1], [rr(0.008, 0.035), rr(0.5, 0.9)]]) {
+      add(x, burst(0.01, 'hp', 2200, 0.7, 0.002), g * (soft ? 0.2 : 0.8), at);
+      modes(x, [[1250 * v, 0.02, 1], [2350 * v, 0.018, 0.8], [3700 * v, 0.012, 0.6], [5600 * v, 0.008, 0.4]], g * (soft ? 0.12 : 0.35), at);
+      add(x, burst(0.04, 'bp', 900 * v, 1.1, 0.01), g * 1.1, at); add(x, burst(0.06, 'lp', 320, 0.8, 0.016), g * (soft ? 1.8 : 1.3), at);
+    }
+    modes(x, [[rr(1700, 2300), 0.01, 1]], soft ? 0.08 : 0.2, rr(0.03, 0.06)); ticks(x, 4, 0.02, 0.12, 2000, 5000, soft ? 0.1 : 0.25);
+    for (let k = 0; k < 2; k++) modes(x, [[rr(5200, 6800), 0.025, 1], [rr(8200, 9800), 0.015, 0.5]], soft ? 0.01 : 0.025, rr(0.01, 0.06));
+    if (surf === 'concrete') { add(x, burst(0.06, 'bp', 3500, 0.7, 0.02), 0.25); ticks(x, 8, 0, 0.15, 1500, 5000, 0.15, 1.3); }
+    if (surf === 'tile') { add(x, burst(0.008, 'hp', 3000, 0.7, 0.0015), 0.5); modes(x, [[rr(2000, 2300), 0.02, 1], [rr(3500, 3800), 0.015, 0.6]], 0.1); }
+    if (surf === 'dirt') { add(x, burst(0.12, 'lp', 250, 0.8, 0.03), 1.2); ticks(x, 12, 0, 0.18, 1200, 4000, 0.12, 1.3); }
+    if (surf === 'wood') modes(x, [[rr(180, 230), 0.05, 1], [rr(330, 400), 0.04, 0.8], [rr(600, 700), 0.03, 0.5]], 0.3);
+    if (surf === 'metal') modes(x, [[rr(380, 460), 0.25, 1], [rr(870, 980), 0.2, 0.7], [rr(1500, 1700), 0.15, 0.5], [rr(2500, 2800), 0.1, 0.35]], 0.2);
+    if (soft) biq(x, 'lp', surf === 'soft' ? 1500 : 2600, 0.7);
+    fade(x, 0.04); return norm(x, 0.9);
+  };
+  for (const s of ['concrete', 'tile', 'dirt', 'wood', 'metal', 'soft']) S['gun_' + s] = many(s === 'concrete' ? 3 : 2, gunOn(s));
   return S;
 }

@@ -1,0 +1,347 @@
+{
+ "sampleRate": 32000,
+ "credits": [
+  "HaelDB, \"Male Grunt/Yelling sounds\", CC0 (https://opengameart.org/content/male-gruntyelling-sounds)",
+  "Michel Baradari, \"11 male human pain/death sounds\", CC-BY 3.0 (https://opengameart.org/content/11-male-human-paindeath-sounds)",
+  "thebardofblasphemy, \"grunts of male death and pain\", CC0 (https://opengameart.org/content/grunts-male-death-and-pain)",
+  "dklon, \"Body Hitting Ground\", CC-BY 3.0 (https://opengameart.org/content/body-hitting-ground)"
+ ],
+ "clips": [
+  {
+   "kind": "scream",
+   "start": 0.0,
+   "length": 0.692,
+   "from": "haeldb: 1yell1.wav"
+  },
+  {
+   "kind": "scream",
+   "start": 0.742,
+   "length": 0.682,
+   "from": "haeldb: 1yell4.wav"
+  },
+  {
+   "kind": "scream",
+   "start": 1.474,
+   "length": 0.712,
+   "from": "haeldb: 1yell5.wav"
+  },
+  {
+   "kind": "scream",
+   "start": 2.236,
+   "length": 0.632,
+   "from": "haeldb: 1yell8.wav"
+  },
+  {
+   "kind": "scream",
+   "start": 2.918,
+   "length": 0.972,
+   "from": "haeldb: 1yell10.wav"
+  },
+  {
+   "kind": "scream",
+   "start": 3.94,
+   "length": 1.212,
+   "from": "haeldb: 1yell12.wav"
+  },
+  {
+   "kind": "scream",
+   "start": 5.202,
+   "length": 0.512,
+   "from": "haeldb: 2yell1.wav"
+  },
+  {
+   "kind": "scream",
+   "start": 5.764,
+   "length": 0.852,
+   "from": "haeldb: 2yell2.wav"
+  },
+  {
+   "kind": "scream",
+   "start": 6.666,
+   "length": 1.382,
+   "from": "haeldb: 2yell4.wav"
+  },
+  {
+   "kind": "scream",
+   "start": 8.098,
+   "length": 0.802,
+   "from": "haeldb: 2yell7.wav"
+  },
+  {
+   "kind": "scream",
+   "start": 8.95,
+   "length": 0.792,
+   "from": "haeldb: 2yell10.wav"
+  },
+  {
+   "kind": "scream",
+   "start": 9.792,
+   "length": 1.202,
+   "from": "haeldb: 2yell11.wav"
+  },
+  {
+   "kind": "scream",
+   "start": 11.044,
+   "length": 1.262,
+   "from": "haeldb: 3yell2.wav"
+  },
+  {
+   "kind": "scream",
+   "start": 12.356,
+   "length": 0.892,
+   "from": "haeldb: 3yell5.wav"
+  },
+  {
+   "kind": "scream",
+   "start": 13.298,
+   "length": 1.5,
+   "from": "haeldb: 3yell9.wav"
+  },
+  {
+   "kind": "scream",
+   "start": 14.848,
+   "length": 1.312,
+   "from": "haeldb: 3yell10.wav"
+  },
+  {
+   "kind": "scream",
+   "start": 16.21,
+   "length": 1.032,
+   "from": "haeldb: 3yell11.wav"
+  },
+  {
+   "kind": "scream",
+   "start": 17.292,
+   "length": 0.972,
+   "from": "haeldb: 3yell14.wav"
+  },
+  {
+   "kind": "scream",
+   "start": 18.314,
+   "length": 1.5,
+   "from": "haeldb: yell2.wav"
+  },
+  {
+   "kind": "scream",
+   "start": 19.864,
+   "length": 1.032,
+   "from": "haeldb: yell4.wav"
+  },
+  {
+   "kind": "scream",
+   "start": 20.946,
+   "length": 0.842,
+   "from": "haeldb: yell7.wav"
+  },
+  {
+   "kind": "scream",
+   "start": 21.838,
+   "length": 1.5,
+   "from": "haeldb: yell8.wav"
+  },
+  {
+   "kind": "scream",
+   "start": 23.388,
+   "length": 1.5,
+   "from": "haeldb: yell11.wav"
+  },
+  {
+   "kind": "scream",
+   "start": 24.938,
+   "length": 0.862,
+   "from": "haeldb: yell12.wav"
+  },
+  {
+   "kind": "pain",
+   "start": 25.85,
+   "length": 0.54663,
+   "from": "baradari: pain1.wav"
+  },
+  {
+   "kind": "pain",
+   "start": 26.44663,
+   "length": 0.63687,
+   "from": "baradari: pain2.wav"
+  },
+  {
+   "kind": "pain",
+   "start": 27.1335,
+   "length": 0.54225,
+   "from": "baradari: pain3.wav"
+  },
+  {
+   "kind": "pain",
+   "start": 27.72575,
+   "length": 0.69481,
+   "from": "baradari: pain4.wav"
+  },
+  {
+   "kind": "pain",
+   "start": 28.47056,
+   "length": 0.62244,
+   "from": "baradari: pain5.wav"
+  },
+  {
+   "kind": "pain",
+   "start": 29.143,
+   "length": 0.52397,
+   "from": "baradari: pain6.wav"
+  },
+  {
+   "kind": "pain",
+   "start": 29.71697,
+   "length": 0.48,
+   "from": "baradari: painh.wav"
+  },
+  {
+   "kind": "pain",
+   "start": 30.24697,
+   "length": 0.47922,
+   "from": "baradari: paino.wav"
+  },
+  {
+   "kind": "pain",
+   "start": 30.77619,
+   "length": 0.722,
+   "from": "haeldb: 3grunt2.wav"
+  },
+  {
+   "kind": "pain",
+   "start": 31.54819,
+   "length": 0.5,
+   "from": "haeldb: 3grunt3.wav"
+  },
+  {
+   "kind": "pain",
+   "start": 32.09819,
+   "length": 0.372,
+   "from": "haeldb: 3grunt5.wav"
+  },
+  {
+   "kind": "pain",
+   "start": 32.52019,
+   "length": 0.9,
+   "from": "haeldb: 3grunt6.wav"
+  },
+  {
+   "kind": "die",
+   "start": 33.47019,
+   "length": 0.95,
+   "from": "baradari: die1.wav"
+  },
+  {
+   "kind": "die",
+   "start": 34.47019,
+   "length": 1.07,
+   "from": "baradari: die2.wav"
+  },
+  {
+   "kind": "die",
+   "start": 35.59019,
+   "length": 0.64,
+   "from": "baradari: deathh.wav"
+  },
+  {
+   "kind": "die",
+   "start": 36.28019,
+   "length": 0.582,
+   "from": "bard: death pain grunts.wav 6.85-7.50 s"
+  },
+  {
+   "kind": "die",
+   "start": 36.91219,
+   "length": 0.942,
+   "from": "bard: death pain grunts.wav 8.27-9.30 s"
+  },
+  {
+   "kind": "die",
+   "start": 37.90419,
+   "length": 1.072,
+   "from": "bard: death pain grunts.wav 27.50-28.62 s"
+  },
+  {
+   "kind": "die",
+   "start": 39.02619,
+   "length": 0.582,
+   "from": "bard: death pain grunts.wav 29.78-30.45 s"
+  },
+  {
+   "kind": "die",
+   "start": 39.65819,
+   "length": 1.122,
+   "from": "bard: death pain grunts.wav 31.42-32.65 s"
+  },
+  {
+   "kind": "die",
+   "start": 40.83019,
+   "length": 0.822,
+   "from": "bard: death pain grunts.wav 40.31-41.20 s"
+  },
+  {
+   "kind": "die",
+   "start": 41.70219,
+   "length": 1.182,
+   "from": "bard: death pain grunts.wav 44.86-46.12 s"
+  },
+  {
+   "kind": "groan",
+   "start": 42.93419,
+   "length": 1.552,
+   "from": "bard: death pain grunts.wav 0.40-2.05 s"
+  },
+  {
+   "kind": "groan",
+   "start": 44.53619,
+   "length": 1.7,
+   "from": "bard: death pain grunts.wav 14.38-16.25 s"
+  },
+  {
+   "kind": "groan",
+   "start": 46.28619,
+   "length": 1.7,
+   "from": "bard: death pain grunts.wav 20.26-22.40 s"
+  },
+  {
+   "kind": "groan",
+   "start": 48.03619,
+   "length": 1.7,
+   "from": "bard: death pain grunts.wav 23.80-25.85 s"
+  },
+  {
+   "kind": "groan",
+   "start": 49.78619,
+   "length": 1.482,
+   "from": "bard: death pain grunts.wav 35.88-37.45 s"
+  },
+  {
+   "kind": "groan",
+   "start": 51.31819,
+   "length": 1.7,
+   "from": "bard: death pain grunts.wav 47.29-49.20 s"
+  },
+  {
+   "kind": "thud",
+   "start": 53.06819,
+   "length": 0.392,
+   "from": "dklon: body_hits.wav 0.42-0.86 s"
+  },
+  {
+   "kind": "thud",
+   "start": 53.51019,
+   "length": 0.362,
+   "from": "dklon: body_hits.wav 2.16-2.58 s"
+  },
+  {
+   "kind": "thud",
+   "start": 53.92219,
+   "length": 0.7,
+   "from": "dklon: body_hits.wav 3.37-4.38 s"
+  },
+  {
+   "kind": "thud",
+   "start": 54.67219,
+   "length": 0.372,
+   "from": "dklon: body_hits.wav 4.66-5.08 s"
+  }
+ ]
+}

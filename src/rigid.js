@@ -59,7 +59,7 @@ export class Rigid {
 
   constructor(G, dynamic) {
     this.G = G; this.acc = 0; this.time = 0; this.items = new Map(); this.props = []; this.rags = []; this.guns = []; this.corpses = []; this.pushers = [];
-    this.m4 = new THREE.Matrix4(); this.inv = new THREE.Matrix4(); this.tp = V(); this.tq = new THREE.Quaternion(); this.ts = V(); this.onImpact = null;
+    this.m4 = new THREE.Matrix4(); this.inv = new THREE.Matrix4(); this.tp = V(); this.tq = new THREE.Quaternion(); this.ts = V(); this.onImpact = null; this.onRagdoll = null;
     this.nades = []; this.surfOf = new Map(); this.pushAccel = PUSH_ACCEL;                                 // static collider handle -> surface
     this.meshRay = new THREE.Raycaster(); this.meshRay.firstHitOnly = true; this.meshBoxes = null; this.meshHits = []; this.nv = V(); this.nd = V(); this.nn = V(); this.na = V(); this.nc = V(); this.no = V();
     const w = this.world = new RAPIER.World({ x: 0, y: -9.81, z: 0 }); w.timestep = H;
@@ -342,7 +342,8 @@ export class Rigid {
     it.body.applyImpulseAtPoint({ x: d.x * J, y: d.y * J + (it.kind === 'prop' ? 0.25 : 0), z: d.z * J }, p, true);
     const n = V(h.n.x, h.n.y, h.n.z);
     G.fx.impact(M[2], p, n, 1, it.kind === 'rag' ? 0.7 : 0.8);
-    G.audio.impact(it.kind === 'rag' ? 'flesh' : it.mat === 'bin' || it.mat === 'can' || it.mat === 'tank' ? 'metal' : it.mat === 'clay' ? 'plaster' : it.mat === 'plastic' ? 'plastic' : M[2], { x: p.x, y: p.y, z: p.z }, near);
+    if (it.kind === 'rag') G.audio.bodyHit({ x: p.x, y: p.y, z: p.z }, it.key === 'head' ? 'head' : 'body', near);      // the fallen, shot again
+    else G.audio.impact(it.mat === 'bin' || it.mat === 'can' || it.mat === 'tank' ? 'metal' : it.mat === 'clay' ? 'plaster' : it.mat === 'plastic' ? 'plastic' : M[2], { x: p.x, y: p.y, z: p.z }, near);
     return M[3];
   }
 
@@ -421,6 +422,7 @@ export class Rigid {
     rag.speed = () => { const v = torso.body.linvel(); return Math.hypot(v.x, v.y, v.z); };
     rag.height = () => torso.body.translation().y;
     this.rags.push(rag);
+    this.onRagdoll?.(rag, launch);                                             // (the sound of the collapse)
     return rag;
   }
   endRagdoll(rag, restore = true) {

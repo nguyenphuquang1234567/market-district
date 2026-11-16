@@ -272,11 +272,19 @@ Key bindings live in the same saved settings object (`binds`, including `frag` a
   elbows with anatomical limits, limited ball joints with a little muscle tone elsewhere, a shove from the round that
   killed. The rifle drops as its own body. Bodies react to further hits, and when the soldier respawns the body and rifle
   are left behind as a static mesh (the six most recent).
-- **Audio** — every sound is modelled, not recorded: 59 sounds in 172 takes are computed at boot from physical ingredients
-  (blast pulse, filtered turbulence, modal ringing, grain scatter) — rifle from behind the sights, the same rifle at middle
-  and long range, supersonic cracks, ricochets, strikes on eight materials, boots on six surfaces, rifle handling, brass,
-  eleven prop materials, body falls, pin and lever, grenade and canister knocks, bursts at three ranges, falling debris,
-  the canister's pop and hiss. The engine then places them: speed-of-sound delay, air absorption, muffling by walls
+- **Audio** — almost every sound is modelled, not recorded: 94 sounds in 277 takes are computed at boot (about 0.3 s) from
+  physical ingredients (blast pulse, filtered turbulence, modal ringing, grain scatter) — rifle from behind the sights, the
+  same rifle at middle and long range, supersonic cracks, ricochets, strikes on eight materials, boots on six surfaces, rifle
+  handling, brass, eleven prop materials, body falls, pin and lever, grenade and canister knocks, bursts at three ranges,
+  falling debris, the canister's pop and hiss. A soldier going down has his own set: the round going into him (cloth and
+  body, the plate in his vest, the helmet); his last sound, which is a real recording — 52 clips of men screaming, crying out,
+  dying and groaning from openly licensed packs (`assets/audio/voices.wav`, credits in `ASSETS.md`; a modelled voice stands in
+  if the file is missing): mostly a scream or a death cry, otherwise a short cry of pain or a groan, and from a head shot a cry
+  cut off as it starts, or nothing. The voice carries further than other sounds and is not dipped by your own shot, so it is
+  heard over the rounds still going out after the kill. Then clothes and kit as he crumples, and one knock per ragdoll
+  contact — the trunk with a recorded body thud under it, helmet, knee pad, arm — and the dropped rifle's clatter, each in
+  six kinds by what it lands on (concrete, tile, dirt, boards, sheet metal, cloth) and as loud and sharp as the contact was
+  hard. Killed yourself, you hear it from inside, timed to the falling camera. The engine then places them: speed-of-sound delay, air absorption, muffling by walls
   (three rays, so partly hidden sources still come over and around), HRTF panning, six early reflections whose delays, levels
   and directions are traced from the walls actually around you, three reverberant spaces (street, narrow passage, room)
   crossfaded by the same rays, hearing that dips for a moment after each of your own shots, humming air-conditioning units
@@ -455,6 +463,13 @@ In the browser console, with the dev server running:
 - `G.bench()` — the GPU frame-time benchmark above. `G.report()` — the on-screen pacing, audio-level and input snapshot.
 - `node tools/audio-report.mjs` — renders the sound library outside the browser, writes WAV files to `captures/audio/` for
   listening, and prints length, level, spectral centroid, band balance, attack and decay for each sound.
+- `tools/death-probe.js` (load it in the page) — plays a scripted kill (`kill`: shot from any distance at head, body or limb;
+  `overheard`: behind a wall; `selfKill`: the player) with the real ragdoll, records every audio call, and renders what the
+  player hears through a second copy of the audio engine on an `OfflineAudioContext` to a WAV in `captures/` (HRTF, delays,
+  occlusion, reflections, reverbs, ducking and the master chain all included). `G.audio.stats().played` counts every sound
+  started, so `G.report()` shows which ones a live session actually used.
+- `python3 tools/build-voices.py` — downloads the recorded voice and body-fall packs listed in `ASSETS.md` and rebuilds
+  `assets/audio/voices.wav` and `voices.json` (needs ffmpeg, bsdtar and numpy).
 
 Sound was tuned from those measurements and has not been listened to by a person. Played live on screen, the mix peaked at
 −2.1 dBFS with an RMS of −14.5 to −16.6 dB and no clipped samples; echo delays read 34–72 ms in the main street and 16–42 ms
@@ -507,10 +522,11 @@ src/sounds.js         modelled sound library (pure JS, computed at boot)
 src/audio.js          audio engine: propagation, occlusion, reflections, reverbs, mix
 src/hud.js            HUD and menus
 src/selftest.js       scripted checks and capture set
-tools/                asset downloader, static server, native window (tools/shell), audio-report.mjs, locomotion-probe.js,
-                      perf-probe.js, clip-probe.js, compare-shots.js, compare-montage.py, encode-ktx2.mjs,
+tools/                asset downloader, static server, native window (tools/shell), audio-report.mjs, death-probe.js, build-voices.py,
+                      locomotion-probe.js, perf-probe.js, clip-probe.js, compare-shots.js, compare-montage.py, encode-ktx2.mjs,
                       blender/kit.py (the architectural kit)
 assets/kit/kit.glb    the architectural kit, modelled by tools/blender/kit.py
+assets/audio/         recorded voices of dying soldiers and body thuds, built by tools/build-voices.py
 ```
 
 Assets and licences are listed in `ASSETS.md`.

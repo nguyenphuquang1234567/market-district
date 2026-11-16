@@ -109,6 +109,20 @@ ${manifest.map(m => `| ${m.id} | ${m.kind} | ${m.authors} | https://polyhaven.co
 | --- | --- | --- | --- | --- |
 | soldier.glb | Rigged character + idle/walk/run clips | Mixamo (Adobe), distributed in the three.js repository | Mixamo characters and animations are royalty-free for use in games and other projects; they may not be redistributed as a standalone asset library | https://github.com/mrdoob/three.js/blob/r170/examples/models/gltf/Soldier.glb |
 
+## Recorded sound — OpenGameArt
+
+The voices of dying soldiers and the thud of a body are real recordings, cut from these packs into
+\`assets/audio/voices.wav\` (index of every clip and its source in \`assets/audio/voices.json\`) by \`tools/build-voices.py\`.
+Changes made: clips selected and trimmed, longer takes faded out, mixed to mono, high-passed at 70 Hz, loudness
+evened, resampled to 32 kHz. Re-create with \`python3 tools/build-voices.py\`.
+
+| Recording | Clips used | Author | License | Source |
+| --- | --- | --- | --- | --- |
+| Male Grunt/Yelling sounds | 24 screams, 4 short cries (four men) | HaelDB | CC0 1.0 | https://opengameart.org/content/male-gruntyelling-sounds |
+| 11 male human pain/death sounds | 8 cries of pain, 3 death cries | Michel Baradari (submitted by qubodup) | CC-BY 3.0 | https://opengameart.org/content/11-male-human-paindeath-sounds |
+| grunts of male death and pain | 7 death cries, 6 dying groans | thebardofblasphemy | CC0 1.0 | https://opengameart.org/content/grunts-male-death-and-pain |
+| Body Hitting Ground | 4 body thuds (foley) | dklon | CC-BY 3.0 | https://opengameart.org/content/body-hitting-ground |
+
 ## Code
 
 | Package | License |
@@ -118,7 +132,7 @@ ${manifest.map(m => `| ${m.id} | ${m.kind} | ${m.authors} | https://polyhaven.co
 | meshoptimizer 0.21.0 | MIT |
 | @dimforge/rapier3d-compat 0.21.0 | Apache-2.0 |
 
-Everything else (map, buildings, weapon, hands, palms, cloth, effects, HUD, all audio) is generated procedurally in \`src/\`.
+Everything else (map, buildings, weapon, hands, palms, cloth, effects, HUD, all other audio) is generated procedurally in \`src/\`.
 `;
 await writeFile(join(ROOT, 'ASSETS.md'), md);
 console.log(`Done: ${manifest.length} Poly Haven assets + soldier.glb`);

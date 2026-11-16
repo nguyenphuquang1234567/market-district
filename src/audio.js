@@ -1,5 +1,6 @@
-// Audio engine. Sounds come from the modelled library in sounds.js; this file places them in the district:
-// speed-of-sound delay, air absorption, occlusion by walls, early reflections traced from the listener's actual
+// Audio engine. Sounds come from the modelled library in sounds.js, and the voices of dying men and a body's thud from
+// real recordings (assets/audio, built by tools/build-voices.py; credits in ASSETS.md); this file places them in the
+// district: speed-of-sound delay, air absorption, occlusion by walls, early reflections traced from the listener's actual
 // surroundings, three reverberant spaces (street, narrow passage, room), and an "ear" that closes down after each shot.
 import { rng, clamp } from './util.js';
 import { bakeSounds } from './sounds.js';
@@ -7,19 +8,47 @@ import { bakeSounds } from './sounds.js';
 const IMP = { concrete: 'concrete', plaster: 'concrete', brick: 'concrete', tile: 'concrete', dirt: 'dirt', wood: 'wood', metal: 'metal', fabric: 'fabric', glass: 'glass', flesh: 'flesh', plastic: 'plastic' };
 const STEP = { concrete: 'step_concrete', plaster: 'step_concrete', brick: 'step_concrete', dirt: 'step_dirt', wood: 'step_wood', metal: 'step_metal', tile: 'step_tile', fabric: 'step_fabric', water: 'step_water' };
 const PROP = { plastic: 'prop_plastic', wood: 'prop_wood', bin: 'prop_bin', can: 'prop_can', tank: 'prop_tank', clay: 'prop_clay', cardboard: 'prop_cardboard', rubber: 'prop_rubber', bag: 'prop_bag', wicker: 'prop_wicker', gun: 'prop_gun', frag: 'prop_frag', canister: 'prop_canister' };
+// what a falling body or a dropped rifle lands on, by the struck surface: the sounds come in these six kinds
+const FALL = { concrete: 'concrete', plaster: 'concrete', brick: 'concrete', tile: 'tile', glass: 'tile', dirt: 'dirt', wood: 'wood', plastic: 'wood', metal: 'metal', fabric: 'soft', water: 'soft' };
+const HELM = { concrete: 'helmet_hard', tile: 'helmet_hard', dirt: 'helmet_soft', soft: 'helmet_soft', wood: 'helmet_wood', metal: 'helmet_metal' };
+// a dying man's voice, by kind: the recorded clips (vo_*), the modelled take used if the recordings did not load, how
+// loud it is and how far off it can still be made out (a scream carries)
+const VOICE = {
+  scream: { rec: 'vo_scream', model: 'die_scream', gain: 3.2, recGain: 4.2, reach: 130 }, die: { rec: 'vo_die', model: 'die_cry', gain: 2.9, recGain: 4, reach: 110 },
+  pain: { rec: 'vo_pain', model: 'die_yell', gain: 2.9, recGain: 3.8, reach: 100 }, groan: { rec: 'vo_groan', model: 'die_groan', gain: 1.7, recGain: 3, reach: 60 },
+  head: { rec: 'vo_pain', model: 'die_head', gain: 1.8, recGain: 3.4, reach: 45 },
+};
 const C = 343;      // speed of sound, m/s
 
 export class Audio {
   constructor() {
     this.ctx = null; this.rnd = rng(31337); this.voices = 0; this.muffle = 0; this.raw = bakeSounds(48000);
     this.cast = null; this.blocked = null; this.emitters = []; this.active = []; this.env = { room: 0, narrow: 0, open: 1 }; this.lpos = { x: 0, y: 1.6, z: 0 }; this.envT = 0; this.emitT = 0; this.last = {}; this.foot = false; this.concuss = 0; this.hisses = [];
+    this.fallen = new WeakMap();                                               // per falling body: how many of its knocks were heard, when its trunk last landed
+    this.played = {};                                                          // how many times each sound has been started (in stats())
+    this.recorded = this._loadRecorded();                                      // (resolves to the number of recorded clips, or 0)
   }
+
+  // The recorded voices and thuds: one WAV of clips back to back and its index, decoded in the background at boot into the
+  // same library as the modelled sounds (as vo_<kind>). Until they arrive, or if they cannot be had, the modelled ones play.
+  async _loadRecorded(base = 'assets/audio/') {
+    if (typeof fetch === 'undefined' || typeof OfflineAudioContext === 'undefined') return 0;
+    try {
+      const [idx, data] = await Promise.all([fetch(base + 'voices.json').then(r => r.json()), fetch(base + 'voices.wav').then(r => r.arrayBuffer())]);
+      const all = (await new OfflineAudioContext(1, 1, 48000).decodeAudioData(data)).getChannelData(0), add = {};
+      for (const c of idx.clips) { const a = Math.round(c.start * 48000); (add['vo_' + c.kind] ||= []).push(all.slice(a, a + Math.round(c.length * 48000))); }
+      Object.assign(this.raw, add);
+      if (this.S) for (const [name, vars] of Object.entries(add)) this.S[name] = this._buffers(vars);
+      return idx.clips.length;
+    } catch (e) { console.warn('audio: recorded voices not loaded, using the modelled ones', e); return 0; }
+  }
+  _buffers(vars) { return vars.map(v => { const chs = Array.isArray(v) ? v : [v], b = this.ctx.createBuffer(chs.length, chs[0].length, 48000); chs.forEach((c, i) => b.copyToChannel(c, i)); return b; }); }
 
   start() {
     if (this.ctx) { this.ctx.resume(); return; }
     const ctx = this.ctx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' }), R = this.rnd, sr = ctx.sampleRate;
     this.S = {};
-    for (const [name, vars] of Object.entries(this.raw)) this.S[name] = vars.map(v => { const chs = Array.isArray(v) ? v : [v], b = ctx.createBuffer(chs.length, chs[0].length, 48000); chs.forEach((c, i) => b.copyToChannel(c, i)); return b; });
+    for (const [name, vars] of Object.entries(this.raw)) this.S[name] = this._buffers(vars);
     const len = sr * 2; this.white = ctx.createBuffer(1, len, sr); this.brown = ctx.createBuffer(1, len, sr);
     const w = this.white.getChannelData(0), b = this.brown.getChannelData(0); let acc = 0;
     for (let i = 0; i < len; i++) { w[i] = R() * 2 - 1; acc = (acc + 0.02 * w[i]) / 1.02; b[i] = acc * 3.5; }
@@ -33,7 +62,8 @@ export class Audio {
     // the ear: everything but the player's own rifle dips for a moment after each of its shots
     this.duck = ctx.createGain(); this.duck.connect(this.lp);
     const bus = (g, ducked) => { const n = ctx.createGain(); n.gain.value = g; n.connect(ducked ? this.duck : this.lp); return n; };
-    this.bus = { weapon: bus(1.0, false), world: bus(0.95, true), impact: bus(0.8, true), foley: bus(0.62, true), amb: bus(0.5, true), ui: bus(0.5, false) };
+    this.bus = { weapon: bus(1.0, false), world: bus(0.95, true), impact: bus(0.8, true), foley: bus(0.62, true), amb: bus(0.5, true), ui: bus(0.5, false),
+      voice: bus(1.0, false) };                                                // (a man's scream cuts through the dip after one's own shot)
     // early reflections: six delay lines, one per 60 degree sector, retuned from rays cast around the listener
     this.erIn = ctx.createGain(); this.taps = [];
     for (let i = 0; i < 6; i++) {
@@ -77,7 +107,7 @@ export class Audio {
     if (!this.ctx) return { state: 'not started', sounds: Object.keys(this.raw).length };
     const lv = this.lv, db = v => (v > 0 ? +(20 * Math.log10(v)).toFixed(1) : -120), E = this.env;
     const out = { state: this.ctx.state, sampleRate: this.ctx.sampleRate, peakDb: db(lv.peak), rmsDb: db(Math.sqrt(lv.sq / Math.max(1, lv.n))), clippedSamples: lv.clipped, voices: this.voices, latencyMs: +((this.ctx.baseLatency || 0) * 1000).toFixed(1),
-      space: { room: +E.room.toFixed(2), narrow: +E.narrow.toFixed(2), open: +E.open.toFixed(2) }, echoesMs: this.taps.map(t => (t.d < 68 ? Math.round(2 * t.d / C * 1000) : null)), hums: this.active.length };
+      space: { room: +E.room.toFixed(2), narrow: +E.narrow.toFixed(2), open: +E.open.toFixed(2) }, echoesMs: this.taps.map(t => (t.d < 68 ? Math.round(2 * t.d / C * 1000) : null)), hums: this.active.length, played: { ...this.played } };
     if (reset) this.lv = { peak: 0, sq: 0, n: 0, clipped: 0 };
     return out;
   }
@@ -94,14 +124,15 @@ export class Audio {
     if (o.lp && o.lp < 18000) { const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = Math.max(250, o.lp); f.Q.value = 0.5; src.connect(f); f.connect(g); } else src.connect(g);
     let out = g;
     if (o.pos) {
-      const pn = ctx.createPanner(); pn.panningModel = 'HRTF'; pn.distanceModel = 'inverse'; pn.refDistance = o.ref || 3; pn.rolloffFactor = 1; pn.maxDistance = 500;
+      const pn = ctx.createPanner(); pn.panningModel = 'HRTF'; pn.distanceModel = 'inverse'; pn.refDistance = o.ref || 3; pn.rolloffFactor = o.roll ?? 1; pn.maxDistance = 500;
       pn.positionX.value = o.pos.x; pn.positionY.value = o.pos.y; pn.positionZ.value = o.pos.z; g.connect(pn); out = pn;
     } else if (o.pan) { const sp = ctx.createStereoPanner(); sp.pan.value = o.pan; g.connect(sp); out = sp; }
     out.connect(o.bus || this.bus.foley);
     if (o.rev) { const s = ctx.createGain(); s.gain.value = o.rev; out.connect(s); s.connect(this.revSend); }
     if (o.er) { const s = ctx.createGain(); s.gain.value = o.er; out.connect(s); s.connect(this.erIn); }
     this.voices++; src.onended = () => { this.voices--; };
-    src.start(this.now + (o.delay || 0));
+    const t0 = this.now + (o.delay || 0); src.start(t0); this.played[name] = (this.played[name] || 0) + 1;
+    if (o.cut) { const te = t0 + o.cut; g.gain.setValueAtTime(g.gain.value, te - 0.025); g.gain.linearRampToValueAtTime(0, te); src.stop(te + 0.01); }     // cut off short
     return src;
   }
   // How the path from a source to the listener changes it: arrival delay, air absorption, walls in the way.
@@ -150,13 +181,91 @@ export class Audio {
     const o = { bus: this.bus.impact, ref: 2, gain: clamp(speed / 5, 0.12, 1.2) * clamp(0.5 + mass / 8, 0.5, 1.4), rate: 1.14 - clamp(mass / 28, 0, 0.3), jitter: 0.16, er: 0.2, rev: 0.2 };
     if (this._carry(pos, o) < 45) this._play(PROP[mat] || 'prop_wood', o);
   }
-  bodyfall(pos, speed, part = 'torso') {
+  // ---- a soldier going down ------------------------------------------------------------------------------------------------------
+  // A round going into a soldier: cloth, the body taking it, the plate in his vest, his helmet. Heard from where it struck.
+  bodyHit(pos, zone = 'body', near = true) {
     if (!this.ctx) return;
-    const heavy = part === 'torso' || part === 'pelvis', mid = part === 'head' || part === 'thl' || part === 'thr';
-    const o = { bus: this.bus.impact, ref: 2, gain: clamp(speed / 4, 0.15, 1.1) * (heavy ? 1 : mid ? 0.55 : 0.3), jitter: 0.14, er: 0.15, rev: 0.18 };
+    const o = { bus: this.bus.impact, ref: 2.2, gain: near ? 1.15 : 0.9, er: 0.2, rev: 0.18, jitter: 0.12 };
+    if (this._carry(pos, o) > 60) return;
+    this._play(zone === 'head' ? 'hit_head' : zone === 'body' && this.rnd() < 0.4 ? 'hit_armor' : 'hit_body', o);
+  }
+  // The last sound a man makes, from his own throat — real recordings of men screaming, crying out, dying and groaning:
+  // mostly a scream or a death cry as the round goes in, otherwise a short cry of pain or a groan. Shot through the head
+  // the cry is cut off as it starts, or there is nothing. It comes a beat after the hit (the reflex takes that long), from
+  // his head, and like everything else out there arrives late, dulled by distance and walls, in the street's echo; it is
+  // not dipped by one's own shot. Now and then, once he is down, a last groan goes out of him.
+  death(pos, zone = 'body') {
+    if (!this.ctx) return;
+    const r = this.rnd(), kind = zone === 'head' ? (r < 0.5 ? 'head' : null)
+      : zone === 'blast' ? (r < 0.55 ? 'scream' : r < 0.8 ? 'die' : 'pain')
+      : zone === 'limb' ? (r < 0.45 ? 'scream' : r < 0.7 ? 'pain' : r < 0.85 ? 'die' : 'groan')
+      : r < 0.35 ? 'scream' : r < 0.57 ? 'die' : r < 0.77 ? 'pain' : r < 0.95 ? 'groan' : null;
+    if (!kind) return;
+    const V = VOICE[kind], rec = !!this.S[V.rec];
+    // (a voice is pitched to carry: it falls off with distance more slowly than a thud, rolloff 0.55 instead of 1)
+    const o = { bus: this.bus.voice, ref: 4, roll: 0.55, gain: rec ? V.recGain : V.gain, jitter: 0.07, er: 0.25, rev: 0.24, delay: 0.06 + this.rnd() * 0.1, cut: kind === 'head' && rec ? 0.12 + this.rnd() * 0.1 : 0 };
+    if (this._carry(pos, o) > V.reach) return;
+    this._play(rec ? V.rec : V.model, o);
+    if (zone !== 'head' && zone !== 'blast' && this.rnd() < 0.3) {                // (only heard from close by)
+      const b = { bus: this.bus.world, ref: 1, gain: rec ? 0.35 : 0.15, jitter: 0.06, er: 0.1, rev: 0.12, delay: 1.3 + this.rnd() * 0.9, lp: 2400 };
+      if (this._carry({ x: pos.x, y: Math.max(0.25, pos.y - 1.3), z: pos.z }, b) < 10) this._play(this.S.vo_groan ? 'vo_groan' : 'die_breath', b);
+    }
+  }
+  // The fall itself, before the ground: clothes and kit shifting as the knees go.
+  collapse(pos, launch = 0) {
+    if (!this.ctx) return;
+    const o = { bus: this.bus.world, ref: 1.8, gain: 0.7 + Math.min(launch, 2) * 0.1, jitter: 0.12, er: 0.12, rev: 0.15 };
+    if (this._carry(pos, o) < 30) this._play('collapse', o);
+  }
+  // One part of a falling body meeting what it falls on, from the ragdoll's own contacts: the trunk thumps and shakes the
+  // kit on it, the helmet knocks, a knee goes down on its pad, an arm flops. The sound is the surface's (concrete, tile,
+  // dirt, boards, sheet metal, cloth), as loud and as sharp as the blow was hard. A light part landing just after the
+  // trunk is already in its thump, and one body is heard at most eighteen times.
+  bodyfall(pos, speed, part = 'torso', surf = 'concrete', body = null, t = 0) {
+    if (!this.ctx) return;
+    const trunk = part === 'torso' || part === 'pelvis', head = part === 'head', thigh = part === 'thl' || part === 'thr', shin = part === 'shl' || part === 'shr';
+    // (a body mostly crumples rather than drops, so the trunk lands slowly but heavily: its loudness follows the square root of the speed)
+    const cls = FALL[surf] || 'concrete', soft = cls === 'dirt' || cls === 'soft', v = trunk ? clamp(Math.sqrt(speed / 4), 0.3, 1.15) : clamp(speed / 4, 0.12, 1.25);
+    let st = null;
+    if (body) {
+      st = this.fallen.get(body); if (!st) this.fallen.set(body, st = { n: 0, trunk: -9, kit: 0 });
+      if (st.n >= 18 || (!trunk && !head && t - st.trunk < 0.035)) return;
+    }
+    const o = { bus: this.bus.impact, ref: 2, gain: v, jitter: 0.1, er: 0.15, rev: 0.18, lp: 2500 + 9000 * Math.min(1, v) };
     if (this._carry(pos, o) > 40) return;
-    this._play(heavy || mid ? 'bodyfall' : 'imp_fabric', o);
-    if (heavy) this._play('rattle', { ...o, gain: o.gain * 0.5, delay: o.delay + 0.03 });
+    if (st) { st.n++; if (trunk) st.trunk = t; }
+    if (trunk) {                                                               // (a low thud sounds quieter than a click at the same peak: the trunk gets more)
+      const thud = !!this.S.vo_thud;                                           // the weight coming down, recorded (foley), under the modelled surface
+      if (thud) this._play('vo_thud', { ...o, gain: o.gain * (part === 'torso' ? 2.2 : 1.4), rate: part === 'torso' ? 0.86 : 0.98, lp: soft ? Math.min(o.lp, 1100) : o.lp });
+      this._play('fall_' + cls, { ...o, gain: o.gain * (part === 'torso' ? 2 : 1.3) * (thud ? 0.6 : 1), rate: part === 'torso' ? 1 : 1.12 });
+      if (part === 'torso' && speed > 1.3 && (!st || st.kit++ < 2)) this._play('gear', { ...o, gain: o.gain * 0.8, delay: o.delay + 0.01 + this.rnd() * 0.02 });
+    } else if (head) this._play(HELM[cls], { ...o, gain: o.gain * 0.8 });
+    else if (shin) this._play(soft ? 'limb' : 'knee', { ...o, gain: o.gain * 0.7 });
+    else if (thigh) this._play('fall_' + cls, { ...o, gain: o.gain * 0.7, rate: 1.25 });
+    else this._play('limb', { ...o, gain: o.gain * 0.5 });
+  }
+  // A dropped rifle striking the ground, by what it lands on; louder and sharper the harder it hits.
+  gunDrop(surf, pos, speed, delay = 0) {
+    if (!this.ctx) return;
+    const v = clamp(speed / 4.5, 0.12, 1.25), o = { bus: this.bus.impact, ref: 2, gain: v * 1.1, rate: 1 + (1 - Math.min(1, v)) * 0.05, jitter: 0.12, er: 0.2, rev: 0.2, lp: 3000 + 12000 * Math.min(1, v), delay };
+    if (this._carry(pos, o) < 45) this._play('gun_' + (FALL[surf] || 'concrete'), o);
+  }
+  // Being killed, heard from inside: breath and voice going out through his own head (duller, a little lower), the
+  // collapse, a knee, the rifle hitting the ground in front, then the whole weight with the kit on it, and the helmet.
+  // Timed to the death camera's fall.
+  selfDeath(surf = 'concrete', zone = 'body', gunAt = null) {
+    if (!this.ctx) return;
+    const R = this.rnd, cls = FALL[surf] || 'concrete', near = { bus: this.bus.foley, jitter: 0.06, rev: 0.08 + this.env.room * 0.12, er: 0.08 }, at = d => ({ ...near, delay: d + R() * 0.04 });
+    const r = R(), kind = zone === 'head' ? (r < 0.6 ? 'head' : null) : r < 0.4 ? 'pain' : r < 0.7 ? 'die' : r < 0.9 ? 'groan' : 'scream';
+    if (kind) { const V = VOICE[kind], rec = !!this.S[V.rec]; this._play(rec ? V.rec : V.model, { ...at(0.03), bus: this.bus.voice, gain: rec ? 1.9 : 1.4, lp: 3400, rate: 0.96, cut: kind === 'head' && rec ? 0.15 : 0 }); }
+    this._play('collapse', { ...at(0.02), gain: 0.5 });
+    this._play(cls === 'dirt' || cls === 'soft' ? 'limb' : 'knee', { ...at(0.2), gain: 0.65 });
+    if (gunAt) this.gunDrop(surf, gunAt, 3.4, 0.3 + R() * 0.06);
+    const thud = !!this.S.vo_thud, soft = cls === 'dirt' || cls === 'soft';
+    if (thud) this._play('vo_thud', { ...at(0.42), gain: 1.3, rate: 0.85, lp: soft ? 1100 : 6000 });
+    this._play('fall_' + cls, { ...at(0.42), gain: thud ? 0.65 : 1.05, rate: 0.94 });
+    this._play('gear', { ...at(0.44), gain: 0.45 });
+    this._play(HELM[cls], { ...at(0.5), gain: 0.5, lp: 1800 });
   }
 
   // ---- thrown ordnance -------------------------------------------------------------------------------------------------------------
@@ -255,7 +364,7 @@ export class Audio {
     if (!this.ctx) return; const t = this.now, tone = (f0, f1, d, g, at = 0, ty = 'sine') => this._tone(f0, f1, d, g, t + at, ty);
     if (name === 'hit') { tone(1800, 1500, 0.035, 0.22); tone(5200, 4200, 0.012, 0.1); }
     else if (name === 'head') { tone(2500, 2100, 0.06, 0.26); tone(3700, 3300, 0.05, 0.14, 0.012); }
-    else if (name === 'kill') { tone(880, 880, 0.09, 0.2, 0, 'triangle'); tone(1320, 1320, 0.16, 0.2, 0.07, 'triangle'); }
+    else if (name === 'kill') { tone(620, 330, 0.07, 0.2); tone(1500, 1100, 0.025, 0.08); }     // a heavier, drier tick than a hit: it confirms the kill without playing a tune over the man going down
     else if (name === 'hover') tone(1250, 1250, 0.02, 0.05);
     else if (name === 'click') tone(760, 520, 0.04, 0.14, 0, 'triangle');
     else if (name === 'score') tone(660, 660, 0.08, 0.1, 0, 'triangle');

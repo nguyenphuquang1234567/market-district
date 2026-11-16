@@ -65,9 +65,14 @@ async function start() {
   G.rigid.onImpact = (it, speed, p, other, surf) => {
     const pos = { x: p.x, y: p.y, z: p.z };
     if (it.kind === 'nade') { G.throw.bounce(it, speed, p, other ? (other.kind === 'rag' ? 'fabric' : other.mat === 'wood' || other.mat === 'wicker' || other.mat === 'cardboard' ? 'wood' : other.mat === 'bag' || other.mat === 'rubber' ? 'fabric' : 'metal') : surf); return; }
-    if (it.kind === 'rag') G.audio.bodyfall(pos, speed, it.key); else G.audio.clatter(it.mat, pos, speed, it.mass);
+    // what a body or a dropped rifle came down on: the ground's or wall's own surface, or the thing it struck
+    const under = other ? (other.kind === 'rag' ? 'fabric' : other.mat === 'wood' || other.mat === 'wicker' || other.mat === 'plastic' ? 'wood' : other.mat === 'cardboard' || other.mat === 'bag' || other.mat === 'rubber' ? 'fabric' : other.mat === 'clay' ? 'concrete' : 'metal') : surf || 'concrete';
+    if (it.kind === 'rag') G.audio.bodyfall(pos, speed, it.key, under, it.rag, G.rigid.time);
+    else if (it.kind === 'gun') G.audio.gunDrop(under, pos, speed);
+    else G.audio.clatter(it.mat, pos, speed, it.mass);
     if (it.kind !== 'rag' && speed > 2.5) G.bots.hear(p, 9, -1);
   };
+  G.rigid.onRagdoll = (rag, launch) => { const c = rag.centre(new THREE.Vector3()); G.audio.collapse({ x: c.x, y: c.y, z: c.z }, launch); };
 
   const applySettings = () => {
     const f = R.final, s = G.settings;
@@ -80,6 +85,9 @@ async function start() {
 
   // ---- match flow ------------------------------------------------------------------------------------------------------
   G.onKill = (killer, victim, head, how) => {
+    if (victim === G.player) {                                                 // heard from inside; the rifle lands just in front
+      const P = G.player; G.audio.selfDeath(P.surf, how, { x: P.pos.x + Math.sin(P.yaw) * 0.55, y: P.pos.y + 0.05, z: P.pos.z + Math.cos(P.yaw) * 0.55 });
+    } else { const e = victim.eye(new THREE.Vector3()); G.audio.death({ x: e.x, y: e.y, z: e.z }, how); }
     if (!G.matchLive) return;
     const own = killer && killer !== victim && killer.team === victim.team;      // a blast can catch one's own side: no point to anyone, no credit
     if (killer && killer !== victim) { if (!own) { G.score[killer.team]++; killer.kills++; } } else G.score[1 - victim.team]++;
