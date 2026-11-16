@@ -442,7 +442,7 @@ export function createMaterials() {
     paper: windy(new THREE.MeshStandardMaterial({ map: paperTexture(), alphaTest: 0.45, side: THREE.DoubleSide, roughness: 0.9, vertexColors: true }), 0.05, 0.85),          // piñata tissue
   };
   M.glass.roughnessMap = null; M.glass.roughness = 0.09;
-  for (const k of ['frond', 'cloth_red', 'cloth_green', 'cloth_plain', 'rug', 'cloth_papel', 'cloth_tarp', 'leaves', 'flowers', 'leaf', 'palm_leaf', 'paper']) M[k].userData.noBVH = true;
+  for (const k of ['frond', 'cloth_red', 'cloth_green', 'cloth_plain', 'rug', 'cloth_papel', 'cloth_tarp', 'leaves', 'flowers', 'leaf', 'palm_leaf']) M[k].userData.noBVH = true;   // (paper: piñatas stop a round, as the old glossy ones did)
   // what a bullet sees
   const surf = {
     w_brick: 'brick', planks: 'wood', shutter_wood: 'wood', door: 'wood', shutter_metal: 'metal', corrugated: 'metal',

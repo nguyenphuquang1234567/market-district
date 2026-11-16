@@ -759,14 +759,14 @@ def palm_base(name):
         if z > 0.25: return 0.0
         k = max(math.exp(-((math.atan2(math.sin(a - c), math.cos(a - c))) / 0.18) ** 2) for c in roots)
         return 0.09 * k * (1 - z / 0.25) ** 2
-    trunk_piece(P, 0.0, 1.02, rad, 32, 16, ph, flare=flare)
+    trunk_piece(P, 0.0, 1.02, rad, 24, 16, ph, flare=flare)
     return P.build(smooth=60)
 
 @piece
 def palm_seg(name, ph):
     """A metre of trunk, radius 0.2 (the game scales it to the old taper), its top lip running 2 cm into the next."""
     P = Piece(name, recalc=False)
-    trunk_piece(P, 0.0, 1.02, lambda z: 0.2, 32, 14, ph)
+    trunk_piece(P, 0.0, 1.02, lambda z: 0.2, 24, 14, ph)
     return P.build(smooth=60)
 
 @piece
@@ -864,6 +864,101 @@ def palm_dates(name):
 palm_base('palm_base'); palm_seg('palm_seg_a', 0.0); palm_seg('palm_seg_b', 0.37); palm_crown('palm_crown')
 for n in FRONDS: palm_frond(n)
 palm_dates('palm_dates')
+
+# ---------------------------------------------------------------------------------------------------- laurels -----------
+# Indian laurel figs (laurel de la India), the clipped shade trees of Mexican plazas (quarter.js laurel(): four round the
+# plazuela, two in the atrium), origin at the trunk's foot (the game scales by the old s). A fluted pale trunk with
+# buttress lobes and fused aerial roots, flaring only above the stone planter (0.45 m); limbs from about 2.2 m splitting
+# into branches and twigs; a clipped dome of individual leaves, each a blade folded on its midrib, in clusters over the
+# shell of the old canopy's ellipsoid (centre 4.2 m up, radius 3.0, half-height 1.86), flatter underneath, darker inside
+# and below, the outer leaves freer in the wind. Slots: bark (own texture coordinates, metres), leaf (the leaf atlas).
+LAUREL_C, LAUREL_R, LAUREL_H = Vector((0, 0, 4.2)), 3.0, 1.86
+
+def tube_taper(P, pts, radii, sides, slot, col=None, v0=0.0):
+    """A bar along pts tapering through radii, faces turned outwards, bark coordinates in metres (u round, v along)."""
+    rings, v = [], v0
+    for i, p in enumerate(pts):
+        t = (pts[min(i + 1, len(pts) - 1)] - pts[max(i - 1, 0)]).normalized(); u, w = frame(t)
+        if i: v += (pts[i] - pts[i - 1]).length
+        rings.append([(P.vert(p + (u * math.cos(2 * math.pi * k / sides) + w * math.sin(2 * math.pi * k / sides)) * radii[i]), (k / sides * 2 * math.pi * radii[i], v)) for k in range(sides + 1)])
+    for i in range(len(rings) - 1):
+        for k in range(sides):
+            q = [rings[i][k], rings[i][k + 1], rings[i + 1][k + 1], rings[i + 1][k]]; c = (q[0][0].co + q[2][0].co) / 2
+            P.face_toward([e[0] for e in q], slot, c - (pts[i] + pts[i + 1]) / 2, uvs=[e[1] for e in q], cols=col)
+    return v
+
+@piece
+def laurel(name):
+    r = stream(name); P = Piece(name, recalc=False)
+    bark = lambda sh: (sh, sh, sh, 0.0)
+    lobes, ph = r.choice((6, 7, 8)), r.uniform(0, 6.283)
+    def trunk_r(z, a):                                              # fluted, buttressed above the planter's top, narrowing up
+        base = 0.27 + 0.12 * max(0.0, 1 - (z - 0.45) / 1.3) ** 2 if z > 0.45 else 0.39
+        lobe = (0.07 * max(0.0, 1 - (z - 0.45) / 1.6) + 0.025) * max(0.0, math.cos(lobes * a + ph + 0.4 * z)) ** 2
+        return base + lobe
+    sides, rows = 28, 16
+    grid = []
+    for i in range(rows + 1):
+        z = 2.35 * i / rows
+        grid.append([(P.vert((trunk_r(z, 2 * math.pi * j / sides) * math.cos(2 * math.pi * j / sides), trunk_r(z, 2 * math.pi * j / sides) * math.sin(2 * math.pi * j / sides), z)),
+                      (2 * math.pi * j / sides * 0.3, z)) for j in range(sides + 1)])
+    for i in range(rows):
+        for j in range(sides):
+            q = [grid[i][j], grid[i][j + 1], grid[i + 1][j + 1], grid[i + 1][j]]; c = (q[0][0].co + q[2][0].co) / 2
+            sh = 0.8 + 0.2 * min(1.0, c.z / 1.5)
+            P.face_toward([e[0] for e in q], 'bark', Vector((c.x, c.y, 0)), uvs=[e[1] for e in q], cols=bark(sh))
+    for k in range(5):                                              # aerial roots fused down the trunk
+        a = r.uniform(0, 2 * math.pi); pts = []
+        for i in range(9):
+            z = 2.2 - 1.75 * i / 8; rr = trunk_r(z, a) + 0.012
+            pts.append(Vector((rr * math.cos(a + 0.1 * math.sin(z * 3)), rr * math.sin(a + 0.1 * math.sin(z * 3)), z)))
+        tube_taper(P, pts, [0.025 + 0.012 * i / 8 for i in range(9)], 5, 'bark', bark(0.9))
+    tips = []
+    def grow(start, d, length, r0, r1, depth):
+        pts, p = [start], start.copy()
+        n = 6 if depth == 0 else 4
+        for i in range(n):
+            d = (d + Vector((r.uniform(-0.18, 0.18), r.uniform(-0.18, 0.18), r.uniform(-0.04, 0.12)))).normalized()
+            p = p + d * length / n; pts.append(p.copy())
+        tube_taper(P, pts, [r0 + (r1 - r0) * i / n for i in range(n + 1)], 8 if depth == 0 else (6 if depth == 1 else 4), 'bark', bark(0.85 + 0.05 * depth))
+        if depth == 2: tips.append(p); return
+        for c in range(3 if depth == 0 else 2):
+            q = pts[n - 1 - c] if c < n else pts[-1]
+            out = Vector((q.x, q.y, 0)).normalized() if Vector((q.x, q.y, 0)).length > 1e-3 else Vector((1, 0, 0))
+            nd = (d * 0.5 + out * 0.6 + Vector((r.uniform(-0.4, 0.4), r.uniform(-0.4, 0.4), r.uniform(0.0, 0.5)))).normalized()
+            grow(q, nd, length * r.uniform(0.55, 0.7), r1, r1 * 0.45, depth + 1)
+    for k in range(6):                                              # the limbs, out of the trunk's head
+        a = 2 * math.pi * k / 6 + r.uniform(-0.3, 0.3); z = r.uniform(1.95, 2.3)
+        start = Vector((0.18 * math.cos(a), 0.18 * math.sin(a), z))
+        grow(start, Vector((0.72 * math.cos(a), 0.72 * math.sin(a), 0.7)).normalized(), r.uniform(1.6, 2.0), 0.13, 0.065, 0)
+    def shell(dirn, rho):                                           # a point on the clipped dome: the ellipsoid, its underside flattened
+        p = LAUREL_C + Vector((dirn.x * LAUREL_R, dirn.y * LAUREL_R, dirn.z * LAUREL_H)) * rho
+        if p.z < 2.75: p.z = 2.75 - (2.75 - p.z) * 0.35             # (clipped: the underside is nearly flat)
+        return p
+    nleaf = 0
+    for c in range(960):                                            # clusters of leaves over the shell (960: the perf rule in the plan)
+        u, v = r.uniform(-1, 1), r.uniform(0, 2 * math.pi); dirn = Vector((math.sqrt(1 - u * u) * math.cos(v), math.sqrt(1 - u * u) * math.sin(v), u))
+        rho = r.uniform(0.93, 1.0); centre = shell(dirn, rho)        # (on the outer shell: what is seen from outside)
+        nrm = Vector((dirn.x / LAUREL_R, dirn.y / LAUREL_R, dirn.z / LAUREL_H)).normalized()
+        depth = (rho - 0.93) / 0.07; low = min(1.0, max(0.0, (centre.z - 2.6) / 2.6))
+        cs = r.uniform(0.9, 1.1)
+        for k in range(11):
+            b = centre + Vector((r.uniform(-0.18, 0.18), r.uniform(-0.18, 0.18), r.uniform(-0.13, 0.13)))
+            n = (nrm + Vector((r.uniform(-0.38, 0.38), r.uniform(-0.38, 0.38), r.uniform(-0.38, 0.38)))).normalized()   # (mostly facing out)
+            tdir = n.cross(Vector((r.uniform(-1, 1), r.uniform(-1, 1), r.uniform(-1, 1)))).normalized()
+            if tdir.length < 0.5: continue
+            ln = r.uniform(0.14, 0.19); w = n.cross(tdir).normalized() * ln * 0.24
+            B = b; T = b + tdir * ln; Mid = b + tdir * ln * 0.45 + n * 0.006
+            vs = [P.vert(B), P.vert(Mid - w), P.vert(T), P.vert(Mid + w)]
+            col = r.randrange(4); u0, u1 = 0.25 * col + 0.01, 0.25 * col + 0.24; um = (u0 + u1) / 2
+            sh = (0.6 + 0.4 * depth) * (0.78 + 0.22 * low) * cs; a = 0.25 + 0.65 * depth      # (inner leaves, near the twigs, move least)
+            P.face_toward([vs[0], vs[1], vs[2]], 'leaf', n, uvs=[(um, 0.0), (u0, 0.45), (um, 1.0)], cols=(sh, sh, sh, a))
+            P.face_toward([vs[0], vs[2], vs[3]], 'leaf', n, uvs=[(um, 0.0), (um, 1.0), (u1, 0.45)], cols=(sh, sh, sh, a))
+            nleaf += 1
+    print('PROPS', name, 'leaves', nleaf)
+    return P.build(smooth=60)
+
+laurel('laurel_a'); laurel('laurel_b')
 
 class HeightField:
     """The heap's top surface on a grid, raised as each piece settles, so pieces rest on the mound and on each other."""

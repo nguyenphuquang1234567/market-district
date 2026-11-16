@@ -68,6 +68,14 @@ add(['palm_seg_a', 'palm_seg_b'], { cap: 65000, box: [[-0.25, 0, -0.25], [0.25, 
 add(['palm_crown'], { cap: 65000, box: [[-0.45, -0.65, -0.45], [0.45, 0.4, 0.45]], slots: ['bark'], ownUV: ['bark'] });
 add(['palm_frond_up', 'palm_frond_mid', 'palm_frond_low', 'palm_frond_dry'], { cap: 1300, box: [[-0.1, -2.9, -0.7], [3.5, 1.8, 0.7]], slots: ['leaf'], ownUV: ['leaf'], wind: ['leaf'] });
 add(['palm_dates'], { cap: 65000, box: [[-0.1, -1.0, -0.45], [0.75, 0.1, 0.45]], slots: ['fruit', 'stalk'] });
+// laurels (quarter.js laurel()): origin at the trunk's foot, scaled by the old s; below 0.5 m (inside the stone planter
+// the game draws round it) nothing reaches past 0.75 m from the axis
+const planter = parts => {
+  let bad = 0;
+  for (const p of parts) { const a = p.geometry.attributes.position; for (let i = 0; i < a.count; i++) if (a.getY(i) < 0.5 && Math.hypot(a.getX(i), a.getZ(i)) > 0.75) bad++; }
+  return bad ? `${bad} vertices below 0.5 m outside the planter` : null;
+};
+add(['laurel_a', 'laurel_b'], { cap: 60000, box: [[-3.4, 0, -3.4], [3.4, 6.6, 3.4]], slots: ['bark', 'leaf'], ownUV: ['bark', 'leaf'], wind: ['leaf'], check: planter });
 TOTALS.palm = () => [tris('palm_base') + 13 * Math.max(tris('palm_seg_a'), tris('palm_seg_b')) + tris('palm_crown') + 32 * Math.max(...['up', 'mid', 'low', 'dry'].map(k => tris('palm_frond_' + k))) + 4 * tris('palm_dates'), 65000];
 
 export function builder() {
@@ -103,6 +111,26 @@ export function builder() {
       const B2 = new Builder();                                           // a throw in far() still restores the default
       try { B2.swap('__t', () => { throw new Error('x'); }, () => {}); } catch { /* expected */ }
       if (B2.lodDefault !== null) fail('swap: lodDefault left set after far() threw');
+    } finally { assets.kit = keep; }
+  }
+  { // replace(): the old version's draws are made but nothing of it is kept; the piece is drawn untagged; a missing
+    // piece leaves the old version drawn as before
+    const keep = assets.kit, g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, 0, 1, 0, 0, 0, 1, 0], 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute([0, 0, 1, 0, 0, 1, 0, 0, 1], 3));
+    assets.kit = { ...(keep || {}), __t: [{ geometry: g, slot: 'a' }] };
+    try {
+      if (typeof new Builder().replace !== 'function') fail('Builder.replace is not a function');
+      else {
+        const B = new Builder(); let ran = 0;
+        const ret = B.replace('__t', () => { ran++; quad(B); return 5; }, () => B.kit('__t', new THREE.Matrix4(), { a: 'iron' }, { lod: null }));
+        const ids = [...B.buckets.keys()];
+        if (ran !== 1 || ret !== 5) fail('replace: the old version did not run once / return its value');
+        if (ids.some(i => i.startsWith('concrete|'))) fail('replace: the old version was kept: ' + ids);
+        if (!ids.some(i => /^iron\|\d+$/.test(i))) fail('replace: the piece is not drawn untagged: ' + ids);
+        if (B.mute !== false) fail('replace: mute not restored');
+        const C = new Builder(); C.replace('__missing__', () => quad(C), () => fail('replace(missing): detailed() called'));
+        if (![...C.buckets.keys()].some(i => /^concrete\|\d+$/.test(i))) fail('replace(missing): the old version is not drawn');
+      }
     } finally { assets.kit = keep; }
   }
   { // geom passes its lod; under lodDefault an untagged draw takes it, an explicit null stays untagged

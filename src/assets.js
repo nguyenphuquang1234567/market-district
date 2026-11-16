@@ -196,7 +196,8 @@ export async function loadAssets(renderer, onProgress) {
       assets.kit[name] = parts;
     }
   }, e => { if (!optional) throw e; console.warn(`${url} not loaded (${e.message || e}): the old geometry stands in`); });
-  jobs.push(loadKit('assets/kit/kit.glb'), loadKit('assets/kit/props.glb', true));
+  jobs.push(loadKit('assets/kit/kit.glb'));
+  if (new URLSearchParams(location.search).get('detail') !== '0') jobs.push(loadKit('assets/kit/props.glb', true));   // (?detail=0: the old geometry only, for A/B timings)
   jobs.push(gl.loadAsync('assets/models/soldier.glb').then(g => {
     const body = g.scene.getObjectByName('vanguard_Mesh');
     g.allyMap = blueInsignia(body.material.map);

@@ -192,6 +192,19 @@ export class Builder {
     return ret;
   }
 
+  // The same for small, numerous things (pebbles, sacks, chiles, piñatas, poles): old() runs only to make its random draws
+  // (what it draws is discarded) and detailed() draws the modelled piece untagged, out to the distance its material is
+  // drawn to anyway; a near/far pair for each would add two meshes, and their draw calls, to every cell they are in. With a
+  // piece missing old() is drawn as before. old() may only draw: a collider or detail it recorded would be lost.
+  replace(names, old, detailed) {
+    if (![].concat(names).every(n => assets.kit?.[n])) return old();
+    const mute = this.mute; this.mute = true;
+    let ret;
+    try { ret = old(); } finally { this.mute = mute; }
+    detailed();
+    return ret;
+  }
+
   // Place a scanned prop. Returns its footprint size (after scale) so callers can add a collider.
   // fixed: draw it as scenery even if its kind is loose clutter (a box that belongs to an obstacle's collision box).
   prop(name, x, y, z, rot = 0, scale = 1, tilt = null, solid = null, fixed = false) {

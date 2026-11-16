@@ -107,15 +107,15 @@ export function dressKit({ B, M, rnd, buildings, anchors, low, rs = null }) {
     }
   }
 
-  // a sack of spice: a plain lathe far off, near it a modelled burlap sack (tools/blender/props.py) with its mouth rolled down
+  // a sack of spice: a modelled burlap sack (tools/blender/props.py) with its mouth rolled down, where the old lathe stood
   function sack(x, y, z, col) {
     const pr = [[0, 0], [0.2, 0], [0.265, 0.1], [0.275, 0.26], [0.25, 0.42], [0.265, 0.47], [0.24, 0.5], [0.2, 0.46]].map(([a, b]) => new THREE.Vector2(a, b));
     const s = rnd.range(0.85, 1.15), yaw = rnd() * 6.28, m = mat4(V(x, y, z), yaw, V(s, s * rnd.range(0.85, 1.1), s)), v = fhash(x, z, 23) < 0.5 ? 'sack_a' : 'sack_b';
-    B.swap(v, () => {
+    B.replace(v, () => {
       B.geom('burlap', new THREE.LatheGeometry(pr, 12), m, { uvScale: 3 });
       const top = new THREE.CircleGeometry(0.215 * s, 12); top.rotateX(-Math.PI / 2);
       B.geom('matte', top, mat4(V(x, y + 0.455 * s * 0.92, z)), { color: col });
-    }, () => B.kit(v, m, { burlap: 'burlap', spice: 'matte' }, { lod: 'near', slot: { burlap: { tile: 0.6 }, spice: { color: col, tile: 0.3 } } }));
+    }, () => B.kit(v, m, { burlap: 'burlap', spice: 'matte' }, { lod: null, slot: { burlap: { tile: 0.6 }, spice: { color: col, tile: 0.3 } } }));
     B.detail(x, y + 0.23 * s, z, 0.48 * s, 0.46 * s, 0.48 * s, 0, 'fabric');
   }
 
@@ -378,7 +378,7 @@ export function dressKit({ B, M, rnd, buildings, anchors, low, rs = null }) {
   const PINATA = [[1.0, 0.22, 0.55], [1.0, 0.78, 0.12], [0.2, 0.68, 1.0], [0.6, 0.26, 0.86], [0.24, 0.8, 0.36], [1.0, 0.42, 0.12]];
   const pinata = (p, hang, R = rs) => {
     const s = R.range(0.8, 1.15), c0 = R.int(0, PINATA.length - 1);
-    B.swap('pinata', () => {                                                   // far off, an icosahedron and cones; near, tissue fringe and streamers (tools/blender/props.py)
+    B.replace('pinata', () => {                                                // tissue fringe and streamers (tools/blender/props.py) where the old icosahedron and cones were
       B.geom('glossy', new THREE.IcosahedronGeometry(0.2 * s, 1), mat4(p), { color: PINATA[c0] });
       const dirs = [[0, 1, 0], [0, -1, 0], [1, 0.1, 0], [-1, 0.1, 0], [0, 0.1, 1], [0, 0.1, -1], [0.6, -0.4, 0.6]];
       dirs.forEach(([x, y, z], k) => {
@@ -390,7 +390,7 @@ export function dressKit({ B, M, rnd, buildings, anchors, low, rs = null }) {
     }, () => {                                                                 // every part its own slot, tinted with the colours the old one drew
       const ph = fhash(p.x, p.y, p.z, 41) * 6.28, paper = col => ({ uv: 'own', tile: 1, color: col, wind: ph }), slot = { body: paper(PINATA[c0]) };
       for (let k = 0; k < 7; k++) { slot['c' + k] = paper(PINATA[(c0 + k + 1) % PINATA.length]); slot['sa' + k] = paper(PINATA[(c0 + k + 3) % PINATA.length]); slot['sb' + k] = paper(PINATA[(c0 + k + 4) % PINATA.length]); }
-      B.kit('pinata', mat4(p, 0, s), Object.fromEntries(Object.keys(slot).map(k => [k, 'paper'])), { lod: 'near', slot });
+      B.kit('pinata', mat4(p, 0, s), Object.fromEntries(Object.keys(slot).map(k => [k, 'paper'])), { lod: null, slot });
     });
     rod(p.clone().add(V(0, 0.2 * s, 0)), V(p.x, hang, p.z), 0.004, 'cable');
   };
@@ -398,7 +398,7 @@ export function dressKit({ B, M, rnd, buildings, anchors, low, rs = null }) {
   const ristra = (top, len, R = rs) => {
     rod(top, top.clone().add(V(0, -len, 0)), 0.005, 'cable');
     const n = Math.floor(len / 0.032), gs = [];
-    B.swap('ristra_seg', () => {                                               // far off, cones; near, modelled chiles three to a length of cord (tools/blender/props.py)
+    B.replace('ristra_seg', () => {                                            // modelled chiles three to a length of cord (tools/blender/props.py) where the old cones were
       for (let i = 0; i < n; i++) {
         const a = i * 2.39, r = 0.035 + R.range(0, 0.015), y = top.y - 0.06 - i * 0.032, g = R.range(0.55, 0.85); gs.push(g);
         const cone = new THREE.ConeGeometry(0.017, R.range(0.09, 0.13), 6); cone.rotateX(Math.PI + R.range(-0.4, 0.4)); cone.rotateZ(R.range(-0.5, 0.5));
@@ -408,7 +408,7 @@ export function dressKit({ B, M, rnd, buildings, anchors, low, rs = null }) {
       for (let j = 0; j < Math.round(n / 3); j++) {                         // (each length 5 cm above its first old chile: those were centred on their points)
         const g = gs[3 * j];
         B.kit('ristra_seg', mat4(V(top.x, top.y - 0.01 - j * 0.096, top.z), fhash(top.x, top.z, j, 43) * 6.28), { chile: 'glossy', stem: 'matte' },
-          { lod: 'near', slot: { chile: { color: [g * 0.62, g * 0.06, g * 0.04] }, stem: { color: [0.42, 0.4, 0.2] } } });
+          { lod: null, slot: { chile: { color: [g * 0.62, g * 0.06, g * 0.04] }, stem: { color: [0.42, 0.4, 0.2] } } });
       }
     });
   };
@@ -623,11 +623,12 @@ export function dress(ctx) {
     K.signs(anchors, { shop: 0.9, shutter: 0.45, door: 0.22 });
   }
   for (const [x, z] of [[-26.6, -19.2], [25.6, 19.4], [-5.2, -58.2], [5.3, 58.3], [-31.4, 21.4]]) {    // utility poles
-    B.swap('pole_old', () => {                                               // far off, a rod, a plank and a box; near, the modelled pole (tools/blender/props.py)
-      rod(V(x, 0, z), V(x, 8.6, z), 0.11, 'planks', [0.45, 0.4, 0.35]); B.collide(x, 4.3, z, 0.26, 8.6, 0.26, 0, 'wood');
+    B.replace('pole_old', () => {                                            // the modelled pole (tools/blender/props.py) where the old rod, plank and box were
+      rod(V(x, 0, z), V(x, 8.6, z), 0.11, 'planks', [0.45, 0.4, 0.35]);
       B.box('planks', x, 8.0, z, 1.7, 0.1, 0.1, { rot: 0.3, tile: 1, color: [0.45, 0.4, 0.35] }); B.box('metal_white', x + 0.2, 6.6, z, 0.4, 0.6, 0.35, { tile: 1 });
     }, () => B.kit('pole_old', mat4(V(x, 0, z)), { wood: 'planks', iron: 'iron', tank: 'metal_white', porcelain: 'glossy' },
-      { lod: 'near', slot: { wood: { uv: 'own', tile: 1, color: [0.45, 0.4, 0.35] }, iron: {}, tank: { tile: 1 }, porcelain: { color: [0.9, 0.92, 0.95] } } }));
+      { lod: null, slot: { wood: { uv: 'own', tile: 1, color: [0.45, 0.4, 0.35] }, iron: {}, tank: { tile: 1 }, porcelain: { color: [0.9, 0.92, 0.95] } } }));
+    B.collide(x, 4.3, z, 0.26, 8.6, 0.26, 0, 'wood');
     for (let i = 0; i < 4; i++) cable(V(x + rnd.range(-0.7, 0.7), 8.05, z), wallNear(x, z, i), rnd.range(0.3, 0.8));
   }
 
@@ -647,7 +648,7 @@ export function dress(ctx) {
   for (let i = 0; i < 20; i++) { B.mute = false; const p = edgePoint(rnd.range(0.15, 0.45)); B.prop(rnd.pick(['bush_a', 'bush_b', 'bush_c']), p.x, p.y - 0.02, p.z, rnd() * 6.28, rnd.range(0.8, 1.5)); }
   B.mute = false;
   for (const [x, z, s] of [[-17.6, 16.2, 1.0], [-7.2, -16.2, 0.8], [-30.6, -57.6, 1.0], [30.4, 57.4, 0.9], [-26.2, 57.6, 0.8], [5.2, -62.6, 0.7], [-45, 0, 1.2]]) B.prop(rnd.pick(['shrub_a', 'shrub_b', 'shrub_c', 'shrub_d']), x, 0, z, rnd() * 6.28, s);
-  // pebbles: a box far off, near it one of four modelled stones (tools/blender/props.py) placed by the box's own matrix
+  // pebbles: one of four modelled stones (tools/blender/props.py) placed by the old box's own matrix
   const peb = new THREE.BoxGeometry(1, 1, 1), PEBBLES = ['pebble_a', 'pebble_b', 'pebble_c', 'pebble_d'];
   for (let i = 0; i < 320; i++) {
     B.mute = false;
@@ -655,7 +656,7 @@ export function dress(ctx) {
     const key = rnd.pick(['concrete', 'concrete', 'w_brick']), color = [g, g * 0.97, g * 0.92];
     const m = mat4(V(p.x, p.y + s * 0.3, p.z), rnd() * 6.28, V(s * rnd.range(0.8, 2), s * rnd.range(0.4, 0.9), s), rnd.range(-0.5, 0.5), rnd.range(-0.5, 0.5));
     const v = PEBBLES[Math.floor(fhash(p.x, p.z, 17) * 4)];
-    B.swap(v, () => B.geom(key, peb, m, { uvScale: 0.2, color }), () => B.kit(v, m, { stone: key }, { lod: 'near', tile: 0.35, color }));
+    B.replace(v, () => B.geom(key, peb, m, { uvScale: 0.2, color }), () => B.kit(v, m, { stone: key }, { lod: null, tile: 0.35, color }));
   }
   for (let i = 0; i < 70; i++) {
     B.mute = false;

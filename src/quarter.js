@@ -11,6 +11,7 @@ import * as THREE from 'three';
 import { rng } from './util.js';
 import { dressKit } from './dressing.js';
 import { signUV, SIGNS } from './mexico.js';
+import { hash as fhash } from './facades.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 const UP = V(0, 1, 0);
@@ -322,26 +323,32 @@ export function buildQuarter({ B, M, buildings, anchors, ghosts, gates, architec
   }
 
   // =========================================== pieces ================================================================
-  // An Indian laurel fig, the shade tree of Mexican plazas: a stout pale trunk and a dense, rounded crown of leaf cards.
+  // An Indian laurel fig, the shade tree of Mexican plazas. Far off, a fluted trunk, limb rods and leaf cards; near, the
+  // modelled fig (tools/blender/props.py): a buttressed trunk, branching limbs and a clipped dome of single leaves.
   function laurel(x, z, s = 1) {
-    const h = 2.6 * s, top = V(x, h, z);
-    const trunk = new THREE.CylinderGeometry(0.24 * s, 0.4 * s, h, 10, 3); const tp = trunk.attributes.position;
-    for (let i = 0; i < tp.count; i++) { const a = Math.atan2(tp.getZ(i), tp.getX(i)); tp.setX(i, tp.getX(i) * (1 + 0.12 * Math.sin(a * 3))); }
-    trunk.computeVertexNormals();
-    B.geom('bark', trunk, mat4(V(x, h / 2, z)), { color: [0.78, 0.74, 0.68], uvScale: 1.5, uvScaleY: 1 });
-    for (let k = 0; k < 4; k++) { const a = k * 1.6 + rnd() * 0.5; rod(V(x, h * 0.85, z), V(x + Math.cos(a) * 1.5 * s, h + 0.9 * s, z + Math.sin(a) * 1.5 * s), 0.11 * s, 'bark', [0.75, 0.72, 0.66]); }
-    B.collide(x, h / 2, z, 0.6 * s, h, 0.6 * s, 0, 'wood');
-    const R = 3.0 * s, cy = h + 1.6 * s, n = 64;
-    for (let i = 0; i < n; i++) {                                               // cards scattered over an ellipsoid shell, facing outward, plus a few inside
-      const yv = 1 - (i + 0.5) / n * 1.7, rr = Math.sqrt(Math.max(0, 1 - yv * yv)), a = i * 2.39996 + rnd() * 0.3, depth = i % 5 === 0 ? 0.5 : 0.92;
-      const p = V(x + Math.cos(a) * rr * R * depth, cy + yv * R * 0.62 * depth, z + Math.sin(a) * rr * R * depth), sz = rnd.range(1.5, 2.2) * s;
-      const g = new THREE.PlaneGeometry(sz, sz, 2, 2); g.lookAt(V(Math.cos(a) * rr, yv * 0.6 + 0.2, Math.sin(a) * rr));
-      g.rotateZ(rnd() * 6.28);
-      const tint = rnd.range(0.8, 1.05), wind = [];
-      for (let k = 0; k < g.attributes.position.count; k++) wind.push(0.5 + rnd() * 0.5);
-      B.geom('leaves', g, mat4(p), { color: [tint * 0.95, tint, tint * 0.85], xf: k => [wind[k], i * 0.7, 0] });
-    }
+    const v = fhash(x, z, 60) < 0.5 ? 'laurel_a' : 'laurel_b';
+    B.swap(v, () => {
+      const h = 2.6 * s, top = V(x, h, z);
+      const trunk = new THREE.CylinderGeometry(0.24 * s, 0.4 * s, h, 10, 3); const tp = trunk.attributes.position;
+      for (let i = 0; i < tp.count; i++) { const a = Math.atan2(tp.getZ(i), tp.getX(i)); tp.setX(i, tp.getX(i) * (1 + 0.12 * Math.sin(a * 3))); }
+      trunk.computeVertexNormals();
+      B.geom('bark', trunk, mat4(V(x, h / 2, z)), { color: [0.78, 0.74, 0.68], uvScale: 1.5, uvScaleY: 1 });
+      for (let k = 0; k < 4; k++) { const a = k * 1.6 + rnd() * 0.5; rod(V(x, h * 0.85, z), V(x + Math.cos(a) * 1.5 * s, h + 0.9 * s, z + Math.sin(a) * 1.5 * s), 0.11 * s, 'bark', [0.75, 0.72, 0.66]); }
+      B.collide(x, h / 2, z, 0.6 * s, h, 0.6 * s, 0, 'wood');
+      const R = 3.0 * s, cy = h + 1.6 * s, n = 64;
+      for (let i = 0; i < n; i++) {                                               // cards scattered over an ellipsoid shell, facing outward, plus a few inside
+        const yv = 1 - (i + 0.5) / n * 1.7, rr = Math.sqrt(Math.max(0, 1 - yv * yv)), a = i * 2.39996 + rnd() * 0.3, depth = i % 5 === 0 ? 0.5 : 0.92;
+        const p = V(x + Math.cos(a) * rr * R * depth, cy + yv * R * 0.62 * depth, z + Math.sin(a) * rr * R * depth), sz = rnd.range(1.5, 2.2) * s;
+        const g = new THREE.PlaneGeometry(sz, sz, 2, 2); g.lookAt(V(Math.cos(a) * rr, yv * 0.6 + 0.2, Math.sin(a) * rr));
+        g.rotateZ(rnd() * 6.28);
+        const tint = rnd.range(0.8, 1.05), wind = [];
+        for (let k = 0; k < g.attributes.position.count; k++) wind.push(0.5 + rnd() * 0.5);
+        B.geom('leaves', g, mat4(p), { color: [tint * 0.95, tint, tint * 0.85], xf: k => [wind[k], i * 0.7, 0] });
+      }
+    }, () => B.kit(v, mat4(V(x, 0, z), fhash(x, z, 61) * 6.28, s), { bark: 'bark', leaf: 'leaf' },
+      { lod: 'near', slot: { bark: { uv: 'own', tile: 1.5, color: [0.78, 0.74, 0.68] }, leaf: { uv: 'own', tile: 1, wind: fhash(x, z, 62) * 6.28 } } }));
   }
+
   function bench(x, z, rot) {
     const c = Math.cos(rot), s = Math.sin(rot), o = { rot, tile: 1.2, color: [0.98, 0.88, 0.84] };
     B.box('cantera', x, 0.42, z, 1.9, 0.08, 0.5, o);
@@ -400,12 +407,13 @@ export function buildQuarter({ B, M, buildings, anchors, ghosts, gates, architec
   function poles() {
     const near = (x, z) => buildings.filter(b => !b.ghost).map(b => { const qx = Math.min(b.x1, Math.max(b.x0, x)), qz = Math.min(b.z1, Math.max(b.z0, z)); return { b, qx, qz, d: Math.hypot(qx - x, qz - z) }; }).filter(o => o.d > 1).sort((p, q) => p.d - q.d);
     for (const [x, z] of [[51.6, -40], [51.6, 3], [51.6, 44], [95.6, -24], [95.6, 26], [66, -57.4], [66, 57.4]]) {
-      B.swap('pole_quarter', () => {                                         // far off, a rod, a plank and a drum; near, the modelled pole (tools/blender/props.py)
-        rod(V(x, 0, z), V(x, 8.8, z), 0.12, 'planks', [0.45, 0.4, 0.35]); B.collide(x, 4.4, z, 0.28, 8.8, 0.28, 0, 'wood');
+      B.replace('pole_quarter', () => {                                      // the modelled pole (tools/blender/props.py) where the old rod, plank and drum were
+        rod(V(x, 0, z), V(x, 8.8, z), 0.12, 'planks', [0.45, 0.4, 0.35]);
         B.box('planks', x, 8.2, z, 1.8, 0.1, 0.1, { tile: 1, color: [0.45, 0.4, 0.35] });
         B.geom('metal_white', new THREE.CylinderGeometry(0.28, 0.28, 0.75, 12), mat4(V(x + 0.35, 6.9, z)), { color: [0.62, 0.64, 0.62] });
       }, () => B.kit('pole_quarter', mat4(V(x, 0, z)), { wood: 'planks', iron: 'iron', tank: 'metal_white', porcelain: 'glossy' },
-        { lod: 'near', slot: { wood: { uv: 'own', tile: 1, color: [0.45, 0.4, 0.35] }, iron: {}, tank: { tile: 1, color: [0.62, 0.64, 0.62] }, porcelain: { color: [0.9, 0.92, 0.95] } } }));
+        { lod: null, slot: { wood: { uv: 'own', tile: 1, color: [0.45, 0.4, 0.35] }, iron: {}, tank: { tile: 1, color: [0.62, 0.64, 0.62] }, porcelain: { color: [0.9, 0.92, 0.95] } } }));
+      B.collide(x, 4.4, z, 0.28, 8.8, 0.28, 0, 'wood');
       for (const [i, o] of near(x, z).slice(0, 5).entries()) cable(V(x + (i - 2) * 0.35, 8.25, z), V(o.qx, o.b.H - rnd.range(0.3, 1.0), o.qz), rnd.range(0.3, 0.8));
     }
   }

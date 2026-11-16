@@ -206,7 +206,7 @@ export function flowersTexture() {
 // Laurel (Ficus microcarpa) leaves: four blades side by side, one per quarter of the width (u = i / 4 ... (i + 1) / 4),
 // glossy dark green with a paler midrib and fine veins, on transparent ground. A blade fills its column, base at the bottom.
 export function leafTexture() {
-  const R = rng(6161), tones = [[38, 78, 30], [48, 92, 34], [70, 112, 40], [56, 84, 32]];
+  const R = rng(6161), tones = [[46, 94, 36], [58, 110, 41], [84, 134, 48], [67, 101, 38]];      // (about as bright as the old leaf cards)
   const t = canvasTexture(256, 256, (g, W, H) => {
     g.clearRect(0, 0, W, H);
     const cw = W / 4;

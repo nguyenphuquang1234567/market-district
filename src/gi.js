@@ -47,7 +47,7 @@ async function occluders(world, M) {
   const avg = textureAverages();
   const use = world.group.children.filter(m => {
     const n = m.name;
-    if (n.startsWith('d_') || FOLIAGE.includes(n) || n === 'paper' || n === 'cable' || n === 'iron' || n === 'bulb') return false;
+    if (n.startsWith('d_') || FOLIAGE.includes(n) || n === 'cable' || n === 'iron' || n === 'bulb') return false;
     return /^(cloth_|rug)/.test(n) || n === 'ground' || m.castShadow;
   });
   await avg.prepare([M.ground.map, giUniformsGround(M, 'tC2'), giUniformsGround(M, 'tC3'), ...use.map(m => m.material.map)]);
