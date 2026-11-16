@@ -20,6 +20,9 @@ const add = (names, spec) => { for (const n of names) PIECES[n] = spec; };
 add(['pebble_a', 'pebble_b', 'pebble_c', 'pebble_d'], { cap: 80, min: 40, box: [[-0.5, -0.5, -0.5], [0.5, 0.5, 0.5]], slots: ['stone'] });
 // spice sacks (dressing.js sack()): on the ground at the origin, the old lathe's 0.275 m radius and 0.5 m height
 add(['sack_a', 'sack_b'], { cap: 2500, box: [[-0.28, 0, -0.28], [0.28, 0.52, 0.28]], slots: ['burlap', 'spice'] });
+// rubble heaps (dressing.js rubble()): a unit heap, stretched by the game to each heap's radius and height; inside the
+// old keep-out (1.25 r) and under 1.15 h
+add(['rubble_a', 'rubble_b', 'rubble_c'], { cap: 12000, box: [[-1.25, 0, -1.25], [1.25, 1.15, 1.25]], slots: ['concrete', 'brick', 'gravel'] });
 // name -> () => [triangles, cap], for things drawn as several pieces
 export const TOTALS = {};
 
@@ -109,6 +112,34 @@ export function totals() {
   const out = [];
   for (const [name, f] of Object.entries(TOTALS)) { const [t, cap] = f(); if (!(t <= cap)) out.push(`${name}: ${t} triangles together, cap ${cap}`); }
   return out;
+}
+
+// Is this kit mesh the version on screen from p (the renderer's own test, render.js cull, without the distance cut)?
+function shownFrom(G, o, p) {
+  const u = o.userData; if (!u.kitLod) return true;
+  const b = u.lodBox, kn = G.R.kitNear * G.R.lodScale, dx = Math.max(b[0] - p.x, 0, p.x - b[2]), dz = Math.max(b[1] - p.z, 0, p.z - b[3]);
+  return (dx * dx + dz * dz < kn * kn) === (u.kitLod === 'near');
+}
+// Rounds fired by the player's own code (player.fire) from eye at points scattered round `at`: how many impacts land in
+// front of what is drawn there, on a version of a piece that is not on screen. { shots, impacts, floating, worst (m) }.
+export function impacts(G, eye, at, n = 60, spread = 1.2) {
+  const THREE = G.THREE, cam = G.R.camera, rec = [], keep = G.fx.impact, ray = new THREE.Raycaster();
+  G.fx.impact = (surf, end) => { rec.push(end.clone()); };
+  try {
+    for (let i = 0; i < n; i++) {
+      const a = i * 2.39996, d = spread * Math.sqrt((i + 0.5) / n);
+      cam.position.set(eye.x, eye.y, eye.z); cam.lookAt(at.x + Math.cos(a) * d, at.y, at.z + Math.sin(a) * d); cam.updateMatrixWorld();
+      G.player.fire(0, 0, 0);
+    }
+  } finally { G.fx.impact = keep; }
+  let floating = 0, worst = 0;
+  for (const end of rec) {                                                  // the first surface on screen along the same line
+    const dir = end.clone().sub(eye), len = dir.length(); ray.set(eye, dir.normalize()); ray.far = len + 2;
+    const hit = ray.intersectObjects(G.world.rayMeshes, false).filter(h => shownFrom(G, h.object, eye)).sort((p, q) => p.distance - q.distance)[0];
+    const gap = hit ? hit.distance - len : 2;
+    if (gap > 0.03) { floating++; worst = Math.max(worst, gap); }
+  }
+  return { shots: n, impacts: rec.length, floating, worst: +worst.toFixed(3) };
 }
 
 export const report = () => ({ builder: builder(), pieces: pieces(), totals: totals() });

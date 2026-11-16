@@ -124,7 +124,7 @@ export class HUD {
     ray.far = far;
     hits.length = 0;
     ray.intersectObjects(world.rayMeshes, false, hits);
-    return hits.length > 0 || !!rigid.ray(origin, direction, far) || this.G.throw.smoked(origin, this.smokeEnd.copy(origin).addScaledVector(direction, far));      // smoke hides a soldier as a wall does
+    return hits.some(h => this.G.R.kitShown(h.object)) || !!rigid.ray(origin, direction, far) || this.G.throw.smoked(origin, this.smokeEnd.copy(origin).addScaledVector(direction, far));      // smoke hides a soldier as a wall does
   }
 
   minimap() {

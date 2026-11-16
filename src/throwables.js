@@ -475,7 +475,7 @@ export class Throwables {
     for (let i = 0; i < count && f.left > 0; i++, f.left--) {
       const a = R() * 6.283, y = R() * 1.15 - 0.2, r = Math.sqrt(Math.max(0, 1 - Math.min(1, y * y))), dir = V(Math.cos(a) * r, Math.min(1, y), Math.sin(a) * r).normalize();
       this.ray.set(f.o, dir); this.ray.far = 26;
-      const hits = this.ray.intersectObjects(G.world.rayMeshes, false); let h = null; for (const q of hits) if (!h || q.distance < h.distance) h = q;
+      const hits = this.ray.intersectObjects(G.world.rayMeshes, false); let h = null; for (const q of hits) if (G.R.kitShown(q.object) && (!h || q.distance < h.distance)) h = q;
       const far = h ? h.distance : 26, ph = G.rigid.ray(f.o, dir, far);
       if (ph) { const it = ph.item, J = Math.min(1.6, 0.4 + it.mass * 0.25), at = V(f.o.x + dir.x * ph.t, f.o.y + dir.y * ph.t, f.o.z + dir.z * ph.t); it.body.applyImpulseAtPoint({ x: dir.x * J, y: dir.y * J, z: dir.z * J }, at, true); G.fx.impact(it.kind === 'rag' ? 'fabric' : 'metal', at, V(ph.n.x, ph.n.y, ph.n.z), f.lit, 0.6); continue; }
       if (!h || h.distance < 0.35) continue;

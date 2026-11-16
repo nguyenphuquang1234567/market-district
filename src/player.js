@@ -119,7 +119,7 @@ export class Player {
     // world (exact render geometry through the BVH) and characters
     this.ray.set(origin, dir); this.ray.far = 400;
     const hits = this.ray.intersectObjects(G.world.rayMeshes, false);
-    let wt = 400, wh = null; for (const h of hits) if (h.distance < wt) { wt = h.distance; wh = h; }
+    let wt = 400, wh = null; for (const h of hits) if (h.distance < wt && G.R.kitShown(h.object)) { wt = h.distance; wh = h; }   // (what is on screen: a kit piece's other version is not)
     let victim = null, vt = wt, zone = 'body';
     const foes = G.bots.list;
     for (const b of foes) { if (!b.alive || b.team === this.team) continue; const h = rayActor(origin, dir, b, vt); if (h) { vt = h.t; victim = b; zone = h.zone; } }

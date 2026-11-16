@@ -252,7 +252,7 @@ export class Rigid {
   // Nearest drawn surface along a ray that the solver has no box for (a box there means the solver deals with it).
   _meshHit(list, o, d, far) {
     const rc = this.meshRay, hits = this.meshHits; rc.set(o, d); rc.far = far; hits.length = 0; rc.intersectObjects(list, false, hits);
-    let best = null; for (const h of hits) if (h.distance <= far && (!best || h.distance < best.distance)) best = h;
+    let best = null; for (const h of hits) if (h.distance <= far && this.G.R.kitShown(h.object) && (!best || h.distance < best.distance)) best = h;
     if (!best) return null;
     const box = this.world.castRay(new RAPIER.Ray({ x: o.x, y: o.y, z: o.z }, { x: d.x, y: d.y, z: d.z }), best.distance + 0.05, true, undefined, grp(0xffff, G_STATIC));
     return box ? null : best;
@@ -261,7 +261,7 @@ export class Rigid {
     const o = this.no.set(p.x, p.y + 0.05, p.z); this.meshRay.set(o, this.nc.set(0, -1, 0)); this.meshRay.far = reach + 0.05; this.meshHits.length = 0;
     if (!this.meshBoxes) this._near({}, o);
     const list = []; for (const e of this.meshBoxes) { const b = e.b; if (o.x > b.min.x - 0.1 && o.x < b.max.x + 0.1 && o.y > b.min.y - 0.4 && o.y < b.max.y + 0.4 && o.z > b.min.z - 0.1 && o.z < b.max.z + 0.1) list.push(e.m); }
-    this.meshRay.intersectObjects(list, false, this.meshHits); let y = null; for (const h of this.meshHits) if (y === null || h.point.y > y) y = h.point.y;
+    this.meshRay.intersectObjects(list, false, this.meshHits); let y = null; for (const h of this.meshHits) if (this.G.R.kitShown(h.object) && (y === null || h.point.y > y)) y = h.point.y;
     return y;
   }
   _nadeMesh(it) {

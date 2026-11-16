@@ -71,16 +71,20 @@ export function dressKit({ B, M, rnd, buildings, anchors, low, rs = null }) {
       p.setXYZ(i, a * k, b * (0.7 + 0.5 * Math.abs(Math.sin(a * 5 + c * 4))), c * k);
     }
     g.computeVertexNormals();
-    const yaw = rnd() * 6.28, kz = rnd.range(0.7, 1);
-    B.geom('rubble', g, mat4(V(x, -0.03, z), yaw, V(r, h, r * kz)), { uvScale: r * 0.9, color: [0.62, 0.57, 0.5] });
-    // a stepped core for clutter to fetch up against, and the whole skirt kept clear when dressing
-    B.detail(x, h * 0.25, z, r * 1.5, h * 0.5, r * kz * 1.5, yaw, 'concrete'); B.detail(x, h * 0.45, z, r * 0.9, h * 0.9, r * kz * 0.9, yaw, 'concrete');
-    B.keepOut(x, h * 0.5, z, r * 2.5, h + 0.2, r * kz * 2.5, yaw);
-    for (let i = 0; i < 7 + r * 5; i++) {
-      const a = rnd() * 6.28, d = r * Math.sqrt(rnd()) * 1.25, s = rnd.range(0.1, 0.42), hh = Math.max(0, h * (1 - d / r)) * 0.8;
-      B.geom(rnd.pick(['concrete', 'w_brick', 'w_damaged', 'dirty']), new THREE.BoxGeometry(s * rnd.range(0.8, 1.8), s * rnd.range(0.4, 0.9), s),
-        mat4(V(x + Math.cos(a) * d, hh + s * 0.2, z + Math.sin(a) * d), rnd() * 6.28, 1, rnd.range(-0.6, 0.6), rnd.range(-0.6, 0.6)), { uvScale: 0.35, color: [0.9, 0.88, 0.84] });
-    }
+    const yaw = rnd() * 6.28, kz = rnd.range(0.7, 1), m = mat4(V(x, -0.03, z), yaw, V(r, h, r * kz)), v = ['rubble_a', 'rubble_b', 'rubble_c'][Math.floor(fhash(x, z, 31) * 3)];
+    // far off, a noise-bent dome and box chunks; near, a modelled heap of broken slab, brick and plaster (tools/blender/props.py)
+    B.swap(v, () => {
+      B.geom('rubble', g, m, { uvScale: r * 0.9, color: [0.62, 0.57, 0.5] });
+      // a stepped core for clutter to fetch up against, and the whole skirt kept clear when dressing
+      B.detail(x, h * 0.25, z, r * 1.5, h * 0.5, r * kz * 1.5, yaw, 'concrete'); B.detail(x, h * 0.45, z, r * 0.9, h * 0.9, r * kz * 0.9, yaw, 'concrete');
+      B.keepOut(x, h * 0.5, z, r * 2.5, h + 0.2, r * kz * 2.5, yaw);
+      for (let i = 0; i < 7 + r * 5; i++) {
+        const a = rnd() * 6.28, d = r * Math.sqrt(rnd()) * 1.25, s = rnd.range(0.1, 0.42), hh = Math.max(0, h * (1 - d / r)) * 0.8;
+        B.geom(rnd.pick(['concrete', 'w_brick', 'w_damaged', 'dirty']), new THREE.BoxGeometry(s * rnd.range(0.8, 1.8), s * rnd.range(0.4, 0.9), s),
+          mat4(V(x + Math.cos(a) * d, hh + s * 0.2, z + Math.sin(a) * d), rnd() * 6.28, 1, rnd.range(-0.6, 0.6), rnd.range(-0.6, 0.6)), { uvScale: 0.35, color: [0.9, 0.88, 0.84] });
+      }
+    }, () => B.kit(v, m, { concrete: 'concrete', brick: 'brick', plaster: 'w_damaged', iron: 'iron', gravel: 'rubble' },
+      { lod: 'near', slot: { concrete: { tile: 1.0, color: [0.9, 0.88, 0.84] }, brick: { tile: 5, color: [0.95, 0.9, 0.86] }, plaster: { tile: 1.0 }, iron: {}, gravel: { tile: 1.6, color: [0.62, 0.57, 0.5] } } }));
     anchors.push({ kind: 'stain', x, z, r: r * 2.2, s: 0.35 });
   }
 
