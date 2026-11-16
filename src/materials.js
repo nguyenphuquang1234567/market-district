@@ -402,6 +402,7 @@ export function createMaterials() {
     concrete: weather(pbr('concrete_wall_008'), 0.8), dirty: weather(pbr('dirty_concrete'), 0.6, 0.6),
     cracked: weather(pbr('cracked_concrete'), 0, 0.8), pavement: weather(pbr('concrete_pavement'), 0, 0.9),
     rubble: pbr('rubble'), tiles: pbr('interior_tiles'), interior: pbr('plastered_wall_04'),
+    gravel: pbr('sandy_gravel'),                                                         // the rubble heaps' bed of mortar dust and sand
     planks: pbr('weathered_planks'), shutter_wood: pbr('wood_shutter'), door: pbr('rough_pine_door'),
     shutter_metal: pbr('rusty_metal_shutter', { metal: true }), corrugated: pbr('corrugated_iron_02', { metal: true }),
     metal_white: pbr('rusty_metal_02', { metal: true }), metal_green: pbr('green_metal_rust', { metal: true }),
@@ -447,7 +448,7 @@ export function createMaterials() {
   const surf = {
     w_brick: 'brick', planks: 'wood', shutter_wood: 'wood', door: 'wood', shutter_metal: 'metal', corrugated: 'metal',
     metal_white: 'metal', metal_green: 'metal', metal_plate: 'metal', iron: 'metal', glass: 'glass', burlap: 'fabric',
-    ground: 'dirt', bark: 'wood', cable: 'fabric', plastic: 'wood', rubble: 'concrete', tiles: 'concrete', dark: 'none',
+    ground: 'dirt', bark: 'wood', cable: 'fabric', plastic: 'wood', rubble: 'concrete', gravel: 'dirt', tiles: 'concrete', dark: 'none',
     cobble: 'concrete', terracotta: 'concrete', brick: 'brick', cantera: 'concrete', shutter_paint: 'metal', roof_tin: 'metal', sign: 'plaster',
     talavera: 'concrete', cloth_papel: 'fabric', cloth_tarp: 'fabric', leaves: 'wood', bulb: 'glass', paint: 'plaster', flowers: 'wood', glossy: 'wood', teja: 'concrete',
     room: 'glass', glassblock: 'glass', leaf: 'wood', palm_leaf: 'wood', paper: 'fabric',

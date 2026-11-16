@@ -14,7 +14,7 @@
 # (0 at a trunk, 1 at a leaf tip). Every piece draws from its own random stream, named after it, so reshaping one
 # never changes another.
 import bpy, bmesh, math, random, sys, os, zlib
-from mathutils import Vector, Matrix, noise
+from mathutils import Vector, Matrix, Quaternion, noise
 
 argv = sys.argv[sys.argv.index('--') + 1:] if '--' in sys.argv else []
 OUT = argv[0] if argv and not argv[0].startswith('--') else 'assets/kit/props.glb'
@@ -46,6 +46,7 @@ class Piece:
     """A mesh under construction. Every face carries a material slot, texture coordinates and an RGBA colour per corner."""
     def __init__(self, name, recalc=True):
         self.name, self.bm, self.slots, self.recalc = name, bmesh.new(), [], recalc
+        self.keep = set()                                                # slots wound by hand (open surfaces), left out of the recalculation
         self.uv = self.bm.loops.layers.uv.new('UVMap')
         self.col = self.bm.loops.layers.float_color.new('Col')
 
@@ -85,7 +86,7 @@ class Piece:
 
     def build(self, smooth=40):
         me = bpy.data.meshes.new(self.name)
-        if self.recalc: bmesh.ops.recalc_face_normals(self.bm, faces=self.bm.faces[:])
+        if self.recalc: bmesh.ops.recalc_face_normals(self.bm, faces=[f for f in self.bm.faces if self.slots[f.material_index] not in self.keep])
         self.bm.to_mesh(me); self.bm.free()
         for s in self.slots: me.materials.append(mat(s))
         me.color_attributes.active_color = me.color_attributes['Col']
@@ -360,13 +361,16 @@ def cart(name):
 cart('cart')
 
 # ---------------------------------------------------------------------------------------------------- rubble heaps -----
-# A heap of broken masonry (dressing.js rubble(), eight of them). Built for a nominal heap 1.5 m in radius and 0.62 m
-# high, then scaled into a unit heap (radius 1, height 1, base on the ground at the origin) that the game stretches to
-# each heap (r 1.1-1.8 m, h 0.5-0.75 m: every heap within 15 % of the nominal proportions), inside the old keep-out
-# (1.25 r) and under 1.15 h. A dusty mound with a skirt of grit, and settled on it and on each other: slabs of broken
-# concrete (the broken edges darker, the aggregate showing) with bent rebar out of them, whole and half bricks, bricks
-# still mortared together, flakes of plaster painted on one face, and loose stones. Slots: concrete, brick, plaster,
-# iron (rebar), gravel (the mound).
+# A heap of a fallen brick wall (dressing.js rubble(), eight of them). Built for a nominal heap 1.5 m in radius and
+# 0.62 m high, then scaled into a unit heap (radius 1, height 1, base on the ground at the origin) that the game
+# stretches to each heap (r 1.1-1.8 m, h 0.5-0.75 m: every heap within 15 % of the nominal proportions), inside the old
+# keep-out (1.25 r) and under 1.15 h. A low bed of mortar dust and sand with a lobed outline; tipped onto it and settled
+# by Blender's rigid-body simulation, so each rests on the bed or on the others: whole, half and chipped bricks, bricks
+# still mortared together (some with the wall's painted plaster on a face), and plaster flakes; then crumbs of brick
+# over the settled heap and out past its edge. (No lumps of concrete: grey slabs read as stones among the bricks.)
+# Ambient occlusion is baked into the vertex colours, so the pieces sit in their own contact shadows. Slots: brick (own
+# texture coordinates: each face one brick of the game's brick texture, BRICK_RECTS), concrete (mortar), plaster,
+# gravel (the bed: wound to face up by hand, as recalculating cannot know which way an open surface faces).
 RUBBLE_R, RUBBLE_H = 1.5, 0.62
 PAINT = [(0.95, 0.82, 0.55), (0.92, 0.9, 0.82), (0.72, 0.8, 0.62), (0.88, 0.6, 0.45), (0.96, 0.93, 0.86)]   # ochre, cream, sage, terracotta, white
 
@@ -961,106 +965,289 @@ def laurel(name):
 
 laurel('laurel_a'); laurel('laurel_b')
 
-class HeightField:
-    """The heap's top surface on a grid, raised as each piece settles, so pieces rest on the mound and on each other."""
-    def __init__(self, f, ext=1.95, cell=0.04):
-        self.ext, self.cell, self.n = ext, cell, int(2 * ext / cell) + 1
-        self.h = [[f(-ext + i * cell, -ext + j * cell) for j in range(self.n)] for i in range(self.n)]
-    def _cells(self, x, y, rad):
-        i0, i1 = max(0, int((x - rad + self.ext) / self.cell)), min(self.n - 1, int((x + rad + self.ext) / self.cell) + 1)
-        j0, j1 = max(0, int((y - rad + self.ext) / self.cell)), min(self.n - 1, int((y + rad + self.ext) / self.cell) + 1)
-        for i in range(i0, i1 + 1):
-            for j in range(j0, j1 + 1):
-                if math.hypot(-self.ext + i * self.cell - x, -self.ext + j * self.cell - y) <= rad: yield i, j
-    def top(self, x, y, rad):
-        return max((self.h[i][j] for i, j in self._cells(x, y, rad)), default=0.0)
-    def lay(self, x, y, rad, z):
-        for i, j in self._cells(x, y, rad): self.h[i][j] = max(self.h[i][j], z)
+BRICK_L, BRICK_W, BRICK_H, JOINT = 0.215, 0.1025, 0.065, 0.01
+# Single bricks of the game's brick texture (assets/tex/castle_brick_02_red/diff.jpg) as (u0, v0, u1, v1), v up: each the
+# inside of one brick, its joints left out (found by colour, brick red against the greyer mortar, and kept only where no
+# joint runs across). A loose brick's faces each show one of them, not a patch of wall.
+BRICK_RECTS = [(0.4141, 0.959, 0.4629, 0.9844), (0.4102, 0.9102, 0.5078, 0.9395), (0.5215, 0.9141, 0.584, 0.9355), (0.0879, 0.8672, 0.1426, 0.8926),
+    (0.3867, 0.8672, 0.4609, 0.8926), (0.4805, 0.8672, 0.5352, 0.8926), (0.6289, 0.8633, 0.6797, 0.8848), (0.7852, 0.8633, 0.8398, 0.8848),
+    (0.8379, 0.7676, 0.8887, 0.793), (0.7715, 0.7715, 0.8184, 0.7891), (0.8457, 0.6758, 0.8965, 0.7012), (0.0664, 0.6758, 0.1172, 0.6973),
+    (0.4531, 0.5371, 0.541, 0.5664), (0.0039, 0.4512, 0.0469, 0.4727), (0.3848, 0.4043, 0.4551, 0.4297), (0.4727, 0.4043, 0.5312, 0.4297),
+    (0.3125, 0.4043, 0.3633, 0.4258), (0.6289, 0.4043, 0.6797, 0.4258), (0.9336, 0.4082, 0.9844, 0.4258), (0.7793, 0.4043, 0.8301, 0.4258),
+    (0.7012, 0.4082, 0.7598, 0.4219), (0.3926, 0.3145, 0.4629, 0.3379), (0.1641, 0.3086, 0.2188, 0.334), (0.4883, 0.3125, 0.543, 0.334),
+    (0.7168, 0.3125, 0.7715, 0.334), (0.2461, 0.3125, 0.2969, 0.3301), (0.4082, 0.2227, 0.4648, 0.252), (0.5625, 0.2266, 0.6172, 0.248),
+    (0.7207, 0.2266, 0.7812, 0.2461), (0.3633, 0.1836, 0.4297, 0.2051), (0.4082, 0.1387, 0.4688, 0.1641), (0.7227, 0.1348, 0.7754, 0.1602),
+    (0.793, 0.1309, 0.8516, 0.1602), (0.7188, 0.0879, 0.7949, 0.1133), (0.6387, 0.043, 0.6934, 0.0723), (0.4141, 0.0469, 0.4648, 0.0723),
+    (0.7168, 0.043, 0.7715, 0.0645)]
+
+def brick_uv(rect, L):
+    """Own texture coordinates for a brick of length L (x along, y across, z up from 0): every face one brick of the
+    texture; a header or a half brick takes the share of it that its length is of a whole brick's."""
+    u0, v0, u1, v1 = rect
+    def uv(c, n):
+        ax = max(range(3), key=lambda a: abs(n[a]))
+        if ax == 1: s, t = (c.x + L / 2) / BRICK_L, c.z / BRICK_H
+        elif ax == 0: s, t = (c.y + BRICK_W / 2) / BRICK_L, c.z / BRICK_H
+        else: s, t = (c.x + L / 2) / BRICK_L, (c.y + BRICK_W / 2) / BRICK_W
+        s, t = min(1.0, max(0.0, s)), min(1.0, max(0.0, t))
+        return (u0 + (u1 - u0) * s, v0 + (v1 - v0) * t)
+    return uv
+
+def brick_col(r):
+    """A brick's shade; the faces of a fresh break (a chip, the end of a half) the clay inside, more orange."""
+    s = r.uniform(0.78, 1.1); base = (s, s * r.uniform(0.95, 1.0), s * r.uniform(0.9, 0.98), 1.0); fresh = (s * 1.08, s * 0.86, s * 0.74, 1.0)
+    return lambda c, n: base if max(abs(n.x), abs(n.y), abs(n.z)) > 0.985 else fresh
+
+def ccw(pts):
+    """The polygon pts [(x, y)] anticlockwise (as prism() takes it)."""
+    a = sum(pts[i][0] * pts[(i + 1) % len(pts)][1] - pts[(i + 1) % len(pts)][0] * pts[i][1] for i in range(len(pts)))
+    return pts if a > 0 else pts[::-1]
+
+class Body:
+    """One rigid thing on the heap for the simulation (a brick, bricks mortared together, a plaster flake): parts
+    (bmesh, slot, col, uv, local matrix) in its own frame, merged into the piece where the simulation leaves it."""
+    def __init__(self, mass):
+        self.mass, self.parts = mass, []
+    def add(self, bm, slot, col=None, uv=None, local=None):
+        self.parts.append((bm, slot, col, uv, local or Matrix.Identity(4))); return self
+    def verts(self):
+        return [local @ v.co for bm, slot, col, uv, local in self.parts for v in bm.verts]
+    def center(self):                                                  # (the simulation turns a body about its origin)
+        pts = self.verts(); c = sum(pts, Vector()) / len(pts); T = Matrix.Translation(-c)
+        self.parts = [(bm, s, col, uv, T @ local) for bm, s, col, uv, local in self.parts]
+    def free(self):
+        for bm, *_ in self.parts: bm.free()
+
+def worn(bm, r, amt):
+    """Nudge every corner a little, so no edge is ruler-straight."""
+    for v in bm.verts: v.co += Vector((r.uniform(-amt, amt) for _ in range(3)))
+
+def chip(bm, r, depth):
+    """Knock a corner off a convex bmesh: cut across the corner farthest along a random direction and close the cut."""
+    c = sum((v.co for v in bm.verts), Vector()) / len(bm.verts)
+    d = Vector((r.uniform(-1, 1), r.uniform(-1, 1), r.uniform(-1, 1))).normalized()
+    corner = max(bm.verts, key=lambda v: (v.co - c).dot(d)).co.copy(); n = ((corner - c).normalized() + d * 0.5).normalized()
+    res = bmesh.ops.bisect_plane(bm, geom=bm.verts[:] + bm.edges[:] + bm.faces[:], dist=1e-6, plane_co=corner - n * depth, plane_no=n, clear_outer=True)
+    edges = [e for e in res['geom_cut'] if isinstance(e, bmesh.types.BMEdge) and e.is_valid]
+    if len(edges) >= 3:
+        try: bmesh.ops.contextual_create(bm, geom=edges)
+        except Exception: pass
+    hole = [e for e in bm.edges if e.is_boundary]
+    if hole: bmesh.ops.holes_fill(bm, edges=hole, sides=0)
+
+def brick_bm(r, half=False):
+    """A brick, or half a brick broken across (x along, y across, z up from 0): worn, now and then chipped; the broken
+    end of a half rough."""
+    L = BRICK_L / 2 if half else BRICK_L
+    bm = cube((-L / 2, -BRICK_W / 2, 0), (L / 2, BRICK_W / 2, BRICK_H)); worn(bm, r, 0.0025)
+    if half: bmesh.ops.poke(bm, faces=[max(bm.faces, key=lambda f: f.calc_center_median().x)], offset=r.uniform(-0.012, 0.012))
+    for _ in range(r.choice((0, 1, 1, 2))): chip(bm, r, r.uniform(0.012, 0.03))
+    return bm, L
+
+def brick_body(r, half):
+    bm, L = brick_bm(r, half)
+    return Body(1.2 if half else 2.4).add(bm, 'brick', brick_col(r), brick_uv(r.choice(BRICK_RECTS), L))
+
+def clump_body(r, courses, per, plaster):
+    """Bricks still mortared together, a piece of the wall: courses in running bond, the mortar beds set back from the
+    faces, the top course often short; now and then the wall's plaster on one face."""
+    b = Body(2.4 * courses * per); pitch = BRICK_L + JOINT
+    for row in range(courses):
+        z = row * (BRICK_H + JOINT); off = pitch / 2 * (row % 2)
+        n = per if row < courses - 1 or r.random() < 0.4 else per - 1
+        xs = [-(per - 1) * pitch / 2 + k * pitch + off for k in range(n)]
+        for x in xs:
+            half = row % 2 and x == xs[-1]                               # (the offset row ends in a half brick)
+            bm, L = brick_bm(r, half)
+            b.add(bm, 'brick', brick_col(r), brick_uv(r.choice(BRICK_RECTS), L), Matrix.Translation((x - (L - BRICK_L) / 2 if half else x, 0, z)))
+        if row:
+            g = r.uniform(0.78, 0.92)
+            b.add(cube((min(xs) - BRICK_L / 2, -BRICK_W / 2 + 0.006, z - JOINT), (max(xs) + BRICK_L / 2, BRICK_W / 2 - 0.006, z)), 'concrete', (g, g * 0.97, g * 0.92, 1.0))
+    if plaster:                                                        # a patch of the wall's plaster, painted
+        w, h = per * pitch, courses * (BRICK_H + JOINT); cx, cz = r.uniform(-w / 6, w / 6), h * r.uniform(0.4, 0.6)
+        angs = sorted(r.uniform(0, 6.283) for _ in range(r.randint(6, 9)))
+        pts = ccw([(max(-w / 2, min(w / 2, cx + w * 0.5 * r.uniform(0.55, 1.0) * math.cos(a))), -max(0.0, min(h, cz + h * 0.5 * r.uniform(0.55, 1.0) * math.sin(a)))) for a in angs])
+        paint = r.choice(PAINT)
+        b.add(prism(pts, 0.0, 0.012), 'plaster', lambda c, nn: (*(paint if nn.z > 0.7 else (0.9, 0.88, 0.84)), 1.0),
+              local=Matrix.Translation((0, BRICK_W / 2, 0)) @ Matrix.Rotation(-math.pi / 2, 4, 'X'))
+    return b
+
+def flake_body(r):
+    """A flake of plaster, painted on its outer face."""
+    size = r.uniform(0.05, 0.14); paint = r.choice(PAINT)
+    angs = sorted(r.uniform(0, 6.283) for _ in range(r.randint(5, 7)))
+    bm = prism([(size * r.uniform(0.5, 1.0) * math.cos(a), size * r.uniform(0.5, 1.0) * math.sin(a)) for a in angs], 0.0, 0.012)
+    return Body(0.15).add(bm, 'plaster', lambda c, nn: (*(paint if nn.z > 0.7 else (0.92, 0.9, 0.86)), 1.0))
+
+def frag_bm(r, s):
+    """A crumb of brick or mortar: the hull of seven points on a flattened ball."""
+    bm = bmesh.new()
+    for _ in range(7):
+        a, z = r.uniform(0, 6.283), r.uniform(-1, 1); q = math.sqrt(1 - z * z)
+        bm.verts.new((s * q * math.cos(a) * r.uniform(0.7, 1.0), s * 0.8 * q * math.sin(a) * r.uniform(0.7, 1.0), s * 0.55 * z))
+    bmesh.ops.convex_hull(bm, input=bm.verts[:])
+    for v in [v for v in bm.verts if not v.link_faces]: bm.verts.remove(v)
+    return bm
+
+def mound(r, off, peak):
+    """The heap's bed of mortar dust and sand: highest a little off centre, its outline lobed, running out to the
+    ground. Returns the vertex rings (nominal metres; ring 0 the centre), the height at (x, y) and the outline radius."""
+    ph = [r.uniform(0, 6.283) for _ in range(3)]
+    R = lambda a: 1.32 * (1 + 0.09 * math.sin(2 * a + ph[0]) + 0.06 * math.sin(3 * a + ph[1]) + 0.04 * math.sin(5 * a + ph[2]))
+    cx, cy = r.uniform(-0.2, 0.2), r.uniform(-0.2, 0.2)
+    def height(x, y):
+        a = math.atan2(y, x); d = math.hypot(x, y) / R(a)
+        if d >= 1: return 0.0
+        dc = math.hypot(x - cx * (1 - d), y - cy * (1 - d)) / R(a)
+        z = (peak * max(0.0, 1 - dc * dc) ** 1.1 + 0.02 * (1 - d)) * (1 + 0.25 * noise.noise(Vector((x * 1.3, y * 1.3, 0)) + off))
+        return max(0.0, z + 0.012 * noise.noise(Vector((x * 6, y * 6, 0)) + off))
+    rings, segs = [0.0, 0.07, 0.16, 0.26, 0.37, 0.48, 0.59, 0.69, 0.78, 0.86, 0.92, 0.96, 1.0], 48
+    grid = []
+    for t in rings:
+        ring = []
+        for j in range(segs if t else 1):
+            a = 2 * math.pi * j / segs; x, y = t * R(a) * math.cos(a), t * R(a) * math.sin(a)
+            ring.append(Vector((x, y, height(x, y) if t < 1 else 0.0)))
+        grid.append(ring)
+    return grid, height, R
+
+def mound_faces(grid):
+    """The quads (and the centre's triangles) of the mound's rings, as lists of grid positions."""
+    out, segs = [], len(grid[1])
+    for i in range(len(grid) - 1):
+        for j in range(segs):
+            k = (j + 1) % segs
+            out.append([(0, 0), (1, j), (1, k)] if i == 0 else [(i, j), (i, k), (i + 1, k), (i + 1, j)])
+    return out
+
+def spawn(bodies, height, r):
+    """Starting places above the mound, as if tipped from above: each body put where it would start lowest out of a few
+    tries (filling the hollows first, denser towards the middle), lifted over any already placed."""
+    placed, out = [], []
+    for b in bodies:
+        rad = max(p.length for p in b.verts()); best = None
+        for _ in range(30):
+            d = 1.15 * r.random() ** 0.8; a = r.uniform(0, 6.283); x, y = d * math.cos(a), d * math.sin(a)
+            z = height(x, y) + rad + 0.01
+            for px, py, pz, pr in placed:
+                if math.hypot(x - px, y - py) < rad + pr: z = max(z, pz + pr + rad + 0.005)
+            if best is None or z < best[2]: best = (x, y, z)
+        placed.append((*best, rad))
+        u1, u2, u3 = r.random(), r.random(), r.random()                # (a uniformly random turn)
+        q = Quaternion((math.sqrt(u1) * math.cos(2 * math.pi * u3), math.sqrt(1 - u1) * math.sin(2 * math.pi * u2),
+                        math.sqrt(1 - u1) * math.cos(2 * math.pi * u2), math.sqrt(u1) * math.sin(2 * math.pi * u3)))
+        out.append(Matrix.Translation(best) @ q.to_matrix().to_4x4())
+    return out
+
+def simulate(bodies, starts, grid, frames=150):
+    """Drop the bodies onto the mound with Blender's rigid-body simulation (each as the hull of its parts, the mound a
+    passive mesh); returns where each comes to rest."""
+    def obj(name, verts, faces):
+        me = bpy.data.meshes.new(name); me.from_pydata(verts, [], faces); ob = bpy.data.objects.new(name, me); scene.collection.objects.link(ob); return ob
+    index = {}
+    gverts = []
+    for i, ring in enumerate(grid):
+        for j, c in enumerate(ring): index[(i, j)] = len(gverts); gverts.append(c)
+    ground = obj('rb_ground', gverts, [[index[p] for p in f] for f in mound_faces(grid)])
+    floor = obj('rb_floor', [(-4, -4, 0), (4, -4, 0), (4, 4, 0), (-4, 4, 0)], [[0, 1, 2, 3]])     # (the street round the heap)
+    obs = []
+    for b, M in zip(bodies, starts):
+        bm = bmesh.new()
+        for p in b.verts(): bm.verts.new(p)
+        bmesh.ops.convex_hull(bm, input=bm.verts[:])
+        me = bpy.data.meshes.new('rb'); bm.to_mesh(me); bm.free()
+        ob = bpy.data.objects.new('rb', me); ob.matrix_world = M; scene.collection.objects.link(ob); obs.append(ob)
+    bpy.ops.rigidbody.world_add(); w = scene.rigidbody_world
+    w.substeps_per_frame, w.solver_iterations = 10, 20; w.point_cache.frame_start, w.point_cache.frame_end = 1, frames
+    scene.frame_start, scene.frame_end = 1, frames
+    for gob in (ground, floor):
+        with bpy.context.temp_override(object=gob, active_object=gob, selected_objects=[gob]): bpy.ops.rigidbody.object_add(type='PASSIVE')
+        g = gob.rigid_body; g.collision_shape, g.friction, g.use_margin, g.collision_margin = 'MESH', 0.95, True, 0.001
+    for o in bpy.context.selected_objects: o.select_set(False)
+    for ob in obs: ob.select_set(True)
+    bpy.context.view_layer.objects.active = obs[0]
+    bpy.ops.rigidbody.objects_add(type='ACTIVE')
+    for ob, b in zip(obs, bodies):
+        rb = ob.rigid_body; rb.collision_shape, rb.mass, rb.friction, rb.restitution = 'CONVEX_HULL', b.mass, 0.8, 0.0
+        rb.use_margin, rb.collision_margin, rb.linear_damping, rb.angular_damping = True, 0.002, 0.35, 0.6
+    for f in range(1, frames + 1): scene.frame_set(f)
+    dg = bpy.context.evaluated_depsgraph_get()
+    rest = [ob.evaluated_get(dg).matrix_world.copy() for ob in obs]
+    bpy.ops.rigidbody.world_remove()
+    for ob in obs + [ground, floor]: me = ob.data; bpy.data.objects.remove(ob, do_unlink=True); bpy.data.meshes.remove(me)
+    if bpy.data.collections.get('RigidBodyWorld'): bpy.data.collections.remove(bpy.data.collections['RigidBodyWorld'])
+    scene.frame_set(1)
+    return rest
+
+def bake_ao(P, S, rays=16, dist=0.3, strength=0.8):
+    """Ambient occlusion into the vertex colours, measured at the real size (S: the piece's frame to metres): the
+    crevices and the ground under each piece darker, so nothing looks set down from above."""
+    from mathutils.bvhtree import BVHTree
+    bm = P.bm.copy(); bm.transform(S); bm.normal_update(); bm.verts.index_update(); P.bm.verts.index_update()
+    tree = BVHTree.FromBMesh(bm)
+    dirs = [Vector((math.sqrt((k + 0.5) / rays) * math.cos(k * 2.39996), math.sqrt((k + 0.5) / rays) * math.sin(k * 2.39996), math.sqrt(1 - (k + 0.5) / rays))) for k in range(rays)]
+    ao = []
+    for v in bm.verts:
+        n = v.normal if v.normal.length > 0.5 else Vector((0, 0, 1)); q = Vector((0, 0, 1)).rotation_difference(n); o = v.co + n * 0.002; hit = 0
+        for d in dirs:
+            w = q @ d
+            if o.z + w.z * dist < 0 or tree.ray_cast(o, w, dist)[0] is not None: hit += 1     # (the ground counts)
+        ao.append(1 - strength * hit / rays)
+    bm.free()
+    for f in P.bm.faces:
+        for l in f.loops:
+            c = l[P.col]; a = ao[l.vert.index]; l[P.col] = (c[0] * a, c[1] * a, c[2] * a, c[3])
 
 @piece
 def rubble(name, mix):
     r = stream(name); off = Vector((r.uniform(0, 50), r.uniform(0, 50), r.uniform(0, 50)))
-    P = Piece(name); U = Matrix.Diagonal((1 / RUBBLE_R, 1 / RUBBLE_R, 1 / RUBBLE_H, 1.0))      # metres -> the unit heap
-    cx, cy = r.uniform(-0.25, 0.25), r.uniform(-0.25, 0.25)
-    lumps = [(r.uniform(-0.9, 0.9), r.uniform(-0.9, 0.9), r.uniform(0.05, 0.12), r.uniform(0.06, 0.2)) for _ in range(3)]
-    def ground(x, y):                                                    # the mound, highest a little off centre, a skirt of grit to 1.85 m
-        d = math.hypot(x - cx * max(0.0, 1 - math.hypot(x, y) / 1.6), y - cy * max(0.0, 1 - math.hypot(x, y) / 1.6))
-        z = 0.48 * max(0.0, 1 - (d / 1.55) ** 2) ** 1.05 + 0.03 * max(0.0, 1 - math.hypot(x, y) / 1.85)    # (as full as the old dome)
-        for lx, ly, lh, lr in lumps: z += lh * math.exp(-((x - lx) ** 2 + (y - ly) ** 2) / lr)   # (a few heaps within the heap)
-        return max(0.0, z * (1 + 0.35 * noise.noise(Vector((x, y, 0)) * 1.4 + off)) + 0.015 * noise.noise(Vector((x, y, 0)) * 7 + off)) if math.hypot(x, y) < 1.84 else 0.0
-    rings, segs = [0.0, 0.08, 0.2, 0.35, 0.5, 0.65, 0.8, 0.95, 1.1, 1.25, 1.4, 1.55, 1.7, 1.85], 36
-    grid = [[P.vert(U @ Vector((rr * math.cos(2 * math.pi * j / segs), rr * math.sin(2 * math.pi * j / segs), ground(rr * math.cos(2 * math.pi * j / segs), rr * math.sin(2 * math.pi * j / segs)) if rr < 1.84 else 0.0))) for j in range(segs if rr else 1)] for rr in rings]
-    dust = lambda v: (*(0.82 + 0.2 * noise.noise(v.co * 9 + off),) * 3, 1.0)
-    for i in range(len(rings) - 1):
-        for j in range(segs):
-            k = (j + 1) % segs
-            vs = [grid[i][0]] if i == 0 else [grid[i][j], grid[i][k]]
-            vs = vs + [grid[i + 1][k], grid[i + 1][j]]
-            P.face(vs if i else [vs[0], vs[2], vs[1]], 'gravel', cols=[dust(v) for v in (vs if i else [vs[0], vs[2], vs[1]])])
-    hf = HeightField(ground)
-
-    def settle(x, y, rad, thick, bm, slot, col, sink=0.3, tilt=0.15, edge=0.0):
-        """Rest the chunk bm (its base on z = 0) on the heap at (x, y): on the mound's slope, turned and tipped at random."""
-        z = hf.top(x, y, rad) - sink * thick
-        if z + thick > 0.66: return None                                  # (keeps the heap under 1.15 of its height)
-        e = 0.03; n = Vector((ground(x - e, y) - ground(x + e, y), ground(x, y - e) - ground(x, y + e), 2 * e)).normalized()
-        up = math.pi / 2 if r.random() < edge else 0.0                     # now and then a piece fetched up on its edge
-        q = Vector((0, 0, 1)).rotation_difference(n) @ Matrix.Rotation(r.uniform(-tilt, tilt) + up, 4, 'X').to_quaternion() @ Matrix.Rotation(r.uniform(-tilt, tilt), 4, 'Y').to_quaternion()
-        m = Matrix.Translation((x, y, max(0.0, z))) @ q.to_matrix().to_4x4() @ Matrix.Rotation(r.uniform(0, 6.283), 4, 'Z')
-        pts = [m @ v.co for v in bm.verts]; lo = min(p.z for p in pts)
-        if lo < 0: m = Matrix.Translation((0, 0, -lo)) @ m; pts = [p - Vector((0, 0, lo)) for p in pts]   # (no corner below the ground)
-        if not inside(pts): bm.free(); return None                       # on its edge it would stand out of the old heap
-        P.merge(bm, slot, col=col, matrix=U @ m); bm.free()
-        hf.lay(x, y, rad * 0.75, max(p.z for p in pts) * 0.95)
-        return m
-
+    P = Piece(name); P.keep.add('gravel')
+    U = Matrix.Diagonal((1 / RUBBLE_R, 1 / RUBBLE_R, 1 / RUBBLE_H, 1.0))      # metres -> the unit heap
+    grid, height, R = mound(r, off, mix['peak'])
+    vs = [[P.vert(U @ c) for c in ring] for ring in grid]
+    def dust(c):
+        g = 0.84 + 0.18 * noise.noise(c * 3.0 + off) + 0.06 * noise.noise(c * 11.0 + off); red = max(0.0, 0.7 * noise.noise(c * 1.7 + off * 2))
+        return (g * (1 + 0.1 * red), g * (0.97 - 0.04 * red), g * (0.93 - 0.08 * red), 1.0)
+    for f in mound_faces(grid):
+        P.face_toward([vs[i][j] for i, j in f], 'gravel', Vector((0, 0, 1)), cols=[dust(grid[i][j]) for i, j in f])
+    bodies = [clump_body(r, r.randint(2, 3), r.randint(2, 3), r.random() < mix['plaster']) for _ in range(mix['clump'])]
+    bodies += [brick_body(r, r.random() < 0.35) for _ in range(mix['brick'])]
+    bodies += [flake_body(r) for _ in range(mix['flake'])]
+    for b in bodies: b.center()
     def inside(pts):                                                     # the old keep-out's radius and the heap's height, in metres
-        return all(math.hypot(p.x, p.y) < 1.84 and -1e-4 < p.z < 0.70 for p in pts)
+        return all(math.hypot(p.x, p.y) < 1.82 and -0.005 < p.z < 0.69 for p in pts)
+    rest = simulate(bodies, spawn(bodies, height, r), grid)
+    keep = [(b, M) for b, M in zip(bodies, rest) if inside([M @ p for p in b.verts()])]
+    rest = simulate([b for b, M in keep], [M for b, M in keep], grid, frames=60)    # (again without the ones taken away: what leant on them falls)
+    kept = 0
+    for (b, _), M in zip(keep, rest):
+        if not inside([M @ p for p in b.verts()]): continue
+        kept += 1
+        for bm, slot, col, uv, local in b.parts: P.merge(bm, slot, col=col, uv=uv, matrix=U @ M @ local)
+    for b in bodies: b.free()
+    from mathutils.bvhtree import BVHTree                                # grit and crumbs over the settled heap and out past it
+    S = Matrix.Diagonal((RUBBLE_R, RUBBLE_R, RUBBLE_H, 1.0)); bm = P.bm.copy(); bm.transform(S); tree = BVHTree.FromBMesh(bm); bm.free()
+    for _ in range(mix['grit']):
+        a = r.uniform(0, 6.283); edge = r.random() < 0.55
+        d = R(a) * (r.uniform(0.8, 1.1) if edge else 0.85 * math.sqrt(r.random()))
+        x, y = d * math.cos(a), d * math.sin(a)
+        if math.hypot(x, y) > 1.78: continue
+        loc, nrm, *_ = tree.ray_cast(Vector((x, y, 2.0)), Vector((0, 0, -1)))
+        if loc is None: loc, nrm = Vector((x, y, 0.0)), Vector((0, 0, 1))
+        s = r.uniform(0.008, 0.03) * (1.0 if edge else 1.4)
+        M = Matrix.Translation(loc - nrm * s * 0.3) @ Vector((0, 0, 1)).rotation_difference(nrm).to_matrix().to_4x4() @ Matrix.Rotation(r.uniform(0, 6.283), 4, 'Z')
+        fb = frag_bm(r, s); lo = min((M @ v.co).z for v in fb.verts)
+        if lo < -0.004: M = Matrix.Translation((0, 0, -0.004 - lo)) @ M      # (a crumb on the ground sinks no deeper than 4 mm)
+        q = r.choice(BRICK_RECTS); sh = r.uniform(0.8, 1.05)                   # (crumbs of brick only: grey ones read as stones)
+        P.merge(fb, 'brick', col=(sh * 1.05, sh * 0.88, sh * 0.78, 1.0), uv=lambda c, n, q=q: (q[0] + (q[2] - q[0]) * (0.5 + c.x * 4), q[1] + (q[3] - q[1]) * (0.5 + c.y * 4)), matrix=U @ M)
+        fb.free()
+    bake_ao(P, S)
+    print('PROPS', name, 'bodies kept', kept, 'of', len(bodies))
+    ob = P.build(smooth=50); PREVIEW_SCALE[name] = (RUBBLE_R, RUBBLE_R, RUBBLE_H); return ob    # (brick and slab edges sharp)
 
-    def spot(spread=1.0):
-        d = 1.62 * spread * math.sqrt(r.random()); a = r.uniform(0, 6.283); return d * math.cos(a), d * math.sin(a)
-
-    for _ in range(mix['slab']):                                        # broken slab, a bar or two of its rebar sticking out
-        x, y = spot(0.85); size, thick = r.uniform(0.12, 0.34), r.uniform(0.045, 0.09); n = r.randint(5, 8)
-        angs = sorted(r.uniform(0, 6.283) for _ in range(n))
-        pts = [(size * r.uniform(0.55, 1.0) * math.cos(a), size * r.uniform(0.55, 1.0) * math.sin(a)) for a in angs]
-        bm = prism(pts, 0.0, thick, jitter=lambda i: r.uniform(-0.006, 0.006))
-        shade = r.uniform(0.85, 1.05)
-        m = settle(x, y, size * 0.8, thick, bm, 'concrete', lambda c, nn: ((shade * 1.05,) * 3 if nn.z > 0.7 else (shade * 0.72, shade * 0.71, shade * 0.68)) + (1.0,), tilt=0.2, edge=0.08)
-        if m and r.random() < mix['rebar']:                             # (rust colour; the iron material is near black)
-            p0 = Vector((*pts[r.randrange(n)], 0.0)) * 0.92; p0.z = thick * 0.5; d = Vector((p0.x, p0.y, 0)).normalized()
-            path = [p0 - d * 0.06]
-            for k in range(1, 7):
-                bend = Vector((r.uniform(-0.05, 0.05), r.uniform(-0.05, 0.05), r.uniform(0.0, 0.06)))
-                path.append(path[-1] + d * 0.06 + bend * (k / 6))
-            if inside([m @ p for p in path]): tube(P, [U @ (m @ p) for p in path], 0.006 / RUBBLE_R, 6, 'iron', (0.55, 0.32, 0.2, 1.0))
-    for _ in range(mix['brick']):                                       # loose bricks, whole and half, worn at the corners
-        x, y = spot(); half = r.random() < 0.35; L = 0.105 if half else 0.215
-        bm = bmesh.new(); bmesh.ops.create_cube(bm, size=1.0)
-        for v in bm.verts: v.co = Vector((v.co.x * L, v.co.y * 0.1025, (v.co.z + 0.5) * 0.065)) + Vector((r.uniform(-0.004, 0.004) for _ in range(3)))
-        shade = r.uniform(0.72, 1.1)
-        settle(x, y, L * 0.55, 0.065, bm, 'brick', lambda c, nn: (shade, shade * r.uniform(0.95, 1.0), shade * 0.95, 1.0), sink=0.4, tilt=0.3, edge=0.12)
-    for _ in range(mix['clump']):                                       # two or three bricks still mortared together
-        x, y = spot(0.8); bm = bmesh.new(); k = r.randint(2, 3)
-        for b in range(k):
-            for z0, z1, w, slot_m in ((b * 0.077, b * 0.077 + 0.065, 0.215, 0), (b * 0.077 + 0.065, b * 0.077 + 0.077, 0.2, 1)):
-                if slot_m and b == k - 1: continue
-                cube = bmesh.ops.create_cube(bm, size=1.0)['verts']
-                for v in cube: v.co = Vector((v.co.x * w + r.uniform(-0.01, 0.01) * slot_m, v.co.y * (0.1025 if not slot_m else 0.095), z0 + (v.co.z + 0.5) * (z1 - z0)))
-        settle(x, y, 0.13, k * 0.077, bm, 'brick', lambda c, nn: ((0.95, 0.9, 0.86, 1.0) if (c.z % 0.077) > 0.0645 else (0.9, 0.86, 0.84, 1.0)), sink=0.25, tilt=0.25)
-    for _ in range(mix['flake']):                                       # plaster flakes, painted on their top face
-        x, y = spot(); size = r.uniform(0.05, 0.16); n = r.randint(5, 7)
-        angs = sorted(r.uniform(0, 6.283) for _ in range(n)); paint = r.choice(PAINT)
-        bm = prism([(size * r.uniform(0.5, 1.0) * math.cos(a), size * r.uniform(0.5, 1.0) * math.sin(a)) for a in angs], 0.0, 0.014)
-        settle(x, y, size * 0.7, 0.014, bm, 'plaster', lambda c, nn: (*(paint if nn.z > 0.7 else (0.92, 0.9, 0.86)), 1.0), sink=0.2, tilt=0.2)
-    for _ in range(mix['stone']):                                       # loose stones and lumps of mortar, out onto the skirt
-        x, y = spot(1.12); size = r.uniform(0.009, 0.032); g = r.uniform(0.5, 0.82)
-        settle(x, y, size, size * 1.6, blob(r, size), 'concrete', lambda c, nn: (g, g * 0.98, g * 0.95, 1.0), sink=0.45, tilt=1.0)
-    ob = P.build(smooth=50); PREVIEW_SCALE[name] = (RUBBLE_R, RUBBLE_R, RUBBLE_H); return ob    # (stones smooth, slab and brick edges sharp)
-
-rubble('rubble_a', {'slab': 17, 'brick': 155, 'clump': 8, 'flake': 32, 'stone': 270, 'rebar': 0.35})
-rubble('rubble_b', {'slab': 10, 'brick': 210, 'clump': 13, 'flake': 36, 'stone': 240, 'rebar': 0.2})    # mostly brick
-rubble('rubble_c', {'slab': 27, 'brick': 90, 'clump': 5, 'flake': 22, 'stone': 300, 'rebar': 0.5})      # a fallen slab, more rebar
+rubble('rubble_a', {'peak': 0.38, 'clump': 9, 'plaster': 0.5, 'brick': 260, 'flake': 16, 'grit': 260})
+rubble('rubble_b', {'peak': 0.4, 'clump': 12, 'plaster': 0.4, 'brick': 300, 'flake': 12, 'grit': 260})    # more brick
+rubble('rubble_c', {'peak': 0.34, 'clump': 9, 'plaster': 0.6, 'brick': 230, 'flake': 14, 'grit': 260})    # more of the wall's plaster
 
 # ---------------------------------------------------------------------------------------------------- export ---------
 for ob in pieces: ob.location = (0, 0, 0)

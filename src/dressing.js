@@ -67,6 +67,10 @@ export function dressKit({ B, M, rnd, buildings, anchors, low, rs = null }) {
     B.collide(cx, y0 + rows * 0.092, cz, len, rows * 0.184, 0.38, rot, 'fabric');
   }
 
+  // The rubble heaps are taken out of the map (HEAPS false). Each one's old code still runs, muted, so every random draw
+  // after it is the same and nothing else in the map moves; nothing is drawn and no solid is left, but its skirt stays
+  // clear of clutter and its stain stays. HEAPS true puts them back (the modelled heaps are still in props.glb).
+  const HEAPS = false;
   function rubble(x, z, r, h) {
     const g = new THREE.SphereGeometry(1, 16, 7, 0, Math.PI * 2, 0, Math.PI / 2), p = g.attributes.position;
     for (let i = 0; i < p.count; i++) {
@@ -75,8 +79,10 @@ export function dressKit({ B, M, rnd, buildings, anchors, low, rs = null }) {
     }
     g.computeVertexNormals();
     const yaw = rnd() * 6.28, kz = rnd.range(0.7, 1), m = mat4(V(x, -0.03, z), yaw, V(r, h, r * kz)), v = ['rubble_a', 'rubble_b', 'rubble_c'][Math.floor(fhash(x, z, 31) * 3)];
-    // a modelled heap of broken slab, brick and plaster (tools/blender/props.py) where the noise-bent dome and box chunks were
-    B.replace(v, () => {
+    // a modelled heap of a fallen wall (tools/blender/props.py: bricks and mortared lumps settled by Blender's rigid-body
+    // simulation on a bed of mortar dust) where the noise-bent dome and box chunks were; each brick face shows
+    // one brick of the brick texture by the piece's own texture coordinates
+    const old = () => {
       B.geom('rubble', g, m, { uvScale: r * 0.9, color: [0.62, 0.57, 0.5] });
       // a stepped core for clutter to fetch up against, and the whole skirt kept clear when dressing
       B.detail(x, h * 0.25, z, r * 1.5, h * 0.5, r * kz * 1.5, yaw, 'concrete'); B.detail(x, h * 0.45, z, r * 0.9, h * 0.9, r * kz * 0.9, yaw, 'concrete');
@@ -86,8 +92,13 @@ export function dressKit({ B, M, rnd, buildings, anchors, low, rs = null }) {
         B.geom(rnd.pick(['concrete', 'w_brick', 'w_damaged', 'dirty']), new THREE.BoxGeometry(s * rnd.range(0.8, 1.8), s * rnd.range(0.4, 0.9), s),
           mat4(V(x + Math.cos(a) * d, hh + s * 0.2, z + Math.sin(a) * d), rnd() * 6.28, 1, rnd.range(-0.6, 0.6), rnd.range(-0.6, 0.6)), { uvScale: 0.35, color: [0.9, 0.88, 0.84] });
       }
-    }, () => B.kit(v, m, { concrete: 'concrete', brick: 'brick', plaster: 'w_damaged', iron: 'iron', gravel: 'rubble' },
-      { lod: null, slot: { concrete: { tile: 1.0, color: [0.9, 0.88, 0.84] }, brick: { tile: 5, color: [0.95, 0.9, 0.86] }, plaster: { tile: 1.0 }, iron: {}, gravel: { tile: 1.6, color: [0.62, 0.57, 0.5] } } }));
+    };
+    if (!HEAPS) {
+      const mute = B.mute; B.mute = true;
+      try { old(); } finally { B.mute = mute; }
+      B.keepOut(x, h * 0.5, z, r * 2.5, h + 0.2, r * kz * 2.5, yaw);
+    } else B.replace(v, old, () => B.kit(v, m, { concrete: 'concrete', brick: 'brick', plaster: 'w_damaged', gravel: 'gravel' },
+      { lod: null, slot: { concrete: { tile: 1.0, color: [0.9, 0.88, 0.84] }, brick: { uv: 'own', tile: 1, color: [0.95, 0.9, 0.86] }, plaster: { tile: 1.0 }, gravel: { tile: 0.55, color: [0.6, 0.54, 0.47] } } }));
     anchors.push({ kind: 'stain', x, z, r: r * 2.2, s: 0.35 });
   }
 

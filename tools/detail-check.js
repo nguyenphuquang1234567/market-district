@@ -22,9 +22,25 @@ const add = (names, spec) => { for (const n of names) PIECES[n] = spec; };
 add(['pebble_a', 'pebble_b', 'pebble_c', 'pebble_d'], { cap: 80, min: 40, box: [[-0.5, -0.5, -0.5], [0.5, 0.5, 0.5]], slots: ['stone'] });
 // spice sacks (dressing.js sack()): on the ground at the origin, the old lathe's 0.275 m radius and 0.5 m height
 add(['sack_a', 'sack_b'], { cap: 2500, box: [[-0.28, 0, -0.28], [0.28, 0.52, 0.28]], slots: ['burlap', 'spice'] });
+// An open surface seen from above (a heap's mound) must be wound to face up: the renderer draws front faces only, so a
+// mound wound downwards vanishes from above while its shadow (drawn from the back faces) stays, and what rests on it
+// floats. The share of the slot's triangles whose winding faces +y must be at least 99 %.
+const facesUp = slot => parts => {
+  let up = 0, n = 0;
+  for (const p of parts) {
+    if (p.slot !== slot) continue;
+    const a = p.geometry.attributes.position, ix = p.geometry.index, at = k => (ix ? ix.getX(k) : k), tris = (ix ? ix.count : a.count) / 3;
+    for (let t = 0; t < tris; t++) {
+      const i0 = at(3 * t), i1 = at(3 * t + 1), i2 = at(3 * t + 2);
+      const ux = a.getX(i1) - a.getX(i0), uz = a.getZ(i1) - a.getZ(i0), vx = a.getX(i2) - a.getX(i0), vz = a.getZ(i2) - a.getZ(i0);
+      n++; if (uz * vx - ux * vz > 0) up++;                          // (the y of u x v)
+    }
+  }
+  return !n ? `no ${slot} triangles` : up / n < 0.99 ? `the ${slot} faces up on only ${(100 * up / n).toFixed(0)} % of its triangles` : null;
+};
 // rubble heaps (dressing.js rubble()): a unit heap, stretched by the game to each heap's radius and height; inside the
-// old keep-out (1.25 r) and under 1.15 h
-add(['rubble_a', 'rubble_b', 'rubble_c'], { cap: 12000, box: [[-1.25, 0, -1.25], [1.25, 1.15, 1.25]], slots: ['concrete', 'brick', 'gravel'] });
+// old keep-out (1.25 r) and under 1.15 h; the bricks mapped by their own UVs (one brick of the texture a face)
+add(['rubble_a', 'rubble_b', 'rubble_c'], { cap: 12000, box: [[-1.25, 0, -1.25], [1.25, 1.15, 1.25]], slots: ['concrete', 'brick', 'gravel'], ownUV: ['brick'], check: facesUp('gravel') });
 // street carts (quarter.js cart()): X along the cart, Z towards the painted sign, which the game draws at z 0.417 over
 // x -0.6...0.6, y 0.48...1.08: the body's front must stay flat behind it (a wheel may stand in front, as the old one did)
 const flatFront = parts => {
