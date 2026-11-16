@@ -426,6 +426,29 @@ market hall 43.5 % → 33.4 %, the laundry alley 15.5 % → 14.3 %, the covered 
 texture's empty occlusion channel cut their indirect light to a tenth. With it rebuilt, a shaded stretch of cobbles reads
 at a median of 59–68 (of 255) instead of 11–12, against 44 for the old district's shaded asphalt.
 
+**With the detail pass** (`tools/blender/props.py`) — the same probe in the native window, run alternately with
+`?detail=0` (which draws the map exactly as before the pass, in the same build: the layout fingerprints match) after a
+discarded warm-up run, three rounds each, medians. The machine was heat-throttled by then (both sides read about 1 ms
+slower than the baseline taken first), which is why only the paired difference is given:
+
+| View | Before → after (paired medians) | Change |
+| --- | --- | --- |
+| Main street, long sightline | 15.26 → 15.04 ms | −0.22 ms |
+| Arch and plaza | 13.72 → 14.51 ms | +0.79 ms |
+| Covered market lane | 13.75 → 14.59 ms | +0.84 ms |
+| Laundry alley | 12.95 → 13.09 ms | +0.14 ms |
+| Market lane through the north passage | 10.85 → 11.21 ms | +0.36 ms |
+| Market hall, from Calle del Mercado | 11.99 → 13.22 ms | +1.23 ms |
+| Inside the market hall | 11.44 → 12.19 ms | +0.75 ms |
+| Plazuela and kiosk | 11.59 → 11.69 ms | +0.10 ms |
+
+Single runs spread by up to 0.5–1 ms, so differences under that are noise. The hall from Calle del Mercado was the one
+view over a millisecond; the finer cut of wall lamps and gas tanks, the largest single cost in that view, was dropped
+after this run and not timed again. Draw calls stayed within a few dozen of the old map's in every view: a near/far
+pair for every piece had added up to 440 (the far halves sit in their own meshes in every distant cell), which is why
+only palms and laurels keep one and their modelled leaves leave the shadows to the old leaf cards. Estimated GPU memory
+1222 → 1282 MB (geometry 309 → 368 MB).
+
 Profiling switches: `?demo=1` auto-plays the match (for pacing runs), `?live=1` writes `captures/live.json` every 3 s,
 `?tune={"maxPR":1.25}` overrides any preset field.
 
