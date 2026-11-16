@@ -54,6 +54,7 @@ export class Builder {
     this.details = [];          // solids only the rigid world knows: drawn things the movement boxes do not cover
     this.dropped = [];          // loose props that could not be dressed clear of anything solid
     this.mute = false;          // while set, everything is generated as usual (same random draws) but nothing is kept
+    this.lodDefault = null;     // the lod of anything drawn without one (see swap())
   }
 
   // Merged geometry is split into 24 m cells so the camera frustum and each shadow cascade only draw what they cover.
@@ -61,8 +62,10 @@ export class Builder {
   // side of the ring the camera cannot see (see render.js, zone culling).
   cell(x, z) { return Math.min(6, Math.max(0, Math.floor((x + 50) / 24))) + 7 * Math.min(6, Math.max(0, Math.floor((z + 84) / 24))); }
   // lod: 'near' for the detailed architectural kit, 'far' for the plain stand-in it replaces; the renderer shows one or
-  // the other per cell by distance (render.js, cull). Untagged geometry is always drawn.
+  // the other per cell by distance (render.js, cull). Untagged geometry is always drawn. Without a lod (undefined) a draw
+  // takes lodDefault; null means untagged even then.
   _b(key, x, z, far, lod) {
+    if (lod === undefined && !far) lod = this.lodDefault;
     const cell = far ? -1 : this.cell(x, z), id = key + '|' + (far ? 'far' : cell) + (lod ? '|' + lod : '');
     let b = this.buckets.get(id);
     if (!b) this.buckets.set(id, b = { key, lod, cell, p: [], n: [], u: [], c: [], i: [], x: [] });
@@ -123,11 +126,11 @@ export class Builder {
     (this.keepOuts ||= []).push({ x: cx, z: cz, hx: sx / 2, hz: sz / 2, y0: cy - sy / 2, y1: cy + sy / 2, c: Math.cos(rot), s: Math.sin(rot) });
   }
 
-  // Arbitrary geometry with its own UVs (cylinders, lathes, extrusions…).
+  // Arbitrary geometry with its own UVs (cylinders, lathes, extrusions…). o.far, o.lod as in quad().
   geom(key, g, m, o = {}) {
     if (this.mute) return;
     tmp.fromBufferAttribute(g.attributes.position, 0).applyMatrix4(m);            // any vertex will do to pick the cell
-    const k = this._b(key, tmp.x, tmp.z), base = k.p.length / 3, us = o.uvScale || 1;
+    const k = this._b(key, tmp.x, tmp.z, o.far, o.lod), base = k.p.length / 3, us = o.uvScale || 1;
     const pos = g.attributes.position, nor = g.attributes.normal, uv = g.attributes.uv;
     const nm = new THREE.Matrix3().getNormalMatrix(m);
     for (let i = 0; i < pos.count; i++) {
@@ -146,7 +149,10 @@ export class Builder {
   // exactly as quad() does, so a moulding's plaster runs on from the wall it sits on). slots maps the piece's material
   // slots (trim, wall, brick, tile, mortar, wood, iron) to material keys; o.slot[name] or o itself gives tile, uo, vo and
   // color per slot. The piece's own vertex colours (each roof tile's shade) multiply the tint. o.lod as in _b() (a slot's own
-  // lod, null for none, overrides it).
+  // lod, null for none, overrides it). A slot's uv: 'own' maps it by the piece's own texture coordinates (u / tile + uo,
+  // v / tile + vo, v counted up as Blender does: glTF's flip is undone) instead of the world projection: leaves, fronds,
+  // bark, paper. A slot's wind: phase fills the wind attribute (wind materials) from the piece's vertex alpha, how freely
+  // each vertex moves (times windAmp, default 1).
   kit(name, m, slots, o = {}) {
     if (this.mute) return;
     const piece = assets.kit?.[name]; if (!piece) return;
@@ -155,20 +161,35 @@ export class Builder {
       const key = slots[part.slot]; if (!key) continue;
       const so = o.slot?.[part.slot] || o, tile = so.tile || 1.4, uo = so.uo || 0, vo = so.vo || 0, tint = so.color || WHITE, xx = so.x || WHITE;
       const k = this._b(key, e[12], e[14], false, so.lod !== undefined ? so.lod : o.lod), base = k.p.length / 3, g = part.geometry;
-      const pos = g.attributes.position, nor = g.attributes.normal, col = g.attributes.color;
+      const pos = g.attributes.position, nor = g.attributes.normal, col = g.attributes.color, uv = so.uv === 'own' ? g.attributes.uv : null;
+      const wind = so.wind, amp = so.windAmp ?? 1, alpha = col && col.itemSize === 4;
       for (let i = 0; i < pos.count; i++) {
         tmp.fromBufferAttribute(pos, i).applyMatrix4(m); const px = tmp.x, py = tmp.y, pz = tmp.z;
         k.p.push(px, py, pz);
         nrm.fromBufferAttribute(nor, i).applyMatrix3(nm).normalize(); k.n.push(nrm.x, nrm.y, nrm.z);
         const ax = Math.abs(nrm.x), ay = Math.abs(nrm.y), az = Math.abs(nrm.z);
-        if (ay >= ax && ay >= az) k.u.push(px / tile + uo, (-pz * Math.sign(nrm.y)) / tile + vo);
+        if (uv) k.u.push(uv.getX(i) / tile + uo, (1 - uv.getY(i)) / tile + vo);
+        else if (ay >= ax && ay >= az) k.u.push(px / tile + uo, (-pz * Math.sign(nrm.y)) / tile + vo);
         else { const sx = ax > az ? Math.sign(nrm.x) : 0, sz = ax > az ? 0 : Math.sign(nrm.z); k.u.push((px * sz - pz * sx) / tile + uo, py / tile + vo); }
         if (col) k.c.push(col.getX(i) * tint[0], col.getY(i) * tint[1], col.getZ(i) * tint[2]); else k.c.push(tint[0], tint[1], tint[2]);
-        k.x.push(xx[0], xx[1], xx[2]);
+        if (wind !== undefined) k.x.push((alpha ? col.getW(i) : 1) * amp, wind, 0); else k.x.push(xx[0], xx[1], xx[2]);
       }
       if (g.index) for (let i = 0; i < g.index.count; i++) k.i.push(base + g.index.getX(i));
       else for (let i = 0; i < pos.count; i++) k.i.push(base + i);
     }
+  }
+
+  // The detail pass (tools/blender/props.py): far() draws the old, plain version of something and near() places the
+  // modelled kit piece(s) `names` (a name or a list) with lod: 'near'. When every piece is loaded, what far() draws is
+  // tagged 'far'; when one is missing, far() is drawn untagged, exactly as before, and near() is not called, so a missing
+  // props.glb never leaves a hole. Either way far() makes all its random draws. Returns what far() returns.
+  swap(names, far, near) {
+    if (![].concat(names).every(n => assets.kit?.[n])) return far();
+    const prev = this.lodDefault; this.lodDefault = 'far';
+    let ret;
+    try { ret = far(); } finally { this.lodDefault = prev; }
+    near();
+    return ret;
   }
 
   // Place a scanned prop. Returns its footprint size (after scale) so callers can add a collider.

@@ -179,8 +179,11 @@ export async function loadAssets(renderer, onProgress) {
       for (const [name, re] of defs) assets.proto[name] = bake(g.scene, re, name);
     }));
   }
-  // the architectural kit (tools/blender/kit.py): piece name -> [{ geometry, slot }], one part per material slot
-  jobs.push(gl.loadAsync('assets/kit/kit.glb' + REV).then(g => {
+  // the architectural kit (tools/blender/kit.py) and the detail pass's pieces (tools/blender/props.py), in one table:
+  // piece name -> [{ geometry, slot }], one part per material slot. props.glb is optional: without it the old geometry is
+  // drawn in its place (Builder.swap).
+  assets.kit = {};
+  const loadKit = (url, optional = false) => gl.loadAsync(url + REV).then(g => {
     const kit = {};
     g.scene.updateMatrixWorld(true);
     g.scene.traverse(o => {
@@ -188,8 +191,12 @@ export async function loadAssets(renderer, onProgress) {
       const piece = o.parent && !o.parent.isScene && o.parent !== g.scene ? o.parent.name : o.name;   // (a node with several materials is a group of meshes)
       (kit[piece] ||= []).push({ geometry: o.geometry.clone().applyMatrix4(o.matrixWorld), slot: o.material.name });
     });
-    assets.kit = kit;
-  }));
+    for (const [name, parts] of Object.entries(kit)) {
+      if (assets.kit[name]) throw new Error(`kit piece ${name} is in two files`);
+      assets.kit[name] = parts;
+    }
+  }, e => { if (!optional) throw e; console.warn(`${url} not loaded (${e.message || e}): the old geometry stands in`); });
+  jobs.push(loadKit('assets/kit/kit.glb'), loadKit('assets/kit/props.glb', true));
   jobs.push(gl.loadAsync('assets/models/soldier.glb').then(g => {
     const body = g.scene.getObjectByName('vanguard_Mesh');
     g.allyMap = blueInsignia(body.material.map);
