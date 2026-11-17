@@ -20,15 +20,13 @@ import { rng } from './util.js';
 // Hex values are the colour as a wall reads in daylight, not a paint chip.
 const TONES = {                 // natural plasters and limewashes, coolest to warmest (the order a street's warmth drifts along)
   limestone: '#d3cdbf', offwhite: '#e6e0d2', cream: '#e3d5b8', straw: '#dcc797', beige: '#d2bc9c',
-  sand: '#cdb187', clay: '#c9ad8a', ochre: '#c49c62', terracotta: '#b4774f',
+  sand: '#cdb187', clay: '#c9ad8a', ochre: '#ccc4b5', terracotta: '#c3b39d',
 };
 const ORDER = Object.keys(TONES);
 // (no blue and no pink: even faded, a blue wall reads as sea blue in the sun and a pink one as pink, and the district
 // is not to have either)
-// (the earthy red a fired brick, its hue held toward orange (a duller or redder one reads as dusty pink in the
-// shade), the sage pale, as light as the plaster round them; no turquoise: even pale it read as
-// mint going on blue among the warm tones)
-const ACCENTS = { red: '#a16c48', green: '#a9b094' };
+// The former terracotta and red slots use muted warm neutrals, keeping the seeded placement of each building's palette.
+const ACCENTS = { red: '#b9ac98', green: '#a9b094' };
 // a base band that is not simply the wall a step darker: deep earths and greys
 const DEEP = { oxide: '#7a3a2a', umber: '#5a4332', slate: '#5b6168', moss: '#4b5a46', wine: '#5d2c2c', charcoal: '#4a4845' };
 const COOL = new Set(['limestone', 'offwhite', 'cream', 'green']);
