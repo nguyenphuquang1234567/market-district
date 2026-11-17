@@ -415,31 +415,41 @@ export function createRenderer(canvas, skyTex, presetName) {
         if (e.fine && e.vis !== vis) { e.o.userData.lodVis = vis; fineChanged(); }
         e.vis = vis; e.o.visible = vis;
       }
-      api.zoneHidden = 0;
-      const z = api.zones;
-      for (let i = 0, zl = api.zoneList; i < zl.length; i++) if (zl[i].plain) zl[i].o.visible = true;     // (the distance pass above has already set the others for this frame)
+      const z = api.zones, zl = api.zoneList;
       if (z) {
         // Zone culling. From street level on one side of the east ring, a cell on the other side shows only through one of
         // the passages or over the ring's roofs. Both tests are conservative: the passage is a wedge of view through both of
         // its mouths, and the roof test takes the ring's lowest roofline and the cell's nearest top.
-        const side = p.x < z.x0 ? -1 : p.x > z.x1 ? 1 : 0, low = p.y < z.roof - 0.3;
+        // The verdict depends on where the camera stands, not where it looks, and it is four arctangents a cell: some
+        // 7,000 a frame, which WebKit took most of a millisecond over. So every cell is judged again only once the camera
+        // has moved far enough to change an angle by 0.03 rad (3 % of its distance from the ring, 30 cm at most), and the
+        // wedges are that much wider than they need be.
+        const side = p.x < z.x0 ? -1 : p.x > z.x1 ? 1 : 0, low = p.y < z.roof - 0.3, zc = api.zoneAt || (api.zoneAt = { side: 0, x: 0, y: 0, z: 0 });
         if (side && low) {
-          const near = side < 0 ? z.x0 : z.x1, far = side < 0 ? z.x1 : z.x0, ang = (x, zz) => Math.atan2(zz - p.z, (x - p.x) * -side);
-          const wedges = [];
-          for (const [g0, g1] of z.gates) {
-            const a0 = Math.min(ang(near, g0), ang(near, g1)), a1 = Math.max(ang(near, g0), ang(near, g1)), b0 = Math.min(ang(far, g0), ang(far, g1)), b1 = Math.max(ang(far, g0), ang(far, g1));
-            const lo = Math.max(a0, b0) - 0.01, hi = Math.min(a1, b1) + 0.01; if (lo < hi) wedges.push([lo, hi]);
+          const near = side < 0 ? z.x0 : z.x1, far = side < 0 ? z.x1 : z.x0, lim = Math.min(0.3, Math.max(0.03, 0.03 * Math.abs(p.x - near)));
+          if (zc.side !== side || (p.x - zc.x) ** 2 + (p.y - zc.y) ** 2 + (p.z - zc.z) ** 2 > lim * lim) {
+            zc.side = side; zc.x = p.x; zc.y = p.y; zc.z = p.z;
+            const ang = (x, zz) => Math.atan2(zz - p.z, (x - p.x) * -side), wedges = [];
+            for (const [g0, g1] of z.gates) {
+              const a0 = Math.min(ang(near, g0), ang(near, g1)), a1 = Math.max(ang(near, g0), ang(near, g1)), b0 = Math.min(ang(far, g0), ang(far, g1)), b1 = Math.max(ang(far, g0), ang(far, g1));
+              const lo = Math.max(a0, b0) - 0.045, hi = Math.min(a1, b1) + 0.045; if (lo < hi) wedges.push([lo, hi]);
+            }
+            for (let i = 0; i < zl.length; i++) {
+              const e = zl[i]; e.hid = false;
+              if (e.side !== -side) continue;
+              const ex = side < 0 ? e.x0 : e.x1, t = (near - p.x) / (ex - p.x);
+              if (p.y + (e.y1 - p.y) * t > z.roof - 0.35) continue;                    // its top shows over the roofs (or would, a step higher)
+              const q0 = ang(e.x0, e.z0), q1 = ang(e.x0, e.z1), q2 = ang(e.x1, e.z0), q3 = ang(e.x1, e.z1), lo = Math.min(q0, q1, q2, q3), hi = Math.max(q0, q1, q2, q3);
+              let seen = false; for (let w = 0; w < wedges.length; w++) if (lo < wedges[w][1] && hi > wedges[w][0]) { seen = true; break; }   // seen through a passage
+              e.hid = !seen;
+            }
           }
-          for (const e of api.zoneList) {
-            if (e.side !== -side || !e.o.visible) continue;
-            const ex = side < 0 ? e.x0 : e.x1, t = (near - p.x) / (ex - p.x);
-            if (p.y + (e.y1 - p.y) * t > z.roof) continue;                           // its top shows over the roofs
-            let lo = Infinity, hi = -Infinity;
-            for (const x of [e.x0, e.x1]) for (const zz of [e.z0, e.z1]) { const a = ang(x, zz); lo = Math.min(lo, a); hi = Math.max(hi, a); }
-            if (wedges.some(([a, b]) => lo < b && hi > a)) continue;                   // seen through a passage
-            e.o.visible = false; api.zoneHidden++;
-          }
-        }
+        } else if (zc.side) { zc.side = 0; for (let i = 0; i < zl.length; i++) zl[i].hid = false; }
+      }
+      api.zoneHidden = 0;
+      for (let i = 0; i < zl.length; i++) {                                       // (the distance pass above has already set the cells that have a distance for this frame)
+        const e = zl[i];
+        if (e.hid) { if (e.o.visible) { e.o.visible = false; api.zoneHidden++; } } else if (e.plain) e.o.visible = true;
       }
       if (api.twins) for (const t of api.twins) { const o = t.userData.twinOf; t.visible = o.visible; if (t.material !== o.material) t.material = o.material; }
       if (api.onCull) api.onCull(p, k);
