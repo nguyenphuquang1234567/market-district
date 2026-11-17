@@ -26,7 +26,10 @@ const PAINT = [[0.62, 0.64, 0.62], [0.36, 0.46, 0.38], [0.56, 0.3, 0.22], [0.74,
 const TILES = [   // a shop's dado: [field, band and capping] (linear: cream and deep green, grey-green and oxide red, ochre and umber, white and mustard, sage and cream)
   [[0.72, 0.66, 0.48], [0.07, 0.19, 0.13]], [[0.55, 0.6, 0.5], [0.3, 0.07, 0.045]], [[0.6, 0.46, 0.22], [0.1, 0.065, 0.04]], [[0.78, 0.78, 0.72], [0.5, 0.32, 0.06]], [[0.4, 0.5, 0.4], [0.72, 0.68, 0.52]],
 ];
-const CAST = new Set(['iron', 'cantera', 'concrete', 'teja', 'metal_white', 'metal_green', 'planks']);
+// what casts a shadow: the hall's columns and the roof spouts. The rest is fine ironwork and fittings flush with a wall
+// or inside a room: their shadows are not missed, and thousands of small triangles in every cascade are
+const CAST = new Set(['cantera', 'teja', 'metal_green']);
+const INSIDE = new Set(['glossy', 'matte', 'brick', 'planks', 'door']);
 
 export function addArchDetail(R, M, world) {
   const notes = world.notes || [];
@@ -150,7 +153,7 @@ export function addArchDetail(R, M, world) {
         const dd = d0 + 0.75 + i * 1.12, c = P(u, y + 1.98, dd), from = new THREE.Vector3(c.x + wallN.x * (W / 2 - 0.1), c.y, c.z + wallN.z * (W / 2 - 0.1)), dir = new THREE.Vector3().subVectors(c, from);
         if (cast(from, dir, dir.length() + 0.3) < dir.length() - 0.3) continue;      // something tall stands there
         for (const [v, k] of [[1.96, 0], [2.36, 1]]) {
-          if (k === 1 && hash(c.x, c.z, 316) < 0.35) continue;
+          if (k === 1 && hash(c.x, c.z, 316) < 0.62) continue;
           A.kit(hash(c.x, c.z, 317 + k) < 0.5 ? 'repisa_a' : 'repisa_b', new THREE.Matrix4().makeBasis(X, UP, Z).setPosition(c.x + Z.x * 0.004, y + v, c.z + Z.z * 0.004), sslots, sopt); stats.shelves++;
         }
       }
@@ -181,7 +184,9 @@ export function addArchDetail(R, M, world) {
   const meshes = A.build(M), group = new THREE.Group(); group.name = 'world';        // (named as the district's, so the renderer's zone culling takes these cells too)
   for (const m of meshes) {
     m.castShadow = CAST.has(m.name); m.receiveShadow = true; m.matrixAutoUpdate = false;
-    const lod = lodRange(m); if (lod) m.userData.lod = lod;
+    // nothing here is worth drawing from far off, and what is inside a shop (tiles, goods, vault, shelves, the back door)
+    // only from close by: through the opening from across the street, not from the far end of it
+    m.userData.lod = INSIDE.has(m.name) ? 24 : lodRange(m) || 80;
     if (!m.material.userData.noBVH) { m.geometry.computeBoundsTree({ maxLeafTris: 8 }); world.rayMeshes.push(m); }
     group.add(m);
   }

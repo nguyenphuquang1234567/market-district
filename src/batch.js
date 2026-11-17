@@ -30,7 +30,7 @@ function frustumOf(camera) {
 }
 
 export class CellBatch extends THREE.Mesh {
-  // parts: [{ src: the cell's own mesh, start: byte offset into the index buffer, count: indices, sphere }]
+  // parts: [{ src: the cell's own mesh, start: byte offset into the index buffer, count: indices, sphere, box }]
   constructor(geometry, material, parts) {
     super(geometry, material);
     this.isBatchedMesh = true; this.parts = parts;
@@ -45,7 +45,8 @@ export class CellBatch extends THREE.Mesh {
       for (const c of parts) c.d = c.sphere.center.distanceToSquared(p) * back;
       parts.sort((a, b) => a.d - b.d); this.sorted = frameId;
     }
-    for (let i = 0; i < parts.length; i++) { const c = parts[i]; if (c.src.visible && fr.intersectsSphere(c.sphere)) { starts[n] = c.start; counts[n++] = c.count; } }
+    // (a cell's sphere reaches well above and below it; its box, tested only when the sphere passes, drops a few percent more)
+    for (let i = 0; i < parts.length; i++) { const c = parts[i]; if (c.src.visible && fr.intersectsSphere(c.sphere) && fr.intersectsBox(c.box)) { starts[n] = c.start; counts[n++] = c.count; } }
     this._multiDrawCount = n;
   }
   onBeforeRender(renderer, scene, camera) { this.fill(camera, true); }
@@ -79,8 +80,8 @@ export function batchWorld(meshes, keep = () => false) {
       names.forEach((k, a) => arrays[a].set(mg.attributes[k].array, v0 * mg.attributes[k].itemSize));
       let cnt;
       if (mg.index) { const src = mg.index.array; cnt = src.length; for (let i = 0; i < cnt; i++) index[i0 + i] = src[i] + v0; } else { cnt = n; for (let i = 0; i < cnt; i++) index[i0 + i] = v0 + i; }
-      if (!mg.boundingSphere) mg.computeBoundingSphere();
-      parts.push({ src: m, start: i0 * 4, count: cnt, sphere: mg.boundingSphere, d: 0 });
+      if (!mg.boundingSphere) mg.computeBoundingSphere(); if (!mg.boundingBox) mg.computeBoundingBox();
+      parts.push({ src: m, start: i0 * 4, count: cnt, sphere: mg.boundingSphere, box: mg.boundingBox, d: 0 });
       v0 += n; i0 += cnt;
     }
     // once on the GPU the copies are let go: the cells' own arrays are what the game reads

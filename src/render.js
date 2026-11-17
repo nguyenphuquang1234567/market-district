@@ -438,7 +438,9 @@ export function createRenderer(canvas, skyTex, presetName) {
       // (three.js tests a caster's layers against the view camera, not the cascade's, so for ordinary meshes this layer
       // never took effect; a batch tests the cascade's camera itself. Awnings, roofing and shutters, culled from 80 m
       // out, are large enough to be missed, so only what is culled nearer than that stays out of the far cascade.)
-      scene.traverse(o => { if (o.isBatchedMesh ? !(o.userData.lod && o.userData.lod < 80) && o.userData.kitLod !== 'near' : !o.userData.lod && o.userData.kitLod !== 'near') o.layers.enable(2); });
+      // Carved stone (balusters, quoins, pilasters, surrounds: three quarters of a million triangles, a third of each
+      // cascade's) stays out as well: at the far cascade's ten centimetres a texel its shadows are not resolved.
+      scene.traverse(o => { if (o.isBatchedMesh ? !(o.userData.lod && o.userData.lod < 80) && o.userData.kitLod !== 'near' && o.name !== 'batch:cantera' : !o.userData.lod && o.userData.kitLod !== 'near') o.layers.enable(2); });
       const far = csm.lights[csm.lights.length - 1];
       if (csm.lights.length > 2) far.shadow.camera.layers.set(2);
     },
@@ -456,7 +458,10 @@ export function createRenderer(canvas, skyTex, presetName) {
       // nearest cascade every frame, the rest in rotation (their lookups stay valid: each keeps the matrix it was drawn with)
       const n = csm.lights.length; frameNo++;
       if (!api.freezeShadows) {                                              // (profiling: tools/perf-probe.js holds the cascades to time the frame without them)
-        for (let i = 0; i < n; i++) if (i === 0 || n < 3 || frameNo < 8 || (i - 1) === frameNo % (n - 1)) csm.lights[i].shadow.needsUpdate = true;
+        // The second cascade on every other frame; the ones beyond it share the frames between, so the farthest is
+        // redrawn every fourth. (A cascade keeps the matrix it was drawn with, so a late one is still right for the
+        // ground it covers; what it misses is the strip that has turned into view since, 50 m and more away.)
+        for (let i = 0; i < n; i++) if (i === 0 || n < 3 || frameNo < 8 || (i === 1 ? frameNo % 2 === 0 : frameNo % 2 === 1 && (frameNo >> 1) % Math.max(2, n - 2) === i - 2)) csm.lights[i].shadow.needsUpdate = true;
         renderer.shadowMap.needsUpdate = true;
       }
       if (gtao) { gtao.gtaoMaterial.uniforms.tDepth.value = sceneRT.depthTexture; gtao.pdMaterial.uniforms.tDepth.value = sceneRT.depthTexture; }

@@ -258,8 +258,8 @@ def cortina_cap(name):
     p = sweep_x([(y + (0.004 if y > 0 else -0.004), z + (0.004 if z > 0.15 else -0.004)) for y, z in BOX if not (z < 0 or (abs(y + 0.086) < 1e-6))], -0.004, 0.004, 'iron')
     bevel(p, 0.0015, 1, 50)
     rivets = []
-    for y, z in [(-0.06, 0.03), (-0.06, 0.25), (0.0, 0.03), (0.0, 0.27), (-0.066, 0.14)]:
-        for sx in (-1, 1): rivets.append(at(rot(lathe([(0, 0), (0.006, 0), (0.005, 0.003), (0, 0.004)], 7, 'iron'), 'Y', 90 * sx), sx * 0.004, y, z))
+    for y, z in [(-0.06, 0.03), (-0.06, 0.25), (0.0, 0.03), (0.0, 0.27)]:
+        for sx in (-1, 1): rivets.append(at(rot(lathe([(0, 0), (0.006, 0), (0.005, 0.003), (0, 0.004)], 5, 'iron'), 'Y', 90 * sx), sx * 0.004, y, z))
     return bake_ao(join(name, [p] + rivets), 0.03, 0.5)
 
 # An open shop's curtain, rolled up under its lintel: the roll (laths showing round it), the last laths and the bottom
@@ -329,22 +329,25 @@ def pasador(name):
 def reja_calle(name):
     W, H, D, obs = 1.32, 1.37, -0.1, []
     z0, z1 = -0.06, H - 0.06
-    def flat(x0, x1, zc, h=0.032, t=0.008): return box(x0, x1, D - t / 2, D + t / 2, zc - h / 2, zc + h / 2, 'iron', 0.0015)
+    def flat(x0, x1, zc, h=0.032, t=0.008): return box(x0, x1, D - t / 2, D + t / 2, zc - h / 2, zc + h / 2, 'iron')
     obs += [flat(-W / 2, W / 2, z0), flat(-W / 2, W / 2, z1), flat(-W / 2 + 0.01, W / 2 - 0.01, z0 + 0.3, 0.026), flat(-W / 2 + 0.01, W / 2 - 0.01, z1 - 0.3, 0.026)]
     for sx in (-1, 1):
-        obs.append(box(sx * W / 2 - 0.016, sx * W / 2 + 0.016, D - 0.004, D + 0.004, z0, z1, 'iron', 0.0015))
-        for zc in (z0 + 0.1, z1 - 0.1): obs.append(box(sx * W / 2 - 0.014, sx * W / 2 + 0.014, D, 0.03, zc - 0.004, zc + 0.004, 'iron', 0.0015))      # legs into the wall
+        obs.append(box(sx * W / 2 - 0.016, sx * W / 2 + 0.016, D - 0.004, D + 0.004, z0, z1, 'iron'))
+        for zc in (z0 + 0.1, z1 - 0.1): obs.append(box(sx * W / 2 - 0.014, sx * W / 2 + 0.014, D, 0.03, zc - 0.004, zc + 0.004, 'iron'))      # legs into the wall
     nb = 9
     for i in range(nb):
         x = -W / 2 + 0.1 + (W - 0.2) * i / (nb - 1)
-        obs.append(tube([(x, D, z0 + 0.3), (x, D, z1 + 0.075)], 0.0075, 7, 'iron'))
-        obs.append(at(lathe([(0.0075, 0), (0.012, 0.01), (0.0075, 0.05), (0.0, 0.09)], 6, 'iron'), x, D, z1 + 0.07))                                   # spear point
-        for zc in (z0 + 0.3, z1 - 0.3, z1): obs.append(at(lathe([(0.0075, -0.012), (0.0125, -0.007), (0.0125, 0.007), (0.0075, 0.012)], 6, 'iron'), x, D, zc))   # collars
-    for i in range(nb - 1):                                                                                                                         # the scroll band
+        obs.append(tube([(x, D, z0 + 0.3), (x, D, z1 + 0.075)], 0.0075, 6, 'iron', caps=False))
+        obs.append(at(lathe([(0.0075, 0), (0.012, 0.01), (0.0, 0.09)], 5, 'iron'), x, D, z1 + 0.07))                                              # spear point
+        obs.append(at(lathe([(0.0075, -0.012), (0.0125, -0.007), (0.0125, 0.007), (0.0075, 0.012)], 5, 'iron'), x, D, z1 - 0.3))                    # a collar where it passes the upper rail
+    for i in range(0, nb - 1, 2):                                                                                                                 # the scroll band: an S in every other bay, a ring between
         xa = -W / 2 + 0.1 + (W - 0.2) * i / (nb - 1); xb = xa + (W - 0.2) / (nb - 1); xc = (xa + xb) / 2; zc = z0 + 0.15
-        sgn = 1 if i % 2 == 0 else -1
-        up, dn = scroll(xc, zc + 0.06, 0.056, 0.9, -math.pi / 2, sgn, 12, D), scroll(xc, zc - 0.06, 0.056, 0.9, math.pi / 2, sgn, 12, D)
-        obs.append(tube(up[::-1] + dn, 0.0045, 5, 'iron'))                                                                                         # an S: two spirals wound the same way
+        sgn = 1 if (i // 2) % 2 == 0 else -1
+        up, dn = scroll(xc, zc + 0.06, 0.056, 0.9, -math.pi / 2, sgn, 8, D), scroll(xc, zc - 0.06, 0.056, 0.9, math.pi / 2, sgn, 8, D)
+        obs.append(tube(up[::-1] + dn, 0.0045, 4, 'iron'))
+        if i + 1 < nb - 1:
+            xr = xc + (W - 0.2) / (nb - 1)
+            obs.append(tube([Vector((xr + 0.058 * math.cos(a), D, zc + 0.058 * math.sin(a))) for a in [2 * math.pi * k / 10 for k in range(11)]], 0.0045, 4, 'iron', caps=False))
     return bake_ao(join(name, obs), 0.035, 0.5)
 
 # A steel street door (puerta de lámina) for the district's 1.1 x 2.32 m doorway: a folded sheet leaf with two pressed
@@ -480,15 +483,15 @@ def goods(r, kind, x):
     METAL = lin((0.66, 0.67, 0.68))
     if kind == 'can':
         rad, h, c = r.uniform(0.032, 0.046), r.uniform(0.095, 0.125), r.choice(CAN)
-        o = lathe([(0, 0), (rad, 0), (rad + 0.0015, 0.004), (rad, 0.008), (rad, h - 0.008), (rad + 0.0015, h - 0.004), (rad, h), (rad - 0.004, h - 0.002), (0, h - 0.002)], 9, 'goods', lambda z: METAL if z < 0.01 or z > h - 0.01 else c)
+        o = lathe([(0, 0), (rad, 0), (rad + 0.0015, 0.004), (rad, 0.008), (rad, h - 0.008), (rad + 0.0015, h - 0.004), (rad, h), (rad - 0.004, h - 0.002), (0, h - 0.002)], 8, 'goods', lambda z: METAL if z < 0.01 or z > h - 0.01 else c)
         return at(o, x, -0.11 + r.uniform(-0.04, 0.03), 0.0), rad
     if kind == 'jar':
         rad, h = r.uniform(0.04, 0.052), r.uniform(0.13, 0.17); c = lin(r.choice([(0.55, 0.3, 0.1), (0.75, 0.6, 0.2), (0.4, 0.12, 0.08), (0.3, 0.36, 0.14)]))
-        o = lathe([(0, 0), (rad * 0.92, 0), (rad, 0.01), (rad, h * 0.72), (rad * 0.86, h * 0.82), (rad * 0.8, h * 0.86), (rad * 0.84, h * 0.87), (rad * 0.84, h - 0.004), (rad * 0.78, h), (0, h)], 12, 'goods', lambda z: lin((0.7, 0.16, 0.12)) if z > h * 0.86 else c)
+        o = lathe([(0, 0), (rad * 0.92, 0), (rad, 0.01), (rad, h * 0.72), (rad * 0.86, h * 0.82), (rad * 0.8, h * 0.86), (rad * 0.84, h * 0.87), (rad * 0.84, h - 0.004), (rad * 0.78, h), (0, h)], 8, 'goods', lambda z: lin((0.7, 0.16, 0.12)) if z > h * 0.86 else c)
         return at(o, x, -0.11 + r.uniform(-0.04, 0.03), 0.0), rad
     if kind == 'bottle':
         rad, h = r.uniform(0.03, 0.038), r.uniform(0.22, 0.29); c = lin(r.choice([(0.14, 0.3, 0.14), (0.36, 0.2, 0.08), (0.6, 0.62, 0.56), (0.74, 0.5, 0.14)]))
-        o = lathe([(0, 0), (rad * 0.9, 0), (rad, 0.012), (rad, h * 0.55), (rad * 0.72, h * 0.7), (rad * 0.36, h * 0.82), (rad * 0.34, h * 0.95), (rad * 0.42, h * 0.955), (rad * 0.42, h), (0, h)], 10, 'goods',
+        o = lathe([(0, 0), (rad * 0.9, 0), (rad, 0.012), (rad, h * 0.55), (rad * 0.72, h * 0.7), (rad * 0.36, h * 0.82), (rad * 0.34, h * 0.95), (rad * 0.42, h * 0.955), (rad * 0.42, h), (0, h)], 8, 'goods',
                   lambda z: lin((0.88, 0.85, 0.74)) if h * 0.2 < z < h * 0.5 else (lin((0.75, 0.6, 0.2)) if z > h * 0.95 else c))
         return at(o, x, -0.11 + r.uniform(-0.04, 0.04), 0.0), rad
     sx, sy, sz = r.uniform(0.05, 0.085), r.uniform(0.035, 0.06), r.uniform(0.1, 0.19); c = r.choice(CAN); s = r.uniform(0.85, 1.0)
