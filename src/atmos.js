@@ -49,6 +49,10 @@ const marchFS = steps => `
     // blur afterwards averages back into a smooth result
     float jit = fract(52.9829189 * fract(dot(gl_FragCoord.xy + uFrame * 5.588238, vec2(0.06711056, 0.00583715))));
     float L = 0.0, T = 1.0, prev = 0.0;
+    // cloud shadow is hundreds of metres across: read at the two ends of the ray and blended along it
+    vec3 pe = uCamPos + dir * tMax;
+    float cl0 = texture2D(tCloud, uCamPos.xz * uCloud.z + uCloud.xy).r * 0.65 + texture2D(tCloud, uCamPos.xz * uCloud.z * 2.7 - uCloud.xy * 1.6).g * 0.35;
+    float cl1 = texture2D(tCloud, pe.xz * uCloud.z + uCloud.xy).r * 0.65 + texture2D(tCloud, pe.xz * uCloud.z * 2.7 - uCloud.xy * 1.6).g * 0.35;
     for (int i = 0; i < ${steps}; i++) {
       float f = (float(i) + jit) / float(${steps});
       float t = tMax * f * (0.35 + 0.65 * f);                     // steps shorter near the eye, where a shaft's edge is largest on screen
@@ -57,18 +61,17 @@ const marchFS = steps => `
       float sigma = uDensity * (uBase + exp(-max(p.y, 0.0) / uDustH));
       if (uGiOn > 0.5) {                                          // enclosed air holds its dust: the share of sky a point sees, from the light bake
         vec3 q = (p - uGiMin) * uGiInv;
-        float open = clamp((texture(tGiR, q).x + texture(tGiG, q).x + texture(tGiB, q).x) * 0.3333 / uGiSky, 0.0, 1.0);
+        float open = clamp(texture(tGiG, q).x / uGiSky, 0.0, 1.0);              // (green stands for all three: one lookup a step)
         sigma *= 1.0 + uEnclosed * (1.0 - open) * (1.0 - open);
       }
-      float cl = texture2D(tCloud, p.xz * uCloud.z + uCloud.xy).r * 0.65 + texture2D(tCloud, p.xz * uCloud.z * 2.7 - uCloud.xy * 1.6).g * 0.35;
-      float sun = sunAt(p) * (1.0 - uCloud.w * smoothstep(0.42, 0.68, cl));
+      float sun = sunAt(p) * (1.0 - uCloud.w * smoothstep(0.42, 0.68, mix(cl0, cl1, f)));
       L += T * sigma * dt * sun;
       T *= exp(-sigma * dt);
     }
     // Henyey-Greenstein, scaled so that light scattered evenly in all directions counts as 1: brightest looking towards the sun
     float c = dot(dir, uSunDir), g = uG, hg = (1.0 - g * g) / pow(1.0 + g * g - 2.0 * g * c, 1.5);
     float lin = -vp.z;
-    gl_FragColor = vec4(uSunCol * (L * uGain * mix(1.0, hg, 0.75)), lin);
+    gl_FragColor = vec4(uSunCol * (L * uGain * mix(1.0, hg, 0.6)), lin);
   }`;
 
 // 7 taps along one axis, each weighed down by how far its depth is from the centre's: shafts stay soft, edges stay put
@@ -115,7 +118,7 @@ export class AtmosPass extends Pass {
       uSunDir: { value: o.sunDir }, uSunCol: { value: new THREE.Color().copy(o.sunColor).multiplyScalar(o.sunIntensity) },
       // density per metre at the ground in the open, the share of it that does not thin with height, the height (m) over
       // which the rest thins to a third, how many times thicker it gets indoors, forward scattering, overall strength
-      uMaxDist: { value: 80 }, uDensity: { value: 0.0045 }, uBase: { value: 0.35 }, uDustH: { value: 7 }, uEnclosed: { value: 9 }, uG: { value: 0.6 }, uGain: { value: 0.072 }, uFrame: { value: 0 },
+      uMaxDist: { value: 80 }, uDensity: { value: 0.0045 }, uBase: { value: 0.35 }, uDustH: { value: 7 }, uEnclosed: { value: 9 }, uG: { value: 0.5 }, uGain: { value: 0.075 }, uFrame: { value: 0 },
       tGiR: gi.tGiR, tGiG: gi.tGiG, tGiB: gi.tGiB, uGiMin: gi.uGiMin, uGiInv: gi.uGiInv, uGiOn: gi.uGiOn, uGiSky: gi.uGiSky, tCloud: gi.tCloud, uCloud: gi.uCloud,
     };
     const mat = (fs, uniforms, extra = {}) => new THREE.ShaderMaterial({ uniforms, vertexShader: VS, fragmentShader: fs, depthTest: false, depthWrite: false, ...extra });

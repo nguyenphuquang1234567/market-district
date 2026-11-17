@@ -542,6 +542,8 @@ export function addStreetLife(R, M, world) {
           normal = normalize(normal + (viewMatrix * vec4(rp.x, 0.0, rp.y, 0.0)).xyz);
         }`)
       .replace('#include <lights_fragment_maps>', `#include <lights_fragment_maps>
+        // under a roof the sky map is the wrong thing to see in a damp floor: what little sky the place sees is all it gets
+        radiance *= mix(0.12, 1.0, smoothstep(0.15, 0.7, clamp(texture(tGiG, (vGiPos - uGiMin) * uGiInv).x / uGiSky, 0.0, 1.0)));
         if (uPrevOn > 0.5 && pdWater > 0.02) {
           vec3 pdNw = inverseTransformDirection(geometryNormal, viewMatrix);
           vec4 pdR = pdTrace(vWp + pdNw * 0.03, reflect(normalize(vWp - cameraPosition), pdNw));

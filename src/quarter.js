@@ -276,8 +276,13 @@ export function buildQuarter({ B, M, buildings, anchors, ghosts, gates, architec
   function plazuela() {
     const { x0, x1, z0, z1 } = PLAZUELA, cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, stone = { color: [0.98, 0.86, 0.82], tile: 1.2 };
     // the kiosk: an octagonal stone platform with two flights of steps, slim iron columns, a railing and a tin roof
-    const R0 = 3.6, Hp = 0.76, oct = (r, y, h, key, o) => B.geom(key, new THREE.CylinderGeometry(r, r, h, 8), mat4(V(cx, y, cz), Math.PI / 8), o);
-    oct(R0, Hp / 2, Hp, 'cantera', { ...stone, uvScale: 2 }); oct(R0 + 0.12, Hp + 0.03, 0.06, 'cantera', { ...stone, uvScale: 2 });
+    const R0 = 3.6, Hp = 0.76;
+    // (the wall and the top are mapped apart: one scale for both stretched each stone eleven metres round the drum)
+    const drum = (r, y, h) => {
+      B.geom('cantera', new THREE.CylinderGeometry(r, r, h, 8, 1, true), mat4(V(cx, y, cz), Math.PI / 8), { ...stone, uvScale: (2 * Math.PI * r) / 1.5, uvScaleY: h / 1.5 });
+      B.geom('cantera', new THREE.CylinderGeometry(r, r, 0.002, 8), mat4(V(cx, y + h / 2, cz), Math.PI / 8), { ...stone, uvScale: (2 * r) / 1.5 });
+    };
+    drum(R0, Hp / 2, Hp); drum(R0 + 0.12, Hp + 0.03, 0.06);
     B.quad('terracotta', V(cx - 2.4, Hp + 0.065, cz + 2.4), V(cx + 2.4, Hp + 0.065, cz + 2.4), V(cx + 2.4, Hp + 0.065, cz - 2.4), V(cx - 2.4, Hp + 0.065, cz - 2.4), { tile: 1.2 });
     const ri = R0 * Math.cos(Math.PI / 8), side = 2 * ri * Math.tan(Math.PI / 8);  // across the flats; one side
     // four bands, one per pair of opposite sides, are the octagon exactly (two squares would make an eight-pointed star
