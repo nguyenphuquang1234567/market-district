@@ -319,6 +319,42 @@ Key bindings live in the same saved settings object (`binds`, including `frag` a
   a soldier to see **Ally** or **Enemy**. The minimap, scoreboard and kill feed use the same colors. The HUD also shows
   the compass, clock, health, ammo, hit confirmation, damage direction and elimination banners.
 
+- **Air** — the sun's light scattered by dust on its way to the eye, with the buildings' shadows cut out of it
+  (`src/atmos.js`): shafts under the market hall's skylights, between the shade cloths of the covered lane and down
+  the alleys, and a haze that deepens along a street and brightens towards the sun. A post pass at half size walks each
+  view ray (12 steps on High) through the sun's shadow cascades; dust is thickest near the ground and thicker again in
+  enclosed places, which the baked light volume knows as places that see little sky. The result is blurred along depth
+  edges only and added to the frame: it adds light and never takes any away, so no place gets darker. Motes drift and
+  glint in sunlit air indoors and under cover (never against the open sky, where they read as specks).
+- **Street life** — what a used street carries that its architecture does not (`src/streetlife.js`). On the ground:
+  oil, tar patches and crack sealing on the asphalt, tyre marks, a worn crossing before each junction, yellow kerbs at
+  the corners, drain grates in the gutter, fallen leaves and bougainvillea petals under the trees and vines that drop
+  them (read from the drawn foliage), litter along the walls, vegetable scraps round the stalls, chewing gum, plaster
+  crumbs, a chalk hopscotch in each square. On the walls: pasted posters in ones to fours, painted wall
+  advertisements rubbed back to the plaster, spray tags in the alleys, leak streaks, enamel notices and house
+  numbers, electricity meters on their conduit. On the roofs: water tanks on brick stands, aerials, dishes. And wet
+  ground: some hundred patches, most only damp (darker, with a sheen), a few holding water that mirrors the street.
+  The mirror is real: each water pixel marches its reflected ray through the previous frame's picture and depth (a
+  half-size copy kept by the renderer), so facades, awnings, papel picado and soldiers show in it, and the sky map
+  stands in where the frame has no answer. All of it is one layer added after the district is built, in a group of
+  its own: where a wall is flat and bare, or the ground level and clear, is found by rays against the drawn
+  triangles, and every choice is a hash of the position. Nothing is drawn from the map's random streams, nothing
+  collides, and nothing enters the light bake's signature, so layout, cover, routes and the bake are exactly as
+  before (`tools/layout-fingerprint.js`: identical; the bake still loads as cached). Every word on a poster or a wall
+  is generic Spanish. The 1,800-odd decals are one draw call from one 2048² canvas-drawn atlas; they fade out by 80 m.
+  `?life=0` leaves the layer out.
+- **One draw call per material** — the district used to be drawn as one mesh per material per 24 m cell: 2,000-3,000
+  draw calls a frame across the view and the shadow cascades. Now all of a material's cells share one vertex and index
+  buffer, each cell a range of it, and the cells that pass culling are drawn together with `WEBGL_multi_draw`
+  (`src/batch.js`): 2,594 cell meshes in 105 draws. The cell meshes stay, out of the scene, as the district's data:
+  what bullets and thrown things hit, what the light bake reads, and where distance, kit near/far and zone culling
+  write each cell's visibility, which a batch reads as it is drawn, for the view and for each shadow cascade. three.js
+  only multi-draws what claims to be a `BatchedMesh`, whose shader looks up a transform per vertex in a texture; the
+  district is already in world space, so those shader chunks are replaced by an identity. (Found on the way: three.js
+  tests a shadow caster's layers against the view camera, not the cascade's, so keeping small things out of the far
+  cascade had never taken effect. A batch tests the cascade's camera itself, and only what is culled nearer than 80 m
+  stays out, so awnings and roofing still cast at range.) `?batch=0` draws cell by cell as before.
+
 ## Left out on purpose
 
 A key-rebinding screen, heat shimmer, and a recorded gameplay clip. No reference video was supplied, so nothing
@@ -382,7 +418,7 @@ baseline is `main` checked out in a separate worktree and measured the same way 
 
 The heaviest view of the map got lighter (14.4 → 13.8 ms); the plaza is the one view that costs more. What holds the
 cost: small details are dropped by distance per material (`userData.lod`, scaled per preset), loose clutter beyond 70 m
-is not drawn, the farthest shadow cascade draws only large casters, each cascade's depth range is fitted to what is in
+is not drawn, the farthest shadow cascade draws only large casters (which took effect only with the batches: see below), each cascade's depth range is fitted to what is in
 it, and the ring of houses between the districts is used for zone culling (the far side is drawn only through a passage
 that is in view). Estimated GPU memory (`perf.gpuMemory(G)`; WebGL does not report real use) rose from 1961 to 2196 MB
 (+12 %): scene textures 1000 → 1172 MB, model textures 592 → 608 MB, geometry 86 → 132 MB, irradiance volume 2.7 → 4.7 MB;
@@ -451,8 +487,44 @@ pair for every piece had added up to 440 (the far halves sit in their own meshes
 only palms and laurels keep one and their modelled leaves leave the shadows to the old leaf cards. Estimated GPU memory
 1222 → 1282 MB (geometry 309 → 368 MB).
 
+**With the air, the street life and one draw per material** — `?bench=` in the native window (WebKit), this build and
+`main` (checked out in a separate worktree) run alternately, four runs each, medians. Each frame is timed to GPU
+completion, which makes the CPU and the GPU take turns, so these numbers overstate a frame in play:
+
+| View | `main` | This build | Change | Draw calls | Triangles |
+| --- | --- | --- | --- | --- | --- |
+| Main street, long sightline | 14.82 ms | 13.75 ms | −1.08 ms (−7 %) | 2164 → 345 | 5.35 M → 5.00 M |
+| Arch and plaza | 14.25 ms | 12.91 ms | −1.34 ms (−9 %) | 2163 → 346 | 5.80 M → 5.25 M |
+| Covered market lane | 14.61 ms | 12.55 ms | −2.05 ms (−14 %) | 1764 → 345 | 4.82 M → 4.60 M |
+| Laundry alley | 13.48 ms | 11.25 ms | −2.23 ms (−17 %) | 1868 → 335 | 4.30 M → 4.09 M |
+| Market lane through the north passage | 11.19 ms | 11.33 ms | +0.14 ms (+1 %) | 1498 → 321 | 3.74 M → 3.47 M |
+| Market hall, from Calle del Mercado | 13.04 ms | 12.04 ms | −0.99 ms (−8 %) | 1761 → 311 | 4.71 M → 4.37 M |
+| Inside the market hall | 12.29 ms | 11.92 ms | −0.37 ms (−3 %) | 1587 → 305 | 4.37 M → 4.03 M |
+| Plazuela and kiosk | 11.98 ms | 11.86 ms | −0.12 ms (−1 %) | 976 → 284 | 3.52 M → 3.21 M |
+
+Runs of one build spread widely that day (`main` by up to 1.5 ms between runs, this build by up to 3.7 ms: its first
+run was 2–3 ms slower than its other three in every view), so the two views within 0.2 ms are level, not slower or
+faster. What the batching changed is where the time goes. In embedded Chromium (1280 × 960), with the haze and street
+life on in both, the main thread's time to submit a frame fell from 4.95 to 2.4 ms on the main street, 4.51 to 1.9 ms
+at the arch and 3.54 to 1.9 ms in the hall, while the time to GPU completion barely moved (6.65 → 6.33, 5.83 → 5.61,
+4.97 → 4.91 ms): the frame is limited by the GPU, about 3–5 M triangles and the pixels, not by draw calls, which an
+earlier reading of the WebKit numbers had suggested (there the main thread waits on the GPU, so its time tracks the
+GPU's). The new parts cost, to GPU completion on the main street in Chromium: the haze about 0.4 ms (before its
+lookups were cut from six a step to two), the street life 0.3 ms, the kept frame 0.1 ms.
+
+What it costs elsewhere: loading to the menu takes about a second longer (9.6 s against 8.6 s; building the district
+4.7 s against 4.0 s, for the rays, the atlas and the batches' buffers); estimated GPU memory 1283 → 1362 MB (+6 %:
+geometry 369 → 411 MB, textures 630 → 667 MB). Small things (culled nearer than 80 m) no longer cast into the far
+shadow cascade, which was the intent all along. Reflections in water are a frame late and know only what was on
+screen: a ray that leaves the picture falls back to the sky map. Low has neither haze nor reflections. The batching
+leans on how three.js r170 draws a `BatchedMesh` and needs rechecking on an upgrade. The scripted checks
+(`?selftest=1`) pass as on `main` (64 checks, the one known failure). On-screen pacing in play was not measured for
+this build.
+
 Profiling switches: `?demo=1` auto-plays the match (for pacing runs), `?live=1` writes `captures/live.json` every 3 s,
-`?tune={"maxPR":1.25}` overrides any preset field.
+`?tune={"maxPR":1.25}` overrides any preset field. `?prof=<tag>` times three views whole and again with one part held or
+off at a time (cascades not redrawn, no AO, no bloom, no haze, no multisampling, a quarter of the pixels) and saves
+`captures/prof_<tag>.json`; `?batch=0` and `?life=0` switch the batching and the street-life layer off for A/B runs.
 
 ## Tests and captures
 
@@ -557,6 +629,9 @@ index.html            page, HUD and menu markup/styles, import map
 src/main.js           boot, settings, match rules, frame loop, test hooks
 src/render.js         renderer, sky analysis, sun + cascades, clouds, exposure meter, post stack, presets
 src/gi.js             irradiance-volume bake, cache and upload
+src/atmos.js          sunlit haze and light shafts (post pass), dust motes, the frame kept for reflections
+src/batch.js          one multi-draw per material: the district's cells drawn together, culled per cell
+src/streetlife.js     ground and wall decals, wet ground with reflections, meters, roof tanks and aerials
 src/materials.js      PBR library, weathering / ground-blend / cloth shader patches
 src/builder.js        static geometry + prop + collider accumulator
 src/world.js          ground, buildings, facade bands and surrounds, arch, sidewalks, nav grid, spawns, culling zones
