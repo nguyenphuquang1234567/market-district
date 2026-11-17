@@ -106,7 +106,7 @@ export function buildQuarter({ B, M, buildings, anchors, ghosts, gates, architec
     // columns on a 4 m grid along the length, on the nave lines and the outer walls
     // (the architecture pass models these in cast iron near the camera: the plain posts are then the far version, and a
     // note says where each stands and what it carries; see world.js facade() and src/archdetail.js)
-    const FAR = ARCH && assets.kit?.col_base ? 'far' : undefined, note = (kind, d) => { if (FAR && !B.mute) (B.notes ||= []).push({ kind, ...d }); };
+    const FAR = ARCH && assets.kit?.col_base ? 'far2' : undefined, note = (kind, d) => { if (FAR && !B.mute) (B.notes ||= []).push({ kind, ...d }); };
     for (let x = X0 + 4; x < X1 - 0.1; x += 4) for (const z of [Z0 + 0.2, -NZ, NZ, Z1 - 0.2]) {
       const h = Math.abs(z) < 5 ? NAVE : EAVE;
       B.box(steel, x, h / 2, z, 0.2, h, 0.2, { ...green, lod: FAR }); B.box(steel, x, 0.35, z, 0.34, 0.7, 0.34, { color: [0.5, 0.7, 0.55], tile: 0.8, lod: FAR });

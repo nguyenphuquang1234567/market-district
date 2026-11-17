@@ -231,7 +231,7 @@ def cortina_bar(name):
 @piece
 def cortina_handle(name):
     path = fillet([(-0.07, -0.012, 0), (-0.07, -0.05, 0), (0.07, -0.05, 0), (0.07, -0.012, 0)], 0.018, 4)
-    rod = tube(path, 0.0048, 7, 'iron')
+    rod = tube(path, 0.0048, 5, 'iron')
     pads = [box(sx * 0.07 - 0.016, sx * 0.07 + 0.016, -0.0155, -0.011, -0.014, 0.014, 'iron', 0.0015) for sx in (-1, 1)]
     return bake_ao(join(name, [rod] + pads), 0.03, 0.6, wall=-0.011)
 
@@ -241,9 +241,9 @@ def cortina_lock(name):
     plate = box(-0.03, 0.03, -0.0165, -0.012, 0.0, 0.11, 'iron', 0.002)
     knuckle = rot(tube([(-0.03, 0, 0), (0.03, 0, 0)], 0.006, 8, 'iron'), 'X', 0); at(knuckle, 0, -0.019, 0.11)
     staple = tube(fillet([(-0.011, -0.014, 0.078), (-0.011, -0.04, 0.078), (0.011, -0.04, 0.078), (0.011, -0.014, 0.078)], 0.008, 3), 0.0032, 6, 'iron')
-    ring = tube([Vector((0.02 * math.cos(a), -0.03, 0.012 + 0.02 * math.sin(a))) for a in [math.pi * k / 8 for k in range(9)]], 0.004, 6, 'iron')     # the floor ring
+    ring = tube([Vector((0.02 * math.cos(a), -0.03, 0.012 + 0.02 * math.sin(a))) for a in [math.pi * k / 5 for k in range(6)]], 0.004, 5, 'iron')     # the floor ring
     body = box(-0.021, 0.021, -0.058, -0.036, 0.02, 0.058, 'brass', 0.004, (1, 1, 1), 2)
-    shackle = tube(fillet([(-0.012, -0.047, 0.058), (-0.012, -0.047, 0.09), (0.012, -0.047, 0.09), (0.012, -0.047, 0.058)], 0.011, 4), 0.0034, 7, 'steel')
+    shackle = tube(fillet([(-0.012, -0.047, 0.058), (-0.012, -0.047, 0.09), (0.012, -0.047, 0.09), (0.012, -0.047, 0.058)], 0.011, 3), 0.0034, 5, 'steel')
     return bake_ao(join(name, [plate, knuckle, staple, ring, body, shackle]), 0.03, 0.6, wall=-0.012)
 
 # The housing the curtain rolls up into: bent sheet with a rounded shoulder and a drip lip (a metre wide, stretch x),
@@ -374,10 +374,10 @@ def puerta_metal(name):
 
 # ---------------------------------------------------------------------------------------------------- stone base -----
 # A rusticated base course (almohadillado): three courses of rock-faced blocks, chamfered at the joints, in running
-# bond. A metre long (stretch x a little), 0.9 m high; the joints lie a centimetre off the wall face.
+# bond. A metre long (stretch x a little), 0.9 m high; the joints are cut back to the wall face.
 @piece
 def zocalo(name):
-    r = stream(name); obs = []; H, n = 0.9, 3; ch = H / n; J, F = -0.01, -0.04
+    r = stream(name); obs = []; H, n = 0.9, 3; ch = H / n; J, F = -0.001, -0.0135       # (the faces stand 1.4 cm off the wall at most: a chair pushed against the wall must not sink into the stone)
     for c in range(n):
         off = 0.25 if c % 2 else 0.0; x = -0.5 - off
         while x < 0.5 - 1e-6:
@@ -387,7 +387,7 @@ def zocalo(name):
             nx, nz = max(2, round((xb - xa) / 0.09)), 3
             outer = [(xa, zz0), (xb, zz0), (xb, zz1), (xa, zz1)]
             base = [bm.verts.new((px, J, pz)) for px, pz in outer]
-            grid = [[bm.verts.new((xa + ch2 + (xb - xa - 2 * ch2) * i / nx, F + (r.uniform(-0.007, 0.006) if 0 < i < nx and 0 < j < nz else r.uniform(-0.002, 0.002)), zz0 + ch2 + (zz1 - zz0 - 2 * ch2) * j / nz)) for i in range(nx + 1)] for j in range(nz + 1)]
+            grid = [[bm.verts.new((xa + ch2 + (xb - xa - 2 * ch2) * i / nx, F + (r.uniform(-0.0035, 0.003) if 0 < i < nx and 0 < j < nz else r.uniform(-0.001, 0.001)), zz0 + ch2 + (zz1 - zz0 - 2 * ch2) * j / nz)) for i in range(nx + 1)] for j in range(nz + 1)]
             for j in range(nz):
                 for i in range(nx): poly(bm, (grid[j][i], grid[j][i + 1], grid[j + 1][i + 1], grid[j + 1][i]))
             rim = [grid[0][i] for i in range(nx + 1)] + [grid[j][nx] for j in range(1, nz + 1)] + [grid[nz][i] for i in range(nx - 1, -1, -1)] + [grid[j][0] for j in range(nz - 1, 0, -1)]
@@ -401,9 +401,9 @@ def zocalo(name):
                 if f.normal.y > 0.3: f.normal_flip()
             s = r.uniform(0.86, 1.0)
             obs.append(obj('_k', bm, 'trim', (s, s * r.uniform(0.97, 1.0), s * r.uniform(0.94, 1.0))))
-    back = bmesh.new(); bv = [back.verts.new(p) for p in [(-0.5, J + 0.001, 0), (0.5, J + 0.001, 0), (0.5, J + 0.001, H), (-0.5, J + 0.001, H)]]; back.faces.new(bv)     # the mortar bed behind the joints
+    back = bmesh.new(); bv = [back.verts.new(p) for p in [(-0.5, J + 0.0002, 0), (0.5, J + 0.0002, 0), (0.5, J + 0.0002, H), (-0.5, J + 0.0002, H)]]; back.faces.new(bv)     # the mortar bed behind the joints
     obs.append(obj('_m', back, 'trim', (0.55, 0.53, 0.5)))
-    return bake_ao(join(name, obs), 0.05, 0.75, floor=0.0)
+    return bake_ao(join(name, obs), 0.03, 0.85, floor=0.0)
 
 # ---------------------------------------------------------------------------------------------------- shop interior --
 # A jack-arch ceiling (bóveda catalana entre viguetas): one bay, 0.8 m from joist to joist (y) and a metre along the
@@ -505,8 +505,8 @@ def repisa(name, mix):
         obs.append(tube(fillet([(sx, -0.004, -0.24), (sx, -0.075, -0.17), (sx, -0.14, -0.1), (sx, -0.185, -0.036)], 0.03, 3), 0.005, 6, 'iron'))
     x = -0.46
     while x < 0.44:
-        o, hw = goods(r, r.choice(mix), 0.0); x += hw; at(o, x, 0, 0); obs.append(o); x += hw + r.uniform(0.004, 0.03)
-        if r.random() < 0.18: x += r.uniform(0.04, 0.1)
+        o, hw = goods(r, r.choice(mix), 0.0); x += hw; at(o, x, 0, 0); obs.append(o); x += hw + r.uniform(0.01, 0.05)
+        if r.random() < 0.3: x += r.uniform(0.06, 0.16)
     return bake_ao(join(name, obs), 0.06, 0.6, wall=0.0)
 
 # A fluorescent strip light hung from the joists on two rods: a folded steel body, two tubes in their holders.
@@ -606,8 +606,8 @@ def plafon(name):
 # and the wall bracket an arm pins to: a bolted plate with a clevis.
 @piece
 def tubo_x(name):
-    t = tube([(-0.5, 0, 0), (0.5, 0, 0)], 0.019, 10, 'steel')
-    caps = [at(rot(lathe([(0, 0), (0.0215, 0), (0.0215, 0.012), (0.017, 0.016), (0, 0.016)], 10, 'steel'), 'Y', 90 * sx), sx * 0.492, 0, 0) for sx in (-1, 1)]
+    t = tube([(-0.5, 0, 0), (0.5, 0, 0)], 0.019, 8, 'steel', caps=False)
+    caps = [at(rot(lathe([(0, 0), (0.0215, 0), (0.0215, 0.012), (0, 0.016)], 8, 'steel'), 'Y', 90 * sx), sx * 0.492, 0, 0) for sx in (-1, 1)]
     return bake_ao(join(name, [t] + caps), 0.03, 0.4)
 @piece
 def toldo_cassette(name):
@@ -627,8 +627,8 @@ def toldo_soporte(name):
 # water clear of the wall. Origin: the wall face at roof level; it runs out 0.48 m and falls a little.
 @piece
 def gargola(name):
-    bm = bmesh.new(); n, R, t = 8, 0.062, 0.012; rings = []
-    for d in (0.06, -0.18, -0.48):
+    bm = bmesh.new(); n, R, t = 5, 0.062, 0.012; rings = []
+    for d in (0.06, -0.48):
         z = (d - 0.06) * 0.1 if d < 0 else 0.0; flare = 1.0 if d > -0.4 else 1.08
         inner = [(R * flare * math.cos(math.pi + math.pi * k / n), d, z + 0.05 + R * flare * math.sin(math.pi + math.pi * k / n) + (d * 0.1 if d < 0 else 0)) for k in range(n + 1)]
         outer = [((R + t) * flare * math.cos(math.pi + math.pi * k / n), d, z + 0.05 + (R + t) * flare * math.sin(math.pi + math.pi * k / n) + (d * 0.1 if d < 0 else 0)) for k in range(n + 1)]
@@ -639,7 +639,7 @@ def gargola(name):
     poly(bm, rings[0][::-1]); poly(bm, rings[-1])
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
     spout = obj('_s', bm, 'clay')
-    bracket = bevel(sweep_x([(0.02, -0.14), (-0.04, -0.14), (-0.07, -0.1), (-0.16, -0.045), (-0.16, -0.02), (0.02, -0.02)], -0.05, 0.05, 'trim'), 0.006, 2, 30)
+    bracket = sweep_x([(0.02, -0.14), (-0.04, -0.14), (-0.07, -0.1), (-0.16, -0.045), (-0.16, -0.02), (0.02, -0.02)], -0.05, 0.05, 'trim')
     return bake_ao(join(name, [spout, bracket]), 0.06, 0.6, wall=0.0)
 
 # ---------------------------------------------------------------------------------------------------- build ----------

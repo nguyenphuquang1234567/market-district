@@ -83,9 +83,9 @@ export function architecture(B, rnd, buildings, anchors, rs = null, style = { ba
       B.box(key, c.x, c.y, c.z, ax ? du : dd, v1 - v0, ax ? dd : du, o);
     };
     // The architecture pass (tools/blender/arch.py, src/archdetail.js): where it has a modelled piece for something drawn
-    // flat here, the flat version is tagged 'far' (drawn beyond the kit's near distance, exactly as before) and a note
+    // flat here, the flat version is tagged 'far2' (drawn beyond the pass's near distance, R.kitNear2, exactly as before) and a note
     // says what belongs there near the camera. Nothing else changes: the same draws, the same solids, the same random numbers.
-    const FAR = ARCH && assets.kit?.cortina_slats ? 'far' : undefined;
+    const FAR = ARCH && assets.kit?.cortina_slats ? 'far2' : undefined;
     const note = (kind, d) => { if (FAR && !B.mute) (B.notes ||= []).push({ kind, T, N, bd, street, ...d }); };
     // collision over the same span as FB: a solid box hanging off the facade, or (rail) a railing only bodies meet
     const FC = (u0, v0, u1, v1, d0, d1, surf, rail = false) => {
@@ -670,7 +670,7 @@ export function architecture(B, rnd, buildings, anchors, rs = null, style = { ba
     B.quad('tiles', P(ra, y, 0), P(rb, y, 0), P(rb, y, D), P(ra, y, D), { tile: 1.6 });
     B.quad('interior', P(ra, h, D), P(rb, h, D), P(rb, h, d0), P(ra, h, d0), g2(cB, cB, cF, cF));
     B.quad('interior', P(ra, y, D), P(rb, y, D), P(rb, h, D), P(ra, h, D), g2(cB, cB, cB, cB));
-    const far = ARCH && assets.kit?.cortina_slats ? 'far' : undefined;        // (the architecture pass tiles the walls near: see facade())
+    const far = ARCH && assets.kit?.cortina_slats ? 'far2' : undefined;        // (the architecture pass tiles the walls near: see facade())
     B.quad('tiles', P(ra, y, D - 0.012), P(rb, y, D - 0.012), P(rb, 1.5, D - 0.012), P(ra, 1.5, D - 0.012), { tile: 1.1, lod: far });
     if (far && !B.mute) (B.notes ||= []).push({ kind: 'sala', P, T: fr.T, N: fr.N, bd, street: fr.street, ra, rb, D, y, h, d0, op });
     B.quad('interior', P(ra, y, d0), P(ra, y, D), P(ra, h, D), P(ra, h, d0), g2(cF, cB, cB, cF));

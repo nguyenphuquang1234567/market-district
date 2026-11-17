@@ -355,6 +355,38 @@ Key bindings live in the same saved settings object (`binds`, including `frag` a
   cascade had never taken effect. A batch tests the cascade's camera itself, and only what is culled nearer than 80 m
   stays out, so awnings and roofing still cast at range.) `?batch=0` draws cell by cell as before.
 
+- **The street floor and the shops, modelled** — what the district drew as a flat textured quad, or left out, is real
+  geometry near the camera now, modelled in Blender from a third script (`tools/blender/arch.py`, `assets/kit/arch.glb`,
+  34 pieces with bevelled edges, weighted normals and occlusion baked into vertex colours) and fitted by
+  `src/archdetail.js`:
+  - *roll-up shutters* (cortinas): curved laths 75 mm apart in steel guide channels under a bent-sheet housing with
+    riveted end plates, a bottom bar on its rubber, two lifting handles, and one or two hasps padlocked to rings in
+    the pavement; the ones the district drew in corrugated sheet are *sheet gates* instead: two leaves of real
+    corrugation on a tube frame, three barrel hinges a side, a slide bolt and a padlock;
+  - *steel street doors*: a folded leaf with pressed panels, a louvred vent, a barred light, hinges, a pull and lock;
+  - *window grilles* on every street-floor window: a projecting flat-bar frame on four legs, round bars through
+    two rails with forged collars, spear points, and a band of S-scrolls and rings;
+  - *base courses* on the casonas: three courses of rock-faced, chamfered blocks in running bond;
+  - *shops*: the curtain rolled up under the lintel in its guides; inside, a jack-arch ceiling (brick vaults sprung
+    between steel joists, as commercial buildings of 1900-1950 were roofed), a tiled dado of pillowed 12.5 cm tiles
+    with a band and a bullnose capping (five colourways), a six-panel door to a back room, shelves of cans, jars,
+    bottles and boxes on forged brackets wherever the wall is clear, and a strip light under the joists;
+  - *awnings*: the roller in its hood, a front bar, arms and stays in steel tube, bolted wall brackets with clevis pins;
+  - *the market hall*: cast-iron columns (an octagonal panelled pedestal, base mouldings, a fluted shaft, a leafed
+    capital under a square abacus) with a pierced cast bracket to each beam they carry, and riveted gusset plates
+    where the truss members meet;
+  - *the 1950s blocks' canopies*: tapered concrete ribs from wall to edge and a caged bulkhead light between each pair;
+  - *parapets*: a clay spout on a stone bracket every few metres of every street front.
+  How it stays out of the game's way: `world.js` leaves a note where each belongs and tags its own flat version
+  `far`, so beyond the kit's near distance the map is drawn exactly as before and the light bake's signature does not
+  move (it still loads as cached). A second `Builder`, with no colliders, loose props or random stream, places the
+  pieces; its meshes are batched like the district's and join the ray meshes, so a round sparks on the lath it hits.
+  `tools/layout-fingerprint.js` reports the layout identical and the district's own drawn index total unchanged
+  (20,190,462). `?arch=0` draws the map without the pass. Reference for the forms: iron mercados and commercial
+  streets of central Mexico (wrought and cast iron of the Porfirian period, steel-joist and brick-vault floors of
+  1900-1950, cortinas metálicas and rejas de cajón as built today); for the method, the mid-poly, bevelled,
+  weighted-normal modular kits that current environment art is built from.
+
 ## Left out on purpose
 
 A key-rebinding screen, heat shimmer, and a recorded gameplay clip. No reference video was supplied, so nothing
@@ -565,6 +597,8 @@ In the browser console, with the dev server running:
   downloaded one is empty (done for `cobblestone_floor_13`, whose shaded cobbles had come out nearly black).
 - `Blender --background --factory-startup --python tools/blender/kit.py -- assets/kit/kit.glb [--preview file.png]` —
   rebuilds the architectural kit (and a contact sheet of its pieces).
+- `Blender --background --factory-startup --python tools/blender/arch.py -- assets/kit/arch.glb [--preview dir] [--only a,b]` —
+  rebuilds the architecture pass's pieces (about ten seconds; `--only` renders those pieces and exports nothing).
 - `Blender --background --factory-startup --python tools/blender/props.py -- assets/kit/props.glb [--preview dir] [--only a,b]` —
   rebuilds the detail pass's pieces (and a render of each into `dir`; `--only` renders those pieces and exports nothing).
   In the page, `(await import('/tools/detail-check.js')).report()` checks every piece against its triangle cap and the
@@ -632,6 +666,7 @@ src/gi.js             irradiance-volume bake, cache and upload
 src/atmos.js          sunlit haze and light shafts (post pass), dust motes, the frame kept for reflections
 src/batch.js          one multi-draw per material: the district's cells drawn together, culled per cell
 src/streetlife.js     ground and wall decals, wet ground with reflections, meters, roof tanks and aerials
+src/archdetail.js     the architecture pass: shutters, gates, grilles, doors, base courses, shop interiors, hall ironwork, awning frames
 src/materials.js      PBR library, weathering / ground-blend / cloth shader patches
 src/builder.js        static geometry + prop + collider accumulator
 src/world.js          ground, buildings, facade bands and surrounds, arch, sidewalks, nav grid, spawns, culling zones
@@ -657,10 +692,11 @@ src/hud.js            HUD and menus
 src/selftest.js       scripted checks and capture set
 tools/                asset downloader, static server, native window (tools/shell), audio-report.mjs, death-probe.js, build-voices.py,
                       locomotion-probe.js, perf-probe.js, clip-probe.js, compare-shots.js, compare-montage.py, encode-ktx2.mjs,
-                      blender/kit.py (the architectural kit), blender/props.py (the detail pass), detail-check.js,
+                      blender/kit.py (the architectural kit), blender/props.py (the detail pass), blender/arch.py (the architecture pass), detail-check.js,
                       layout-fingerprint.js, compare-fingerprints.mjs
 assets/kit/kit.glb    the architectural kit, modelled by tools/blender/kit.py
 assets/kit/props.glb  the detail pass's pieces, modelled by tools/blender/props.py
+assets/kit/arch.glb   the architecture pass's pieces, modelled by tools/blender/arch.py
 assets/audio/         recorded voices of dying soldiers and body thuds, built by tools/build-voices.py
 ```
 

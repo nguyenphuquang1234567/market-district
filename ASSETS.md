@@ -121,7 +121,7 @@ evened, resampled to 32 kHz. Re-create with `python3 tools/build-voices.py`.
 | Tool | License | Used for |
 | --- | --- | --- |
 | Basis Universal `basisu` 2.50 (Homebrew `basis_universal`) | Apache-2.0 | encoding the textures above to KTX2 (`tools/encode-ktx2.mjs`); the files it writes carry the source textures' CC0 terms |
-| Blender 5.3 | GPL (output is unrestricted) | modelling the architectural kit, `assets/kit/kit.glb`, from `tools/blender/kit.py`, and the detail pass's pieces, `assets/kit/props.glb`, from `tools/blender/props.py` (both made for this project, from no downloaded models; the leaf, palm leaflet and tissue-paper textures are drawn in code in `src/mexico.js`) |
+| Blender 5.3 | GPL (output is unrestricted) | modelling the architectural kit, `assets/kit/kit.glb`, from `tools/blender/kit.py`, the architecture pass's pieces, `assets/kit/arch.glb`, from `tools/blender/arch.py`, and the detail pass's pieces, `assets/kit/props.glb`, from `tools/blender/props.py` (both made for this project, from no downloaded models; the leaf, palm leaflet and tissue-paper textures are drawn in code in `src/mexico.js`) |
 
 `cobblestone_floor_13`'s ARM map came with an empty occlusion channel (red all but black), which darkened every bit of
 indirect light on the cobbles to about a tenth; its red channel was rebuilt from the set's normal map by
