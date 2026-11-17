@@ -370,14 +370,14 @@ export function createRenderer(canvas, skyTex, presetName) {
     },
     // Distance culling of small things (userData.lod, metres; see world.js) and the far cascade's layer: details are not
     // drawn into the outermost shadow cascade, whose texels are too coarse for them anyway.
-    lodScale: Q.lod ?? 1, lodList: null, zones: null, zoneList: null, zoneHidden: 0, kitNear: 30, kitNear2: 11,
+    lodScale: Q.lod ?? 1, lodList: null, zones: null, zoneList: null, zoneHidden: 0, kitNear: 30, kitNear2: 30,
     // Is this mesh the version of a kit piece on screen (near within kitNear of its cell's box, far beyond)? True for
     // anything without one. The rays that stand for what the player sees (rounds, markers, thrown things) skip the other
     // version: a modelled piece and its plain stand-in overlap, and a round must not spark off the one that is not drawn.
     kitShown(o) {
       const u = o.userData; if (!u.kitLod) return true;
       const b = u.lodBox, p = camera.position, kn = (u.kitLod.endsWith('2') ? api.kitNear2 : api.kitNear) * api.lodScale, dx = Math.max(b[0] - p.x, 0, p.x - b[2]), dz = Math.max(b[1] - p.z, 0, p.z - b[3]);
-      return (dx * dx + dz * dz < kn * kn) === u.kitLod.startsWith('near');   // ('near2' / 'far2': the architecture pass's pairs, which switch closer in: fine ironwork and fittings)
+      return (dx * dx + dz * dz < kn * kn) === u.kitLod.startsWith('near');   // ('near2' / 'far2': the architecture pass's pairs for fine ironwork and fittings)
     },
     cull() {
       if (!api.lodList) {
