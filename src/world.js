@@ -9,6 +9,7 @@ import { rng, clamp } from './util.js';
 import { facadeStyle, roomData, tint, hash as fhash } from './facades.js';
 import { noise, FOLIAGE } from './materials.js';
 import { BATCH, batchWorld } from './batch.js';
+import { assets, ARCH } from './assets.js';
 
 THREE.BufferGeometry.prototype.computeBoundsTree = computeBoundsTree;
 THREE.BufferGeometry.prototype.disposeBoundsTree = disposeBoundsTree;
@@ -81,6 +82,11 @@ export function architecture(B, rnd, buildings, anchors, rs = null, style = { ba
       const c = P((u0 + u1) / 2, (v0 + v1) / 2, (d0 + d1) / 2), du = u1 - u0, dd = Math.abs(d1 - d0), ax = Math.abs(T.x) > 0.5;
       B.box(key, c.x, c.y, c.z, ax ? du : dd, v1 - v0, ax ? dd : du, o);
     };
+    // The architecture pass (tools/blender/arch.py, src/archdetail.js): where it has a modelled piece for something drawn
+    // flat here, the flat version is tagged 'far' (drawn beyond the kit's near distance, exactly as before) and a note
+    // says what belongs there near the camera. Nothing else changes: the same draws, the same solids, the same random numbers.
+    const FAR = ARCH && assets.kit?.cortina_slats ? 'far' : undefined;
+    const note = (kind, d) => { if (FAR && !B.mute) (B.notes ||= []).push({ kind, T, N, bd, street, ...d }); };
     // collision over the same span as FB: a solid box hanging off the facade, or (rail) a railing only bodies meet
     const FC = (u0, v0, u1, v1, d0, d1, surf, rail = false) => {
       const c = P((u0 + u1) / 2, (v0 + v1) / 2, (d0 + d1) / 2), du = u1 - u0, dd = Math.abs(d1 - d0), ax = Math.abs(T.x) > 0.5;
@@ -195,8 +201,10 @@ export function architecture(B, rnd, buildings, anchors, rs = null, style = { ba
         let y = v0 + 0.1;
         while (y < v1 - 0.2) { const hgt = rnd.range(0.13, 0.2); FB('planks', u0 - rnd.range(0.03, 0.12), y, u1 + rnd.range(0.03, 0.12), y + hgt, -0.03, 0.0, { tile: 0.9, color: [0.8, 0.75, 0.7] }); y += hgt + rnd.range(0.04, 0.3); }
       } else if (type === 'bars') {
-        for (let u = u0 + 0.1; u < u1 - 0.04; u += 0.135) FB('iron', u, v0, u + 0.016, v1, 0.05, 0.066);
-        FB('iron', u0, v0 + 0.22, u1, v0 + 0.245, 0.045, 0.07); FB('iron', u0, v1 - 0.245, u1, v1 - 0.22, 0.045, 0.07);
+        const fo2 = v0 < 2 ? { lod: FAR } : {};                                 // (the street floor's grilles are modelled near: reja_calle)
+        for (let u = u0 + 0.1; u < u1 - 0.04; u += 0.135) FB('iron', u, v0, u + 0.016, v1, 0.05, 0.066, fo2);
+        FB('iron', u0, v0 + 0.22, u1, v0 + 0.245, 0.045, 0.07, fo2); FB('iron', u0, v1 - 0.245, u1, v1 - 0.22, 0.045, 0.07, fo2);
+        if (v0 < 2) note('reja', { p: P((u0 + u1) / 2, v0, 0), w: u1 - u0, h: v1 - v0 });
       }
       if (v0 > 4 && rnd.chance(0.2)) {          // AC unit on brackets with a run-off stain
         const p = P(uc + rnd.range(-0.1, 0.1), v0 - 1.12, -0.21);
@@ -222,7 +230,9 @@ export function architecture(B, rnd, buildings, anchors, rs = null, style = { ba
             const op = { u0: uc - 0.55, v0: 0, u1: uc + 0.55, v1: 2.32, d: 0.3 };
             cell(cu0, v0, cu1, v1, op); gaps.push([op.u0, op.u1]); surround(op.u0, 0, op.u1, op.v1, true, true);
             const metal = rnd.chance(0.35);
-            Q(metal ? 'metal_green' : 'door', op.u0, 0, op.u1, op.v1, op.d, { uv: [0, 0, 1, 1], color: metal ? rnd.pick(METAL_TINTS) : bd.doorTint });
+            const dt = metal ? rnd.pick(METAL_TINTS) : bd.doorTint;
+            Q(metal ? 'metal_green' : 'door', op.u0, 0, op.u1, op.v1, op.d, { uv: [0, 0, 1, 1], color: dt, lod: metal ? FAR : undefined });
+            if (metal) note('puerta', { p: P(uc, 0, 0), w: 1.1, h: op.v1, d: op.d, tint: dt });
             if (!metal) for (const [u, leaf] of [[op.u0, 'door_leaf_l'], [op.u1, 'door_leaf_r']])       // near: two panelled leaves
               B.kit(leaf, KM(u, 0, op.d - 0.004, T, UP, N), { wood: 'door', iron: 'iron' }, { lod: 'near', slot: { wood: { color: bd.doorTint, tile: 2.4 }, iron: { lod: null } } });
             FB(frameKey, op.u0, op.v1 - 0.07, op.u1, op.v1, op.d - 0.06, op.d, fo); FB(frameKey, op.u0, 0, op.u0 + 0.06, op.v1, op.d - 0.06, op.d, fo); FB(frameKey, op.u1 - 0.06, 0, op.u1, op.v1, op.d - 0.06, op.d, fo);
@@ -232,16 +242,19 @@ export function architecture(B, rnd, buildings, anchors, rs = null, style = { ba
             const sw = Math.min(2.7, bw - 0.7), op = { u0: uc - sw / 2, v0: 0, u1: uc + sw / 2, v1: 2.72, d: 0.14 };
             cell(cu0, v0, cu1, v1, op); gaps.push([op.u0 - 0.05, op.u1 + 0.05]);
             const key = rnd.pick(['shutter_metal', 'shutter_metal', 'corrugated']);
-            Q(key, op.u0, 0, op.u1, op.v1, op.d, { tile: key === 'corrugated' ? 1.4 : 1.25, color: rnd.pick(METAL_TINTS), uo: rnd(), vo: rnd() });
-            FB('iron', op.u0, 0, op.u0 + 0.04, op.v1, 0.02, op.d); FB('iron', op.u1 - 0.04, 0, op.u1, op.v1, 0.02, op.d);
-            FB('metal_white', op.u0 - 0.04, op.v1 - 0.02, op.u1 + 0.04, op.v1 + 0.2, -0.03, op.d, { tile: 1.5, color: [0.8, 0.8, 0.8] });
-            FB('iron', uc - 0.1, 0.02, uc + 0.1, 0.07, op.d - 0.05, op.d);
+            const so = { tile: key === 'corrugated' ? 1.4 : 1.25, color: rnd.pick(METAL_TINTS), uo: rnd(), vo: rnd(), lod: FAR }, gate = key === 'corrugated';
+            Q(key, op.u0, 0, op.u1, op.v1, op.d, so);
+            FB('iron', op.u0, 0, op.u0 + 0.04, op.v1, 0.02, op.d, { lod: FAR }); FB('iron', op.u1 - 0.04, 0, op.u1, op.v1, 0.02, op.d, { lod: FAR });
+            FB('metal_white', op.u0 - 0.04, op.v1 - 0.02, op.u1 + 0.04, op.v1 + 0.2, -0.03, op.d, { tile: 1.5, color: [0.8, 0.8, 0.8], lod: gate ? undefined : FAR });   // (a sheet gate keeps this as its lintel)
+            FB('iron', uc - 0.1, 0.02, uc + 0.1, 0.07, op.d - 0.05, op.d, { lod: FAR });
+            note('cortina', { p: P(uc, 0, 0), w: sw, h: op.v1, d: op.d, key, so });
             anchors.push({ kind: 'shutter', p: P(uc, 0, 0), N, T, w: sw, bd, street });
           } else if (kind === 'shop') {
             const op = { u0: cu0 + 0.28, v0: 0, u1: cu1 - 0.28, v1: 2.8, d: 0.32 };
             cell(cu0, v0, cu1, v1, op); gaps.push([op.u0, op.u1]);
             shopRoom(bd, { P, T, N, street }, cu0 + 0.1, cu1 - 0.1, op);
-            FB('shutter_metal', op.u0, 2.56, op.u1, 2.8, 0.06, 0.3, { tile: 1.2, color: [0.8, 0.8, 0.8] });
+            FB('shutter_metal', op.u0, 2.56, op.u1, 2.8, 0.06, 0.3, { tile: 1.2, color: [0.8, 0.8, 0.8], lod: FAR });
+            note('tienda', { p: P(uc, 0, 0), w: op.u1 - op.u0, h: op.v1, d: op.d });
             anchors.push({ kind: 'shop', p: P(uc, 0, 0), N, T, w: op.u1 - op.u0, bd, street });
           } else if (kind === 'window') {
             const op = { u0: uc - 0.6, v0: 1.2, u1: uc + 0.6, v1: 2.45, d: 0.22 };
@@ -600,7 +613,7 @@ export function architecture(B, rnd, buildings, anchors, rs = null, style = { ba
       if (kind === 'casona') {
         // a cantera base course between the openings (unless a painted band is there), its top moulded, and a blind round arch over every door
         let a = cs0 ? 0.26 : 0.02; const e = L - (cs1 ? 0.26 : 0.02);
-        const seg = (u0, u1) => { if (u1 - u0 < 0.12) return; FB('cantera', u0, 0, u1, 0.92, -0.008, 0, { tile: 2.4, solid: false }); B.kit('string', KM((u0 + u1) / 2, 0.92, 0, T, UP, N, u1 - u0, 0.6, 0.14), stoneK, { ...stoneO, lod: 'near' }); };   // (a centimetre proud: clutter shoved against the wall must not sink into it)
+        const seg = (u0, u1) => { if (u1 - u0 < 0.12) return; FB('cantera', u0, 0, u1, 0.92, -0.008, 0, { tile: 2.4, solid: false, lod: FAR }); note('zocalo', { p: P((u0 + u1) / 2, 0, 0), w: u1 - u0 }); B.kit('string', KM((u0 + u1) / 2, 0.92, 0, T, UP, N, u1 - u0, 0.6, 0.14), stoneK, { ...stoneO, lod: 'near' }); };   // (a centimetre proud: clutter shoved against the wall must not sink into it)
         if (!bd.band) { for (const [g0, g1] of [...gaps].sort((p, q) => p[0] - q[0])) { seg(a, g0 - 0.02); a = Math.max(a, g1 + 0.02); } seg(a, e); }
         const sv = bd.surround ? bd.surround.w : 0;
         for (const uc of doorsU) { B.kit('archivolt', KM(uc, 2.32 + sv + 0.01, 0, T, UP, N, 1.1, 1.1, 1), stoneK, stoneO); B.kit('keystone', KM(uc, 2.32 + sv + 0.56, 0, T, UP, N), stoneK, stoneO); }
@@ -656,7 +669,9 @@ export function architecture(B, rnd, buildings, anchors, rs = null, style = { ba
     B.quad('tiles', P(ra, y, 0), P(rb, y, 0), P(rb, y, D), P(ra, y, D), { tile: 1.6 });
     B.quad('interior', P(ra, h, D), P(rb, h, D), P(rb, h, d0), P(ra, h, d0), g2(cB, cB, cF, cF));
     B.quad('interior', P(ra, y, D), P(rb, y, D), P(rb, h, D), P(ra, h, D), g2(cB, cB, cB, cB));
-    B.quad('tiles', P(ra, y, D - 0.012), P(rb, y, D - 0.012), P(rb, 1.5, D - 0.012), P(ra, 1.5, D - 0.012), { tile: 1.1 });
+    const far = ARCH && assets.kit?.cortina_slats ? 'far' : undefined;        // (the architecture pass tiles the walls near: see facade())
+    B.quad('tiles', P(ra, y, D - 0.012), P(rb, y, D - 0.012), P(rb, 1.5, D - 0.012), P(ra, 1.5, D - 0.012), { tile: 1.1, lod: far });
+    if (far && !B.mute) (B.notes ||= []).push({ kind: 'sala', P, T: fr.T, N: fr.N, bd, street: fr.street, ra, rb, D, y, h, d0, op });
     B.quad('interior', P(ra, y, d0), P(ra, y, D), P(ra, h, D), P(ra, h, d0), g2(cF, cB, cB, cF));
     B.quad('interior', P(rb, y, D), P(rb, y, d0), P(rb, h, d0), P(rb, h, D), g2(cB, cF, cF, cB));
     B.quad('interior', P(op.u0, y, d0), P(ra, y, d0), P(ra, h, d0), P(op.u0, h, d0), g2(cF, cF, cF, cF));
@@ -1002,5 +1017,5 @@ export function buildWorld(R, M) {
   // leave out the side the camera cannot see (its lowest roofline, and the passages it can see through).
   const ringRoof = Math.min(...buildings.filter(b => b.x0 === 31 && b.x1 === 46).map(b => b.H + (b.roofAccess ? 0 : PARAPET)));
   const zones = { x0: 31, x1: 46, split0: 22, split1: 46, roof: ringRoof, gates: quarter.passages };
-  return { group, colliders: B.colliders, details: B.details, rayMeshes, clothMeshes, buildings, nav, spawns, anchors: anchors.filter(a => !a.legacy), surfaceAt, dynamic: B.dynamic, emitters: B.emitters, lamps: B.lamps, rails: B.rails || [], quarterHotspots: QUARTER_HOTSPOTS, zones };
+  return { group, colliders: B.colliders, details: B.details, rayMeshes, clothMeshes, buildings, nav, spawns, anchors: anchors.filter(a => !a.legacy), surfaceAt, dynamic: B.dynamic, emitters: B.emitters, lamps: B.lamps, rails: B.rails || [], quarterHotspots: QUARTER_HOTSPOTS, zones, notes: B.notes || [] };
 }

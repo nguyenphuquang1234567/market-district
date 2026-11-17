@@ -78,6 +78,8 @@ const NEAR_BUDGET = { pot: 750, basket_tall: 950, plastic_crate: 1800, jerrycan:
 // The detail pass (props.glb, finer props, rounder rods and cables) is on unless ?detail=0, which draws the map as it was
 // before it, for A/B timings in the same build.
 export const DETAIL = new URLSearchParams(location.search).get('detail') !== '0';
+// ?arch=0: without the architecture pass's pieces (tools/blender/arch.py), for A/B: the street floor as it was drawn before
+export const ARCH = DETAIL && new URLSearchParams(location.search).get('arch') !== '0';
 function simplify(g, target, err = 0.12) {
   const tris = g.index.count / 3;
   if (tris <= target * 1.15) return g;
@@ -207,6 +209,7 @@ export async function loadAssets(renderer, onProgress) {
   }, e => { if (!optional) throw e; console.warn(`${url} not loaded (${e.message || e}): the old geometry stands in`); });
   jobs.push(loadKit('assets/kit/kit.glb'));
   if (DETAIL) jobs.push(loadKit('assets/kit/props.glb', true));
+  if (ARCH) jobs.push(loadKit('assets/kit/arch.glb', true));
   jobs.push(gl.loadAsync('assets/models/soldier.glb').then(g => {
     const body = g.scene.getObjectByName('vanguard_Mesh');
     g.allyMap = blueInsignia(body.material.map);

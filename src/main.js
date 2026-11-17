@@ -17,6 +17,7 @@ import { selfTest, proof, proofThrow, demoDriver } from './selftest.js';
 import { losClear, rayBoxes, ceilingAt, OVERHANG } from './physics.js';
 import { setupGI } from './gi.js';
 import { addStreetLife } from './streetlife.js';
+import { addArchDetail } from './archdetail.js';
 
 const params = new URLSearchParams(location.search);
 const $ = id => document.getElementById(id);
@@ -45,6 +46,7 @@ async function start() {
   const R = createRenderer(canvas, assets.sky, settings.quality);
   const M = createMaterials();
   const world = buildWorld(R, M);
+  world.arch = addArchDetail(R, M, world);                                                                 // modelled shutters, grilles, base courses, shop interiors (?arch=0: none)
   if (!params.get('life') || params.get('life') !== '0') world.life = addStreetLife(R, M, world);          // decals, wall paper, meters, roof tanks (?life=0: none, for A/B)
   performance.mark('boot:world');
   $('bootText').textContent = 'Lighting'; $('bootBar').style.width = '90%';
