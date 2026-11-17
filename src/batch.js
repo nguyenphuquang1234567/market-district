@@ -36,17 +36,32 @@ export class CellBatch extends THREE.Mesh {
     this.isBatchedMesh = true; this.parts = parts;
     this._multiDrawStarts = new Int32Array(parts.length); this._multiDrawCounts = new Int32Array(parts.length); this._multiDrawCount = 0; this._multiDrawInstances = null;
     this._matricesTexture = null; this._indirectTexture = null; this._colorsTexture = null; this.colorTexture = null;    // (what the renderer asks a BatchedMesh for)
-    this.frustumCulled = false; this.matrixAutoUpdate = false; this.sorted = -100;
+    this.frustumCulled = false; this.matrixAutoUpdate = false;
+    this.inOrder = parts.slice().sort((a, b) => a.start - b.start);        // as they lie in the index buffer
   }
+  // A multi-draw is one call here, but WebKit's Metal backend (and any driver without native multi-draw) issues one
+  // draw per range underneath, so the number of ranges is a cost of its own: measured, some hundreds of extra ranges
+  // a frame cost about a millisecond there. So the cells are walked as they lie in the index buffer (row by row
+  // across the map: batchWorld) and neighbours that are both to be drawn go out as one range. In the view the ranges
+  // of the district's own batches are then put nearest first (furthest first for blended decals), which is all the
+  // ordering a depth test can use; a shadow pass needs none. The architecture pass's flat far versions are not even
+  // tested against the frustum: a few triangles each, cheaper to clip than to break a range for.
   fill(camera, view) {
-    const fr = frustumOf(camera), parts = this.parts, starts = this._multiDrawStarts, counts = this._multiDrawCounts; let n = 0;
-    if (view && frameId - this.sorted > 12) {                // nearest cells first (furthest first for blended decals); the order changes slowly
-      const p = camera.position, back = this.material.transparent ? -1 : 1;
-      for (const c of parts) c.d = c.sphere.center.distanceToSquared(p) * back;
-      parts.sort((a, b) => a.d - b.d); this.sorted = frameId;
+    const fr = frustumOf(camera), starts = this._multiDrawStarts, counts = this._multiDrawCounts, kl = this.userData.kitLod || '', list = this.inOrder;
+    const all = kl === 'far2', order = view && !kl.endsWith('2'), p = camera.position, ds = this.runD || (this.runD = new Float32Array(list.length)); let n = 0;
+    for (let i = 0; i < list.length; i++) {
+      const c = list[i]; if (!c.src.visible || (!all && !(fr.intersectsSphere(c.sphere) && fr.intersectsBox(c.box)))) continue;
+      const d = order ? c.sphere.center.distanceToSquared(p) : 0;
+      if (n && starts[n - 1] + counts[n - 1] * 4 === c.start) { counts[n - 1] += c.count; if (d < ds[n - 1]) ds[n - 1] = d; } else { starts[n] = c.start; counts[n] = c.count; ds[n++] = d; }
     }
-    // (a cell's sphere reaches well above and below it; its box, tested only when the sphere passes, drops a few percent more)
-    for (let i = 0; i < parts.length; i++) { const c = parts[i]; if (c.src.visible && fr.intersectsSphere(c.sphere) && fr.intersectsBox(c.box)) { starts[n] = c.start; counts[n++] = c.count; } }
+    if (order && n > 1) {
+      const back = this.material.transparent ? -1 : 1;
+      for (let i = 1; i < n; i++) {
+        const s0 = starts[i], c0 = counts[i], d0 = ds[i]; let j = i - 1;
+        while (j >= 0 && (ds[j] - d0) * back > 0) { starts[j + 1] = starts[j]; counts[j + 1] = counts[j]; ds[j + 1] = ds[j]; j--; }
+        starts[j + 1] = s0; counts[j + 1] = c0; ds[j + 1] = d0;
+      }
+    }
     this._multiDrawCount = n;
   }
   onBeforeRender(renderer, scene, camera) { this.fill(camera, true); }
@@ -70,6 +85,11 @@ export function batchWorld(meshes, keep = () => false) {
   }
   let bytes = 0;
   for (const list of sets.values()) {
+    // laid into the buffer row by row across the map (24 m bands of z, west to east), so cells that are neighbours on
+    // the ground are neighbours in the buffer and what a camera sees comes out as few, long ranges
+    for (const m of list) if (!m.geometry.boundingSphere) m.geometry.computeBoundingSphere();
+    const row = m => Math.floor((m.geometry.boundingSphere.center.z + 240) / 24) * 1e4 + m.geometry.boundingSphere.center.x;
+    list.sort((a, b) => row(a) - row(b));
     const first = list[0], names = Object.keys(first.geometry.attributes);
     let nv = 0, ni = 0; for (const m of list) { nv += m.geometry.attributes.position.count; ni += m.geometry.index ? m.geometry.index.count : m.geometry.attributes.position.count; }
     const g = new THREE.BufferGeometry(), index = new Uint32Array(ni), parts = [];

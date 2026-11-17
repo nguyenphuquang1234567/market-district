@@ -357,13 +357,14 @@ Key bindings live in the same saved settings object (`binds`, including `frag` a
 
 - **The street floor and the shops, modelled** — what the district drew as a flat textured quad, or left out, is real
   geometry near the camera now, modelled in Blender from a third script (`tools/blender/arch.py`, `assets/kit/arch.glb`,
-  34 pieces with bevelled edges, weighted normals and occlusion baked into vertex colours) and fitted by
+  36 pieces with bevelled edges, weighted normals and occlusion baked into vertex colours) and fitted by
   `src/archdetail.js`:
   - *roll-up shutters* (cortinas): curved laths 75 mm apart in steel guide channels under a bent-sheet housing with
     riveted end plates, a bottom bar on its rubber, two lifting handles, and one or two hasps padlocked to rings in
     the pavement; the ones the district drew in corrugated sheet are *sheet gates* instead: two leaves of real
     corrugation on a tube frame, three barrel hinges a side, a slide bolt and a padlock;
   - *steel street doors*: a folded leaf with pressed panels, a louvred vent, a barred light, hinges, a pull and lock;
+    and in every doorway a stone threshold, its nose rounded and its middle worn hollow;
   - *window grilles* on every street-floor window: a projecting flat-bar frame on four legs, round bars through
     two rails with forged collars, spear points, and a band of S-scrolls and rings;
   - *base courses* on the casonas: three courses of rock-faced, chamfered blocks in running bond;
@@ -372,14 +373,19 @@ Key bindings live in the same saved settings object (`binds`, including `frag` a
     with a band and a bullnose capping (five colourways), a six-panel door to a back room, shelves of cans, jars,
     bottles and boxes on forged brackets wherever the wall is clear, and a strip light under the joists;
   - *awnings*: the roller in its hood, a front bar, arms and stays in steel tube, bolted wall brackets with clevis pins;
+    *hanging signs*: an angle-iron rim round the painted board, hung on links from a forged arm with a scroll and a wall plate;
   - *the market hall*: cast-iron columns (an octagonal panelled pedestal, base mouldings, a fluted shaft, a leafed
-    capital under a square abacus) with a pierced cast bracket to each beam they carry, and riveted gusset plates
-    where the truss members meet;
+    capital under a square abacus) with a pierced cast bracket to each beam they carry, riveted gusset plates
+    where the truss members meet, and a roof of real corrugated sheet, half a metre a sheet, on every slope;
   - *the 1950s blocks' canopies*: tapered concrete ribs from wall to edge and a caged bulkhead light between each pair;
   - *parapets*: a clay spout on a stone bracket every few metres of every street front.
   How it stays out of the game's way: `world.js` leaves a note where each belongs and tags its own flat version
-  `far`, so beyond the kit's near distance the map is drawn exactly as before and the light bake's signature does not
-  move (it still loads as cached). A second `Builder`, with no colliders, loose props or random stream, places the
+  `far2`, so beyond the pass's switch distance the map is drawn exactly as before and the light bake's signature does
+  not move (it still loads as cached). The pass's pairs are sorted into 8 m cells and switch 14 m from their cell
+  (`R.kitNear2`), not per 24 m cell at 30 m as the kit does: laths, bars and corrugation are slivers a pixel wide
+  from further off, and under multisampling every sliver is shaded once per triangle, which is where the pass's
+  cost was (a first version, switching per 24 m cell, cost 0.4–1.4 ms a frame). Nothing fine here casts a shadow;
+  the hall's columns and roof and the spouts do. A second `Builder`, with no colliders, loose props or random stream, places the
   pieces; its meshes are batched like the district's and join the ray meshes, so a round sparks on the lath it hits.
   `tools/layout-fingerprint.js` reports the layout identical and the district's own drawn index total unchanged
   (20,190,462). `?arch=0` draws the map without the pass. Reference for the forms: iron mercados and commercial

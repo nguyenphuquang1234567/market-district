@@ -28,7 +28,7 @@ const TILES = [   // a shop's dado: [field, band and capping] (linear: cream and
 ];
 // what casts a shadow: the hall's columns and the roof spouts. The rest is fine ironwork and fittings flush with a wall
 // or inside a room: their shadows are not missed, and thousands of small triangles in every cascade are
-const CAST = new Set(['cantera', 'teja', 'metal_green']);
+const CAST = new Set(['cantera', 'teja', 'metal_green', 'roof_tin']);
 const INSIDE = new Set(['glossy', 'matte', 'brick', 'planks', 'door']);
 
 export function addArchDetail(R, M, world) {
@@ -57,7 +57,7 @@ export function addArchDetail(R, M, world) {
   for (const n of notes) {
     const { p, T, N } = n;
     // everything belonging to one note goes into one fine cell, the one world.js put its flat version in
-    { const q = n.kind === 'sala' ? n.P((n.ra + n.rb) / 2, 0, (n.d0 + n.D) / 2) : n.kind === 'columna' || n.kind === 'armadura' ? { x: n.x, z: n.z || 0 } : p; A.pin2 = A.cell2(q.x, q.z); }
+    { const q = n.kind === 'sala' ? n.P((n.ra + n.rb) / 2, 0, (n.d0 + n.D) / 2) : n.kind === 'columna' || n.kind === 'armadura' ? { x: n.x, z: n.z || 0 } : n.kind === 'techo' ? { x: n.pin[0], z: n.pin[1] } : p; A.pin2 = A.cell2(q.x, q.z); }
     if (n.kind === 'cortina') {
       const { w, h, d, key, so } = n, dS = d - 0.022, tint = so.color;
       if (key === 'corrugated') {                                                    // ---- a sheet gate: two leaves of corrugated sheet on a tube frame
@@ -134,6 +134,24 @@ export function addArchDetail(R, M, world) {
         A.kit('toldo_soporte', KM(p, T, N, u, 3.1, 0), ms, near); A.kit('toldo_soporte', KM(p, T, N, u, 2.35, 0), ms, near);
       }
       stats.awnings = (stats.awnings || 0) + 1;
+    } else if (n.kind === 'techo') {
+      // ---- one slope of one bay of the market hall's roof, in corrugated sheet: half-metre sheets side by side from
+      // the eave (e0..e1) to the ridge line (r0), the corrugation running down the slope
+      const e0 = new THREE.Vector3(...n.e0), e1 = new THREE.Vector3(...n.e1), r0 = new THREE.Vector3(...n.r0);
+      const along = new THREE.Vector3().subVectors(e1, e0), W = along.length(), up = new THREE.Vector3().subVectors(r0, e0), L = up.length(), k = Math.max(1, Math.round(W / 0.5)), pw = W / k;
+      const X = along.clone().normalize(), Y = up.clone().normalize(), Z = new THREE.Vector3().crossVectors(X, Y);
+      for (let i = 0; i < k; i++) {
+        const o = e0.clone().addScaledVector(X, pw * (i + 0.5));
+        A.kit('lamina_sheet', new THREE.Matrix4().makeBasis(tx.copy(X).multiplyScalar(pw / 0.5), tp.copy(Y).multiplyScalar(L), Z).setPosition(o.x, o.y, o.z), { steel: 'roof_tin' }, { lod: 'near2', tile: 1.2, color: n.color });
+      }
+      stats.roofs = (stats.roofs || 0) + 1;
+    } else if (n.kind === 'umbral') {
+      // ---- a worn stone threshold in a doorway, set on whatever the pavement is there
+      const gd = cast(new THREE.Vector3(p.x + N.x * 0.3, 1.0, p.z + N.z * 0.3), new THREE.Vector3(0, -1, 0), 1.4), gy = gd < 1.35 ? 1.0 - gd : 0;
+      A.kit('umbral', KM(p, T, N, 0, gy, 0, n.w + 0.02, 1, n.d / 0.3), { trim: 'concrete' }, { lod: 'near2', tile: 1.3, color: [0.92, 0.84, 0.76] });
+      stats.thresholds = (stats.thresholds || 0) + 1;
+    } else if (n.kind === 'bandera') {
+      A.kit('bandera', KM(p, T, N, 0, n.y, 0), { iron: 'iron' }, near); stats.signs = (stats.signs || 0) + 1;
     } else if (n.kind === 'reja') {
       A.kit('reja_calle', KM(p, T, N, 0, 0, 0, n.w / 1.2, n.h / 1.25, 1), { iron: 'iron' }, near); stats.reja++;
     } else if (n.kind === 'zocalo') {

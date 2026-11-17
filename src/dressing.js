@@ -457,6 +457,7 @@ export function dressKit({ B, M, rnd, buildings, anchors, low, rs = null }) {
       B.quad('sign', at(u, y, d0), at(u, y, d0 + bw), at(u, y + bh, d0 + bw), at(u, y + bh, d0), { uv: signUV(si) });
       B.quad('sign', at(u, y, d0 + bw), at(u, y, d0), at(u, y + bh, d0), at(u, y + bh, d0 + bw), { uv: signUV(si) });
       rod(at(u, y + bh + 0.06, 0), at(u, y + bh + 0.06, d0 + bw + 0.05), 0.012); rod(at(u, y + bh + 0.06, d0 + bw), at(u, y - 0.4, 0), 0.01);
+      if (!B.mute) (B.notes ||= []).push({ kind: 'bandera', p: at(u, 0, 0), T, N, y });         // (its ironwork is modelled near the camera: src/archdetail.js)
     }
   };
   return { mat4, rod, cable, sheet, sandbags, rubble, pallet, tray, sack, stall, palm, dish, tank, planter, dressAnchors, stain, barrier, crates, drums, car, tarpify, papel, signs, bougainvillea, pinata, ristra, FADED, SPICE };

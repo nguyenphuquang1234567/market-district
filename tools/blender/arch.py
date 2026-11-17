@@ -375,6 +375,24 @@ def puerta_metal(name):
         for k in range(9): obs.append(at(rot(lathe([(0, 0), (0.006, 0), (0.0045, 0.003), (0, 0.004)], 6, 'steel'), 'X', 90), sx * (w - 0.03), -0.014, 0.1 + k * 0.265))
     return bake_ao(join(name, obs), 0.04, 0.6, floor=0.0)
 
+# A door's threshold (umbral): a stone slab in the doorway, its nose rounded and its middle worn hollow by feet. A
+# metre wide (stretch x), 4.5 cm high, from 2 cm proud of the wall back 30 cm into the opening (stretch y to the
+# recess). Origin: the pavement at the wall face, at the door's middle.
+@piece
+def umbral(name):
+    bm = bmesh.new(); nx, prof = 10, [(-0.02, 0.0), (-0.02, 0.026), (-0.012, 0.04), (0.0, 0.045), (0.3, 0.045), (0.3, 0.0)]
+    rows = []
+    for i in range(nx + 1):
+        x = -0.5 + i / nx; wear = 0.012 * math.exp(-((x) / 0.2) ** 2)                         # the hollow where everyone steps
+        rows.append([bm.verts.new((x, y, z - (wear * (1.0 if 0.0 <= y < 0.3 and z > 0.04 else 0.5 if z > 0.03 else 0.0)))) for y, z in prof])
+    for a, b in zip(rows, rows[1:]):
+        for k in range(len(prof) - 1): poly(bm, (a[k], a[k + 1], b[k + 1], b[k]))
+    poly(bm, rows[0][::-1]); poly(bm, rows[-1])
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
+    for f in bm.faces:
+        if f.normal.z < -0.5 or f.normal.y > 0.5: pass
+    return bake_ao(obj(name, bm, 'trim'), 0.05, 0.6, floor=0.0)
+
 # ---------------------------------------------------------------------------------------------------- stone base -----
 # A rusticated base course (almohadillado): three courses of rock-faced blocks, chamfered at the joints, in running
 # bond. A metre long (stretch x a little), 0.9 m high; the joints are cut back to the wall face.
@@ -625,6 +643,25 @@ def toldo_soporte(name):
     bolts = [at(rot(lathe([(0, 0), (0.008, 0), (0.008, 0.004), (0.0055, 0.0065), (0, 0.0065)], 6, 'iron'), 'X', 90), sx * 0.026, -0.008, sz * 0.048) for sx in (-1, 1) for sz in (-1, 1)]
     return bake_ao(join(name, [plate, pin] + lugs + bolts), 0.03, 0.6, wall=0.0)
 
+# A hanging shop sign's ironwork (the painted board itself is the district's): an angle-iron rim round the 0.84 x
+# 0.42 m board, which hangs square to the wall from 18 cm out, on two links from a forged arm with a scroll under it
+# and a bolted wall plate. Origin: the wall face at the board's lower edge, in the board's plane (x = 0).
+@piece
+def bandera(name):
+    obs = []; d0, bw, bh, t = -0.18, 0.84, 0.42, 0.016
+    for (y0, y1, z0, z1) in ((d0 - bw, d0, -0.012, 0.012), (d0 - bw, d0, bh - 0.012, bh + 0.012), (d0 - 0.012, d0 + 0.012, 0.0, bh), (d0 - bw - 0.012, d0 - bw + 0.012, 0.0, bh)):
+        obs.append(bevel(box(-t, t, y0, y1, z0, z1, 'iron'), 0.003, 1, 30))
+    arm_z = bh + 0.075
+    obs.append(tube([(0, 0.0, arm_z), (0, d0 - bw - 0.07, arm_z)], 0.011, 7, 'iron'))                                   # the arm
+    obs.append(at(lathe([(0.011, 0), (0.02, 0.012), (0.011, 0.03), (0.0, 0.06)], 6, 'iron'), 0, 0, 0)); xf(obs[-1], Matrix.Translation((0, d0 - bw - 0.07, arm_z)) @ Matrix.Rotation(math.radians(90), 4, 'X'))   # its point
+    for y in (d0 - 0.12, d0 - bw + 0.12): obs.append(tube([(0, y, arm_z - 0.008), (0, y, bh + 0.008)], 0.005, 5, 'iron'))   # the links
+    sc = scroll(0.0, 0.0, 0.11, 1.1, math.pi / 2, -1, 12, 0.0)
+    obs.append(tube([Vector((0, -0.14 - q.x, arm_z - 0.125 + q.z * 1.0)) for q in sc], 0.007, 5, 'iron'))                # the scroll under the arm
+    obs.append(tube([(0, -0.008, arm_z - 0.22), (0, -0.03, arm_z - 0.2), (0, -0.14, arm_z - 0.012)], 0.007, 5, 'iron'))
+    obs.append(bevel(box(-0.035, 0.035, -0.008, 0.0, arm_z - 0.26, arm_z + 0.05, 'iron'), 0.002, 1, 30))                   # the wall plate
+    for z in (arm_z - 0.22, arm_z + 0.025): obs.append(at(rot(lathe([(0, 0), (0.008, 0), (0.008, 0.004), (0, 0.0065)], 6, 'iron'), 'X', 90), 0, -0.008, z))
+    return bake_ao(join(name, obs), 0.04, 0.5, wall=0.0)
+
 # ---------------------------------------------------------------------------------------------------- roof spout -----
 # A clay spout through the parapet (gárgola de barro): a half-round channel on a stone bracket, throwing the roof's
 # water clear of the wall. Origin: the wall face at roof level; it runs out 0.48 m and falls a little.
@@ -649,8 +686,8 @@ def gargola(name):
 cortina_slats('cortina_slats'); cortina_guide('cortina_guide'); cortina_bar('cortina_bar'); cortina_handle('cortina_handle'); cortina_lock('cortina_lock')
 cortina_box('cortina_box'); cortina_cap('cortina_cap'); cortina_roll('cortina_roll'); lamina_sheet('lamina_sheet'); perfil_x('perfil_x'); perfil_z('perfil_z')
 bisagra('bisagra'); pasador('pasador'); reja_calle('reja_calle'); zocalo('zocalo'); boveda('boveda'); vigueta('vigueta'); dado('dado'); puerta_fondo('puerta_fondo')
-puerta_metal('puerta_metal'); repisa('repisa_a', ['can', 'can', 'can', 'jar', 'box', 'box']); repisa('repisa_b', ['bottle', 'bottle', 'jar', 'can', 'box']); lampara_tubo('lampara_tubo'); gargola('gargola')
-col_base('col_base'); col_shaft('col_shaft'); col_cap('col_cap'); col_bracket('col_bracket'); cartela('cartela'); marq_rib('marq_rib'); plafon('plafon'); tubo_x('tubo_x'); toldo_cassette('toldo_cassette'); toldo_soporte('toldo_soporte')
+puerta_metal('puerta_metal'); umbral('umbral'); repisa('repisa_a', ['can', 'can', 'can', 'jar', 'box', 'box']); repisa('repisa_b', ['bottle', 'bottle', 'jar', 'can', 'box']); lampara_tubo('lampara_tubo'); gargola('gargola')
+col_base('col_base'); col_shaft('col_shaft'); col_cap('col_cap'); col_bracket('col_bracket'); cartela('cartela'); marq_rib('marq_rib'); plafon('plafon'); tubo_x('tubo_x'); toldo_cassette('toldo_cassette'); toldo_soporte('toldo_soporte'); bandera('bandera')
 
 for ob in pieces: ob.location = (0, 0, 0)
 print('ARCH pieces (triangles):', ', '.join(f'{ob.name} {tri_count(ob)}' for ob in pieces))

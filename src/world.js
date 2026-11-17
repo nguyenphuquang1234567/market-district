@@ -238,6 +238,7 @@ export function architecture(B, rnd, buildings, anchors, rs = null, style = { ba
             const dt = metal ? rnd.pick(METAL_TINTS) : bd.doorTint;
             fine(uc, () => Q(metal ? 'metal_green' : 'door', op.u0, 0, op.u1, op.v1, op.d, { uv: [0, 0, 1, 1], color: dt, lod: metal ? FAR : undefined }));
             if (metal) note('puerta', { p: P(uc, 0, 0), w: 1.1, h: op.v1, d: op.d, tint: dt });
+            note('umbral', { p: P(uc, 0, 0), w: 1.1, d: op.d });
             if (!metal) for (const [u, leaf] of [[op.u0, 'door_leaf_l'], [op.u1, 'door_leaf_r']])       // near: two panelled leaves
               B.kit(leaf, KM(u, 0, op.d - 0.004, T, UP, N), { wood: 'door', iron: 'iron' }, { lod: 'near', slot: { wood: { color: bd.doorTint, tile: 2.4 }, iron: { lod: null } } });
             FB(frameKey, op.u0, op.v1 - 0.07, op.u1, op.v1, op.d - 0.06, op.d, fo); FB(frameKey, op.u0, 0, op.u0 + 0.06, op.v1, op.d - 0.06, op.d, fo); FB(frameKey, op.u1 - 0.06, 0, op.u1, op.v1, op.d - 0.06, op.d, fo);
