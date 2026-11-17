@@ -662,6 +662,100 @@ def bandera(name):
     for z in (arm_z - 0.22, arm_z + 0.025): obs.append(at(rot(lathe([(0, 0), (0.008, 0), (0.008, 0.004), (0, 0.0065)], 6, 'iron'), 'X', 90), 0, -0.008, z))
     return bake_ao(join(name, obs), 0.04, 0.5, wall=0.0)
 
+# ---------------------------------------------------------------------------------------------------- the arch -------
+# The monumental arch across the main street, dressed as a triumphal arch is: an entablature round its top (an
+# architrave of two fasciae, a plain frieze, a course of dentils, a corona on an ogee), an archivolt round the opening
+# with a console keystone at the crown, moulded imposts where the arch springs, a moulded cap on the plinths, sunk
+# panels on the piers, a medallion in each spandrel and a tablet in the attic. Each is modelled against the wall face
+# y = 0 for the arch's own measures (opening 7.4 m, springing at 3.5 m); the game sets them on both faces.
+def cyma(y0, z0, y1, z1, n=5):
+    return [(y0 + (y1 - y0) * (0.5 - 0.5 * math.cos(math.pi * k / n)), z0 + (z1 - z0) * k / n) for k in range(n + 1)]
+@piece
+def arco_cornisa(name):                                         # a metre of entablature (stretch x); its foot is z = 0, 1.15 m high, 0.52 m out
+    prof = [(0.05, 0.0), (-0.03, 0.0), (-0.03, 0.14), (-0.05, 0.15), (-0.05, 0.3), (-0.07, 0.32), (-0.085, 0.36), (-0.04, 0.38), (-0.04, 0.66), (-0.06, 0.68)] + \
+           [(-0.06, 0.7), (-0.2, 0.7), (-0.2, 0.8), (-0.22, 0.82)] + cyma(-0.22, 0.83, -0.4, 0.93)[1:] + [(-0.5, 0.94), (-0.5, 1.06), (-0.52, 1.08), (-0.52, 1.13), (-0.47, 1.15), (0.05, 1.15)]
+    return bake_ao(bevel(sweep_x(prof, -0.5, 0.5, 'trim', caps=False), 0.004, 1, 40), 0.12, 0.6)
+@piece
+def arco_dentil(name):                                          # a metre of dentils under the corona: eight blocks (place end to end; do not stretch)
+    obs = [box(-0.5 + k * 0.125 + 0.025, -0.5 + k * 0.125 + 0.1, -0.19, -0.07, 0.705, 0.795, 'trim', 0.004) for k in range(8)]
+    return bake_ao(join(name, obs), 0.06, 0.65, wall=-0.06, ceil=0.8)
+@piece
+def arco_archivolta(name):                                      # the moulding round the opening: inner radius 3.7 m, centred on the origin (the springing line's middle)
+    prof = [(0.0, 0.0), (-0.05, 0.0), (-0.065, 0.02), (-0.065, 0.06), (-0.04, 0.08), (-0.04, 0.2), (-0.06, 0.215), (-0.06, 0.32), (-0.075, 0.335), (-0.09, 0.36), (-0.075, 0.4), (-0.03, 0.42), (0.0, 0.42)]
+    bm = bmesh.new(); n = 40; rings = []
+    for k in range(n + 1):
+        a = math.pi * k / n
+        rings.append([bm.verts.new(((3.7 + r) * math.cos(a), y, (3.7 + r) * math.sin(a))) for y, r in prof])
+    m = len(prof)
+    for a, b in zip(rings, rings[1:]):
+        for i in range(m - 1): poly(bm, (a[i], a[i + 1], b[i + 1], b[i]))
+    outward(bm)
+    for f in bm.faces:
+        if f.normal.y > 0.2: f.normal_flip()
+    return bake_ao(obj(name, bm, 'trim'), 0.08, 0.6, wall=0.0)
+@piece
+def arco_clave(name):                                           # the keystone: a console, its face an S-scroll in profile, fluted, with a volute each side. Origin: the crown of the opening
+    front = [(0.0, -0.12), (-0.16, -0.12), (-0.2, -0.06), (-0.2, 0.02)] + [(-0.2 - 0.06 * math.sin(math.pi * k / 6), 0.02 + 0.5 * k / 6) for k in range(1, 7)] + [(-0.24, 0.56), (-0.3, 0.6), (-0.32, 0.68), (-0.3, 0.74), (0.0, 0.74)]
+    body = bevel(sweep_x(front, -0.22, 0.22, 'trim'), 0.008, 2, 40)
+    bm = body.data
+    for v in bm.vertices: v.co.x *= 1.0 + 0.32 * max(0.0, v.co.z + 0.12) / 0.86                      # wider at the top, as a voussoir is
+    flutes = [bevel(box(x - 0.022, x + 0.022, -0.275, -0.2, 0.1, 0.5, 'trim'), 0.012, 2, 40) for x in (-0.11, 0.0, 0.11)]
+    vol = []
+    for sx in (-1, 1):
+        pts = [Vector((sx * 0.3, -0.2 - 0.085 * (1 - 0.8 * k / 14) * math.cos(2.4 * math.pi * k / 14), 0.62 + 0.085 * (1 - 0.8 * k / 14) * math.sin(2.4 * math.pi * k / 14))) for k in range(15)]
+        vol.append(tube(pts, 0.022, 6, 'trim'))
+    cap = bevel(box(-0.34, 0.34, -0.36, 0.0, 0.74, 0.82, 'trim'), 0.01, 2, 40)
+    return bake_ao(join(name, [body, cap] + flutes + vol), 0.1, 0.65, wall=0.0)
+@piece
+def arco_imposta(name):                                         # a metre of impost moulding (stretch x): its top is z = 0
+    prof = [(0.03, -0.3), (-0.02, -0.3), (-0.035, -0.27), (-0.035, -0.2), (-0.05, -0.185)] + cyma(-0.05, -0.18, -0.13, -0.08)[1:] + [(-0.15, -0.075), (-0.15, -0.015), (-0.135, 0.0), (0.03, 0.0)]
+    return bake_ao(bevel(sweep_x(prof, -0.5, 0.5, 'trim', caps=False), 0.004, 1, 40), 0.08, 0.6)
+@piece
+def arco_basa(name):                                            # a metre of the plinth's cap (stretch x): its foot is z = 0
+    prof = [(0.03, 0.0), (-0.045, 0.0), (-0.06, 0.02), (-0.06, 0.07), (-0.045, 0.085)] + cyma(-0.045, 0.09, -0.012, 0.17)[1:] + [(-0.012, 0.2), (0.03, 0.2)]
+    return bake_ao(bevel(sweep_x(prof, -0.5, 0.5, 'trim', caps=False), 0.004, 1, 40), 0.06, 0.6)
+def framed(w, h, bar=0.11, proud=0.05):
+    """A rectangular moulded frame, w x h, about the origin of the wall plane: four mitred bars of one ogee section."""
+    sec = [(0.0, 0.0), (-proud * 0.5, 0.0), (-proud, bar * 0.25), (-proud, bar * 0.55), (-proud * 0.55, bar * 0.8), (-proud * 0.3, bar), (0.0, bar)]
+    bm = bmesh.new(); corners = [(-w / 2, -h / 2), (w / 2, -h / 2), (w / 2, h / 2), (-w / 2, h / 2)]; loops = []
+    for (cx, cz) in corners:
+        sx, sz = (1 if cx < 0 else -1), (1 if cz < 0 else -1)
+        loops.append([bm.verts.new((cx + sx * r, y, cz + sz * r)) for y, r in sec])
+    for a, b in zip(loops, loops[1:] + loops[:1]):
+        for i in range(len(sec) - 1): poly(bm, (a[i], a[i + 1], b[i + 1], b[i]))
+    outward(bm)
+    for f in bm.faces:
+        if f.normal.y > 0.2: f.normal_flip()
+    return obj('_f', bm, 'trim')
+@piece
+def arco_panel(name):                                           # a sunk panel on a pier: a moulded frame 2.3 x 1.9 m with a fielded slab inside it. Origin: its middle
+    fr = framed(2.3, 1.9, 0.13, 0.06)
+    field = bevel(box(-0.9, 0.9, -0.03, 0.0, -0.7, 0.7, 'trim'), 0.02, 2, 40)
+    return bake_ao(join(name, [fr, field]), 0.08, 0.6, wall=0.0)
+@piece
+def arco_tablero(name):                                         # the attic tablet over the keystone: 3.2 x 0.8 m, framed, with a drop at each end. Origin: its middle
+    fr = framed(3.2, 0.8, 0.1, 0.06); slab = bevel(box(-1.45, 1.45, -0.035, 0.0, -0.27, 0.27, 'trim'), 0.012, 2, 40)
+    drops = [at(lathe([(0.0, -0.2), (0.05, -0.16), (0.075, -0.06), (0.06, 0.0), (0.085, 0.03), (0.085, 0.06), (0.0, 0.06)], 8, 'trim'), sx * 1.72, -0.06, -0.38) for sx in (-1, 1)]
+    return bake_ao(join(name, [fr, slab] + drops), 0.08, 0.6, wall=0.0)
+@piece
+def arco_medallon(name):                                        # a medallion in the spandrel: a moulded ring a metre across round a rosette of eight petals and a boss. Origin: its centre
+    ringp = [(0.0, 0.36), (-0.04, 0.36), (-0.07, 0.4), (-0.07, 0.46), (-0.045, 0.49), (-0.03, 0.52), (0.0, 0.52)]
+    bm = bmesh.new(); n = 28; rr = []
+    for k in range(n):
+        a = 2 * math.pi * k / n; rr.append([bm.verts.new((r * math.cos(a), y, r * math.sin(a))) for y, r in ringp])
+    for a, b in zip(rr, rr[1:] + rr[:1]):
+        for i in range(len(ringp) - 1): poly(bm, (a[i], a[i + 1], b[i + 1], b[i]))
+    outward(bm)
+    for f in bm.faces:
+        if f.normal.y > 0.2: f.normal_flip()
+    ring = obj('_r', bm, 'trim')
+    petals = []
+    for k in range(8):
+        pt = lathe([(0.0, 0.0), (0.05, 0.02), (0.075, 0.1), (0.06, 0.2), (0.0, 0.27)], 6, 'trim')
+        xf(pt, Matrix.Rotation(math.radians(45 * k), 4, 'Y') @ Matrix.Translation((0, -0.012, 0.06)) @ Matrix.Diagonal((1.0, 0.45, 1.0, 1.0))); petals.append(pt)
+    boss = at(rot(lathe([(0.0, 0.0), (0.075, 0.0), (0.07, 0.03), (0.04, 0.055), (0.0, 0.065)], 10, 'trim'), 'X', 90), 0, 0, 0)
+    return bake_ao(join(name, [ring, boss] + petals), 0.08, 0.6, wall=0.0)
+
 # ---------------------------------------------------------------------------------------------------- roof spout -----
 # A clay spout through the parapet (gárgola de barro): a half-round channel on a stone bracket, throwing the roof's
 # water clear of the wall. Origin: the wall face at roof level; it runs out 0.48 m and falls a little.
@@ -688,6 +782,7 @@ cortina_box('cortina_box'); cortina_cap('cortina_cap'); cortina_roll('cortina_ro
 bisagra('bisagra'); pasador('pasador'); reja_calle('reja_calle'); zocalo('zocalo'); boveda('boveda'); vigueta('vigueta'); dado('dado'); puerta_fondo('puerta_fondo')
 puerta_metal('puerta_metal'); umbral('umbral'); repisa('repisa_a', ['can', 'can', 'can', 'jar', 'box', 'box']); repisa('repisa_b', ['bottle', 'bottle', 'jar', 'can', 'box']); lampara_tubo('lampara_tubo'); gargola('gargola')
 col_base('col_base'); col_shaft('col_shaft'); col_cap('col_cap'); col_bracket('col_bracket'); cartela('cartela'); marq_rib('marq_rib'); plafon('plafon'); tubo_x('tubo_x'); toldo_cassette('toldo_cassette'); toldo_soporte('toldo_soporte'); bandera('bandera')
+arco_cornisa('arco_cornisa'); arco_dentil('arco_dentil'); arco_archivolta('arco_archivolta'); arco_clave('arco_clave'); arco_imposta('arco_imposta'); arco_basa('arco_basa'); arco_panel('arco_panel'); arco_tablero('arco_tablero'); arco_medallon('arco_medallon')
 
 for ob in pieces: ob.location = (0, 0, 0)
 print('ARCH pieces (triangles):', ', '.join(f'{ob.name} {tri_count(ob)}' for ob in pieces))

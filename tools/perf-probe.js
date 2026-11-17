@@ -67,7 +67,7 @@ export async function run(G, { frames = 120, views = Object.keys(VIEWS), w = 151
 // Where a frame's time goes: each view timed whole, then again with one thing held or switched off (the cascades not
 // redrawn, no ambient occlusion, no bloom, no multisampling, a quarter of the pixels), and the time spent in JavaScript
 // submitting the frame (not waiting on the GPU). The differences are each part's share; they overlap a little.
-export async function profile(G, { frames = 70, views = ['main_street', 'arch_plaza', 'hall_inside'], w = 1512, h = 846 } = {}) {
+export async function profile(G, { frames = 70, views = ['main_street', 'hall_inside', 'plazuela'], w = 1512, h = 846 } = {}) {
   const R = G.R, canvas = R.renderer.domElement, gl = R.renderer.getContext(), px = new Uint8Array(4);
   canvas.style.width = w + 'px'; canvas.style.height = h + 'px';
   R.renderScale = 1; R.adaptive = false; R.resize();
@@ -89,6 +89,11 @@ export async function profile(G, { frames = 70, views = ['main_street', 'arch_pl
     no_ao: [() => { if (R.gtao) R.gtao.enabled = false; }, () => { if (R.gtao) R.gtao.enabled = true; }],
     no_bloom: [() => { if (R.bloom) R.bloom.enabled = false; }, () => { if (R.bloom) R.bloom.enabled = true; }],
     no_atmos: [() => { if (R.atmos) R.atmos.enabled = false; }, () => { if (R.atmos) R.atmos.enabled = true; }],
+    // the architecture pass: its modelled pieces switched for their flat versions; its own draws hidden as well; and the
+    // frame without the renderer's visibility pass at all (whatever was visible stays so)
+    arch_flat: [() => { R.kn2 = R.kitNear2; R.kitNear2 = 0; }, () => { R.kitNear2 = R.kn2; }],
+    arch_hidden: [() => { R.kn2 = R.kitNear2; R.kitNear2 = 0; const a = R.scene.children.find(c => c.name === 'archDraw'); if (a) a.visible = false; }, () => { R.kitNear2 = R.kn2; const a = R.scene.children.find(c => c.name === 'archDraw'); if (a) a.visible = true; }],
+    no_cull: [() => { R.cull0 = R.cull; R.cull = () => {}; }, () => { R.cull = R.cull0; }],
     no_msaa: [() => { R.sceneRT.samples = 0; R.sceneRT.dispose(); }, () => { R.sceneRT.samples = samples; R.sceneRT.dispose(); }],
     quarter_pixels: [() => { R.renderScale = 0.5; R.resize(); }, () => { R.renderScale = 1; R.resize(); }],
   };
@@ -106,6 +111,30 @@ export async function profile(G, { frames = 70, views = ['main_street', 'arch_pl
   G.manual = false;
   return { size: `${canvas.width}x${canvas.height}`, views: out };
 }
+
+// The same view timed under several settings in turn, round after round, so that drift (heat, other work on the
+// machine) falls on all of them alike: the median per setting. cases: { name: [on(R), off(R)] }.
+export async function ab(G, cases, { rounds = 7, frames = 28, views = ['main_street', 'hall_inside', 'plazuela', 'market_lane'], w = 1512, h = 846 } = {}) {
+  const R = G.R, canvas = R.renderer.domElement, gl = R.renderer.getContext(), px = new Uint8Array(4);
+  canvas.style.width = w + 'px'; canvas.style.height = h + 'px'; R.renderScale = 1; R.adaptive = false; R.resize();
+  G.manual = true; G.auto = true; G.frozen = true; if (!G.matchLive) G.resetMatch(); G.playing = true; G.hud.show(null); park(G);
+  const time = () => { const ts = []; for (let i = 0; i < frames; i++) { const t0 = performance.now(); G.step(1, 1 / 60); gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); ts.push(performance.now() - t0); } ts.sort((a, b) => a - b); return ts.slice(2, -2).reduce((a, b) => a + b, 0) / (ts.length - 4); };
+  const med = a => { const s = [...a].sort((x, y) => x - y); return +s[Math.floor(s.length / 2)].toFixed(2); }, out = [];
+  for (const name of views) {
+    const [x, z, yaw, pitch] = VIEWS[name]; G.goto(x, z, yaw, pitch); G.player.sim = { f: 0, s: 0, yaw: G.player.yaw, pitch: G.player.pitch }; G.step(150, 1 / 60);
+    const res = Object.fromEntries(Object.keys(cases).map(k => [k, []]));
+    for (let r = 0; r < rounds; r++) for (const [k, c] of Object.entries(cases)) { c[0](R, G); G.step(8, 1 / 60); res[k].push(time()); c[1](R, G); G.step(4, 1 / 60); }
+    out.push({ view: name, ...Object.fromEntries(Object.entries(res).map(([k, v]) => [k, med(v)])) }); await new Promise(r => setTimeout(r, 0));
+  }
+  G.manual = false; return out;
+}
+export const ARCH_CASES = {
+  full: [() => {}, () => {}],
+  flat: [R => { R.kn2 = R.kitNear2; R.kitNear2 = 0; }, R => { R.kitNear2 = R.kn2; }],
+  hidden: [R => { R.kn2 = R.kitNear2; R.kitNear2 = 0; const a = R.scene.children.find(c => c.name === 'archDraw'); if (a) a.visible = false; }, R => { R.kitNear2 = R.kn2; const a = R.scene.children.find(c => c.name === 'archDraw'); if (a) a.visible = true; }],
+  nocull: [R => { R.cull0 = R.cull; R.cull = () => {}; }, R => { R.cull = R.cull0; }],
+  norender: [R => { R.render0 = R.render; R.render = () => {}; }, R => { R.render = R.render0; }],
+};
 
 // ---- GPU memory estimate --------------------------------------------------------------------------------------------------
 function texBytes(t) {

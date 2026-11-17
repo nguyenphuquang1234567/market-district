@@ -23,6 +23,10 @@ export const BATCH = new URLSearchParams(location.search).get('batch') !== '0'; 
 const _m = new THREE.Matrix4(), frusta = new Map();
 let frameId = 0;
 export const nextFrame = () => { frameId++; };
+// the renderer's culling says so whenever one of the architecture pass's 8 m cells is switched on or off: until the next
+// time, a batch of those cells keeps the list of the ones that are on (and a batch of flat far versions its ranges)
+let fineEpoch = 1;
+export const fineChanged = () => { fineEpoch++; };
 function frustumOf(camera) {
   let f = frusta.get(camera); if (!f) frusta.set(camera, f = { id: -1, fr: new THREE.Frustum() });
   if (f.id !== frameId) { f.id = frameId; f.fr.setFromProjectionMatrix(_m.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse)); }
@@ -47,10 +51,19 @@ export class CellBatch extends THREE.Mesh {
   // ordering a depth test can use; a shadow pass needs none. The architecture pass's flat far versions are not even
   // tested against the frustum: a few triangles each, cheaper to clip than to break a range for.
   fill(camera, view) {
-    const fr = frustumOf(camera), starts = this._multiDrawStarts, counts = this._multiDrawCounts, kl = this.userData.kitLod || '', list = this.inOrder;
-    const all = kl === 'far2', order = view && !kl.endsWith('2'), p = camera.position, ds = this.runD || (this.runD = new Float32Array(list.length)); let n = 0;
+    const starts = this._multiDrawStarts, counts = this._multiDrawCounts, kl = this.userData.kitLod || '', fine = kl.endsWith('2'), all = kl === 'far2';
+    let list = this.inOrder, n = 0;
+    if (fine) {
+      if (this.epoch === fineEpoch) { if (all) return; list = this.live; }       // nothing switched since: the same cells are on
+      else {
+        this.epoch = fineEpoch; list = this.live || (this.live = []); list.length = 0;
+        for (let i = 0; i < this.inOrder.length; i++) if (this.inOrder[i].src.userData.lodVis !== false) list.push(this.inOrder[i]);   // (by distance only: what the zone pass hides is left out below, frame by frame)
+      }
+    }
+    const fr = frustumOf(camera), order = view && !fine, p = camera.position, ds = this.runD || (this.runD = new Float32Array(this.inOrder.length));
     for (let i = 0; i < list.length; i++) {
-      const c = list[i]; if (!c.src.visible || (!all && !(fr.intersectsSphere(c.sphere) && fr.intersectsBox(c.box)))) continue;
+      const c = list[i]; if (!all && !c.src.visible) continue;                    // (the flat far versions are drawn whatever the zone pass says: a few triangles, and their ranges are kept between switches)
+      if (!all && !(fr.intersectsSphere(c.sphere) && fr.intersectsBox(c.box))) continue;
       const d = order ? c.sphere.center.distanceToSquared(p) : 0;
       if (n && starts[n - 1] + counts[n - 1] * 4 === c.start) { counts[n - 1] += c.count; if (d < ds[n - 1]) ds[n - 1] = d; } else { starts[n] = c.start; counts[n] = c.count; ds[n++] = d; }
     }

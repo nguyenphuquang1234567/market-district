@@ -11,7 +11,7 @@ import { Pass, FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
 import { clamp, damp } from './util.js';
 import { noise } from './materials.js';
 import { AtmosPass, HistoryPass, createMotes } from './atmos.js';
-import { nextFrame } from './batch.js';
+import { nextFrame, fineChanged } from './batch.js';
 
 export const PRESETS = {
   low:    { maxPR: 1.0,  scale: 0.7, shadow: 1024, cascades: 2, shadowFar: 90,  msaa: 0, ao: false, bloom: false, aoSamples: 8,  aoScale: 0.5, soft: false, lod: 0.7, air: 0, reflect: false },
@@ -337,7 +337,7 @@ export function createRenderer(canvas, skyTex, presetName) {
   const final = new ShaderPass(FinalShader);
   composer.addPass(final);
 
-  let lastFov = 0, exposure = renderer.toneMappingExposure, frameNo = 0;
+  let lastFov = 0, exposure = renderer.toneMappingExposure, frameNo = 0, cullFrame = 0;
   // adaptive internal resolution: drop a step after sustained slow frames, creep back up cautiously
   const STEPS = [1, 0.87, 0.75, 0.64, 0.55]; let step = 0, slowT = 0, fastT = 0, holdT = 0, ema = 16.7, sinceUp = 1e9, backoff = 1;
   const stepKey = 'md.scale.' + presetName;                 // remember where this machine settled so the next run starts there
@@ -370,7 +370,7 @@ export function createRenderer(canvas, skyTex, presetName) {
     },
     // Distance culling of small things (userData.lod, metres; see world.js) and the far cascade's layer: details are not
     // drawn into the outermost shadow cascade, whose texels are too coarse for them anyway.
-    lodScale: Q.lod ?? 1, lodList: null, zones: null, zoneList: null, zoneHidden: 0, kitNear: 30, kitNear2: 14,
+    lodScale: Q.lod ?? 1, lodList: null, zones: null, zoneList: null, zoneHidden: 0, kitNear: 30, kitNear2: 11,
     // Is this mesh the version of a kit piece on screen (near within kitNear of its cell's box, far beyond)? True for
     // anything without one. The rays that stand for what the player sees (rounds, markers, thrown things) skip the other
     // version: a modelled piece and its plain stand-in overlap, and a round must not spark off the one that is not drawn.
@@ -387,27 +387,37 @@ export function createRenderer(canvas, skyTex, presetName) {
           if (!o.isMesh || o.isBatchedMesh || o.userData.twinOf) return;        // (a batch and a twin take their cells' verdicts: batch.js)
           if (!o.geometry.boundingSphere) o.geometry.computeBoundingSphere();
           const s = o.geometry.boundingSphere.clone().applyMatrix4(o.matrixWorld);
-          if (o.userData.lod || o.userData.kitLod) api.lodList.push({ o, s });
+          // (one flat record per mesh: in WebKit this pass cost a millisecond a frame while it read each mesh's userData,
+          // compared strings and took square roots: ten times what it cost in Chromium)
+          const u = o.userData, kl = u.kitLod || '', b = u.lodBox || [0, 0, 0, 0];
+          if (u.lod || u.kitLod) api.lodList.push({ o, x: s.center.x, y: s.center.y, z: s.center.z, r: s.radius, lod: u.lod || 0, kit: !kl ? 0 : kl.startsWith('near') ? 1 : 2, fine: kl.endsWith('2'), b0: b[0], b1: b[1], b2: b[2], b3: b[3], proxy: !!u.shadowProxy, vis: true });
           if (z && o.parent?.name === 'world') {                             // the merged district, cell by cell: which side of the ring
             const side = s.center.x < z.split0 ? -1 : s.center.x > z.split1 ? 1 : 0;
-            if (side) { if (!o.geometry.boundingBox) o.geometry.computeBoundingBox(); bb.copy(o.geometry.boundingBox).applyMatrix4(o.matrixWorld); api.zoneList.push({ o, side, x0: bb.min.x, x1: bb.max.x, z0: bb.min.z, z1: bb.max.z, y1: bb.max.y }); }
+            if (side) { if (!o.geometry.boundingBox) o.geometry.computeBoundingBox(); bb.copy(o.geometry.boundingBox).applyMatrix4(o.matrixWorld); api.zoneList.push({ o, side, x0: bb.min.x, x1: bb.max.x, z0: bb.min.z, z1: bb.max.z, y1: bb.max.y, plain: !o.userData.lod && !o.userData.kitLod }); }
           }
         };
         scene.traverse(add); if (api.detached) api.detached.forEach(add);     // (drawn in batches, the district's cell meshes are not in the scene)
       }
       const p = camera.position, k = api.lodScale;
-      for (const { o, s } of api.lodList) {
-        const u = o.userData; let vis = !u.lod || p.distanceTo(s.center) - s.radius < u.lod * k;
-        if (u.kitLod) {                                   // the kit: detailed pieces near, plain stand-ins beyond
-          const shown = api.kitShown(o);
-          if (u.shadowProxy) o.material = shown ? u.baseMaterial : u.shadowProxy;   // (a tree's old leaf cards: near, unseen, they cast its shadow)
+      // (The architecture pass's 8 m cells are most of this list. Half of them are looked at each frame, turn about:
+      // a switch one frame late is not seen. Whenever a cell of theirs changes, the batches are told: batch.js.)
+      const list = api.lodList, half = cullFrame++ & 1, warm = cullFrame <= 4, px = p.x, py = p.y, pz = p.z, kn = (api.kitNear * k) ** 2, kn2 = (api.kitNear2 * k) ** 2;
+      for (let i = 0; i < list.length; i++) {
+        const e = list[i];
+        if (e.fine && !warm && (i & 1) !== half) { e.o.visible = e.vis; continue; }      // (as last judged; the zone pass below may still hide it)
+        let vis = true;
+        if (e.lod) { const dx = e.x - px, dy = e.y - py, dz = e.z - pz, lim = e.lod * k + e.r; vis = dx * dx + dy * dy + dz * dz < lim * lim; }
+        if (e.kit) {                                      // the kit: detailed pieces near, plain stand-ins beyond
+          const dx = Math.max(e.b0 - px, 0, px - e.b2), dz = Math.max(e.b1 - pz, 0, pz - e.b3), shown = (dx * dx + dz * dz < (e.fine ? kn2 : kn)) === (e.kit === 1);
+          if (e.proxy) { const u = e.o.userData; e.o.material = shown ? u.baseMaterial : u.shadowProxy; }   // (a tree's old leaf cards: near, unseen, they cast its shadow)
           else vis = vis && shown;
         }
-        o.visible = vis;
+        if (e.fine && e.vis !== vis) { e.o.userData.lodVis = vis; fineChanged(); }
+        e.vis = vis; e.o.visible = vis;
       }
       api.zoneHidden = 0;
       const z = api.zones;
-      for (const e of api.zoneList) if (!e.o.userData.lod && !e.o.userData.kitLod) e.o.visible = true;     // (the distance pass above has already set the others for this frame)
+      for (let i = 0, zl = api.zoneList; i < zl.length; i++) if (zl[i].plain) zl[i].o.visible = true;     // (the distance pass above has already set the others for this frame)
       if (z) {
         // Zone culling. From street level on one side of the east ring, a cell on the other side shows only through one of
         // the passages or over the ring's roofs. Both tests are conservative: the passage is a wedge of view through both of

@@ -57,6 +57,39 @@ export function addArchDetail(R, M, world) {
   for (const n of notes) {
     const { p, T, N } = n;
     // everything belonging to one note goes into one fine cell, the one world.js put its flat version in
+    if (n.kind === 'arco') {
+      // ---- the monumental arch, dressed: an entablature with dentils round all four sides (each side's run goes on
+      // through the corners, so they mitre themselves), and on both faces an archivolt with its keystone, imposts,
+      // plinth caps, a sunk panel on each pier, a medallion in each spandrel and the attic tablet. Drawn at every
+      // distance: it is the street's landmark, and none of it is fine enough to be a sliver from far off.
+      const { z0, depth, halfW, open, spring, top } = n, o = { color: n.st.color, tile: n.st.tile }, sl = { trim: 'concrete' }, zc = z0 + depth / 2, pw = halfW - open, pc = (halfW + open) / 2;
+      const V3 = (x, y, z) => new THREE.Vector3(x, y, z), O = V3(0, 0, 0);
+      const sides = [   // [a point on the face's middle at ground level, T, N, the face's length]
+        [V3(0, 0, z0), V3(-1, 0, 0), V3(0, 0, -1), 2 * halfW], [V3(0, 0, z0 + depth), V3(1, 0, 0), V3(0, 0, 1), 2 * halfW],
+        [V3(halfW, 0, zc), V3(0, 0, -1), V3(1, 0, 0), depth], [V3(-halfW, 0, zc), V3(0, 0, 1), V3(-1, 0, 0), depth],
+      ];
+      A.pin2 = null;
+      for (const [q, t, nn, len] of sides) {
+        const L = len + 1.04, k = Math.round(L);
+        A.kit('arco_cornisa', KM(q, t, nn, 0, top - 0.63, 0, L, 1, 1), sl, o);
+        for (let i = 0; i < k; i++) A.kit('arco_dentil', KM(q, t, nn, -L / 2 + (L / k) * (i + 0.5), top - 0.63, 0, L / k, 1, 1), sl, o);
+      }
+      for (const [q, t, nn] of sides.slice(0, 2)) {
+        A.kit('arco_archivolta', KM(q, t, nn, 0, spring, 0), sl, o); A.kit('arco_clave', KM(q, t, nn, 0, spring + open, 0), sl, o);
+        A.kit('arco_tablero', KM(q, t, nn, 0, 8.4, 0), sl, o);
+        for (const sx of [-1, 1]) {
+          A.kit('arco_imposta', KM(q, t, nn, sx * pc, spring + 0.21, 0, pw + 0.3, 1, 1), sl, o); A.kit('arco_basa', KM(q, t, nn, sx * pc, 0.9, 0, pw + 0.12, 1, 1), sl, o);
+          A.kit('arco_panel', KM(q, t, nn, sx * pc, 2.24, 0), sl, o); A.kit('arco_medallon', KM(q, t, nn, sx * pc, 6.15, 0), sl, o);
+        }
+      }
+      for (const sx of [-1, 1]) {                                                    // the imposts and plinth caps carried round each pier's ends: into the opening and at the outside
+        for (const [x, nx] of [[sx * open, -sx], [sx * halfW, sx]]) {
+          const q = V3(x, 0, zc), nn = V3(nx, 0, 0), t = new THREE.Vector3().crossVectors(UP, nn);
+          A.kit('arco_imposta', KM(q, t, nn, 0, spring + 0.21, 0, depth + 0.3, 1, 1), sl, o); A.kit('arco_basa', KM(q, t, nn, 0, 0.9, 0, depth + 0.12, 1, 1), sl, o);
+        }
+      }
+      stats.arch = 1; continue;
+    }
     { const q = n.kind === 'sala' ? n.P((n.ra + n.rb) / 2, 0, (n.d0 + n.D) / 2) : n.kind === 'columna' || n.kind === 'armadura' ? { x: n.x, z: n.z || 0 } : n.kind === 'techo' ? { x: n.pin[0], z: n.pin[1] } : p; A.pin2 = A.cell2(q.x, q.z); }
     if (n.kind === 'cortina') {
       const { w, h, d, key, so } = n, dS = d - 0.022, tint = so.color;
@@ -220,10 +253,10 @@ export function addArchDetail(R, M, world) {
   // ---- the meshes: culled, lit and hit like the district's own; drawn in batches
   const meshes = A.build(M), group = new THREE.Group(); group.name = 'world';        // (named as the district's, so the renderer's zone culling takes these cells too)
   for (const m of meshes) {
-    m.castShadow = CAST.has(m.name); m.receiveShadow = true; m.matrixAutoUpdate = false;
+    m.castShadow = CAST.has(m.name) || (m.name === 'concrete' && !m.userData.kitLod); m.receiveShadow = true; m.matrixAutoUpdate = false;   // (untagged concrete: the arch's mouldings)
     // nothing here is worth drawing from far off, and what is inside a shop (tiles, goods, vault, shelves, the back door)
     // only from close by: through the opening from across the street, not from the far end of it
-    m.userData.lod = INSIDE.has(m.name) ? 24 : lodRange(m) || 80;
+    m.userData.lod = INSIDE.has(m.name) ? 24 : lodRange(m) || (m.name === 'concrete' && !m.userData.kitLod ? 0 : 80);
     if (!m.material.userData.noBVH) { m.geometry.computeBoundsTree({ maxLeafTris: 8 }); world.rayMeshes.push(m); }
     group.add(m);
   }

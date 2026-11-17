@@ -901,17 +901,26 @@ export function buildWorld(R, M) {
     const g = new THREE.ExtrudeGeometry(s, { depth, bevelEnabled: false, curveSegments: 28 });
     B.geom('concrete', g, new THREE.Matrix4().makeTranslation(0, 0, z0), { color: tint, uvScale: 1 / 3.4 });
     const st = { color: [1.0, 0.95, 0.86], tile: 2.4 };
-    B.box('concrete', 0, top + 0.16, z0 + depth / 2, halfW * 2 + 0.5, 0.32, depth + 0.5, st);
-    B.box('concrete', 0, top + 0.42, z0 + depth / 2, halfW * 2 + 0.9, 0.2, depth + 0.9, st);
-    B.box('concrete', 0, top - 1.3, z0 + depth / 2, halfW * 2 + 0.22, 0.2, depth + 0.22, st);
+    // With the architecture pass's mouldings for it (tools/blender/arch.py: an entablature, an archivolt and keystone,
+    // imposts, panels, medallions), the arch's plain boxes for the same things are left undrawn: old(fn) runs them all
+    // the same (their solids are recorded as always) and the note says what goes there instead.
+    const dressed = ARCH && !!assets.kit?.arco_cornisa, old = fn => { const m = B.muteDraw; B.muteDraw = dressed || m; fn(); B.muteDraw = m; };
+    if (dressed && !B.mute) (B.notes ||= []).push({ kind: 'arco', z0, depth, halfW, open, spring, top, st });
+    old(() => {
+      B.box('concrete', 0, top + 0.16, z0 + depth / 2, halfW * 2 + 0.5, 0.32, depth + 0.5, st);
+      B.box('concrete', 0, top + 0.42, z0 + depth / 2, halfW * 2 + 0.9, 0.2, depth + 0.9, st);
+      B.box('concrete', 0, top - 1.3, z0 + depth / 2, halfW * 2 + 0.22, 0.2, depth + 0.22, st);
+    });
     for (const sx of [-1, 1]) {
       const cx = sx * (halfW + open) / 2, w = halfW - open;
       B.box('concrete', cx, 0.45, z0 + depth / 2, w + 0.3, 0.9, depth + 0.3, st);                // plinth
-      B.box('concrete', cx, spring + 0.1, z0 + depth / 2, w + 0.2, 0.22, depth + 0.2, st);       // impost
-      for (const zf of [z0 - 0.04, z0 + depth + 0.04]) {                                        // shallow framed panels
-        B.box('concrete', cx, 2.25, zf, w - 1.0, 0.1, 0.08, st); B.box('concrete', cx, 1.25, zf, w - 1.0, 0.1, 0.08, st);
-        B.box('concrete', cx - (w - 1.0) / 2, 1.75, zf, 0.1, 1.1, 0.08, st); B.box('concrete', cx + (w - 1.0) / 2, 1.75, zf, 0.1, 1.1, 0.08, st);
-      }
+      old(() => {
+        B.box('concrete', cx, spring + 0.1, z0 + depth / 2, w + 0.2, 0.22, depth + 0.2, st);       // impost
+        for (const zf of [z0 - 0.04, z0 + depth + 0.04]) {                                        // shallow framed panels
+          B.box('concrete', cx, 2.25, zf, w - 1.0, 0.1, 0.08, st); B.box('concrete', cx, 1.25, zf, w - 1.0, 0.1, 0.08, st);
+          B.box('concrete', cx - (w - 1.0) / 2, 1.75, zf, 0.1, 1.1, 0.08, st); B.box('concrete', cx + (w - 1.0) / 2, 1.75, zf, 0.1, 1.1, 0.08, st);
+        }
+      });
       B.collide(cx, top / 2, z0 + depth / 2, w + 0.3, top, depth + 0.3, 0, 'plaster');
     }
     for (const zf of [z0 - 0.012, z0 + depth + 0.012]) for (let i = 0; i < 5; i++) {

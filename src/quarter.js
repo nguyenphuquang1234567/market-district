@@ -159,11 +159,10 @@ export function buildQuarter({ B, M, buildings, anchors, ghosts, gates, architec
       for (const s of [-1, 1]) {
         // nave slope: from the eave line (|z| = NZ) up to the ridge; skylit bays leave a strip open by the ridge
         const zr = sky ? s * 1.3 : 0, yr = sky ? RIDGE - (RIDGE - NAVE) * 1.3 / NZ : RIDGE;
-        // (each slope is corrugated sheet near the camera, laid by the architecture pass: the flat sheet is the far version)
+        // (Laid in modelled corrugated sheet, these cost a millisecond a frame from inside the hall: the roof is half the
+        // view there, 5-10 m off, where a 2 cm corrugation is a sliver two pixels wide. It stays a flat sheet, its ribs in the texture.)
         const sheet = (e0, e1, r1, r0, color) => {
-          const mx = (xa + xb) / 2, mz = (e0.z + r0.z) / 2; if (FAR) B.pin2 = B.cell2(mx, mz);
-          B.quad('roof_tin', e0, e1, r1, r0, { tile: 1.2, color, lod: FAR }); B.pin2 = null;
-          note('techo', { e0: [e0.x, e0.y, e0.z], e1: [e1.x, e1.y, e1.z], r0: [r0.x, r0.y, r0.z], color, pin: [mx, mz] });
+          B.quad('roof_tin', e0, e1, r1, r0, { tile: 1.2, color });
         };
         sheet(V(xa, NAVE, s * (NZ + 0.3)), V(xb, NAVE, s * (NZ + 0.3)), V(xb, yr, zr), V(xa, yr, zr), [0.9, 0.9, 0.88]);
         // aisle slope: from under the clerestory down to the outer eave
