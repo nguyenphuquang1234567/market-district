@@ -411,6 +411,7 @@ export function createMaterials() {
     glass: flat(0x0b0f12, 0.07, 0, { roughnessMap: noise, envMapIntensity: 1.3 }),
     plastic: flat(0xffffff, 0.55),
     matte: flat(0xffffff, 0.93),
+    jar: flat(0x9fb0ac, 0.04, 0, { transparent: true, opacity: 0.14, depthWrite: false, envMapIntensity: 1.8 }),   // clear glass over something modelled (a meter's dome)
     ground: groundMaterial(),
     cloth_red: cloth('fabric_pattern_07'), cloth_green: cloth('fabric_pattern_05'), cloth_plain: cloth('cotton_jersey', 0.55),
     rug: cloth('dirty_carpet', 0.12),
@@ -451,7 +452,7 @@ export function createMaterials() {
     metal_white: 'metal', metal_green: 'metal', metal_plate: 'metal', iron: 'metal', glass: 'glass', burlap: 'fabric',
     ground: 'dirt', bark: 'wood', cable: 'fabric', plastic: 'wood', rubble: 'concrete', gravel: 'dirt', tiles: 'concrete', dark: 'none',
     cobble: 'concrete', terracotta: 'concrete', brick: 'brick', cantera: 'concrete', shutter_paint: 'metal', roof_tin: 'metal', sign: 'plaster',
-    talavera: 'concrete', cloth_papel: 'fabric', cloth_tarp: 'fabric', leaves: 'wood', bulb: 'glass', paint: 'plaster', flowers: 'wood', glossy: 'wood', teja: 'concrete',
+    talavera: 'concrete', cloth_papel: 'fabric', cloth_tarp: 'fabric', leaves: 'wood', bulb: 'glass', jar: 'glass', paint: 'plaster', flowers: 'wood', glossy: 'wood', teja: 'concrete',
     room: 'glass', glassblock: 'glass', leaf: 'wood', leaf_mass: 'wood', palm_leaf: 'wood', paper: 'fabric',
   };
   for (const [k, m] of Object.entries(M)) { m.userData.surf = surf[k] || (k.startsWith('w_') ? 'plaster' : 'concrete'); m.name = k; }

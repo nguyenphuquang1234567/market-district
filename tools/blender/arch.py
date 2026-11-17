@@ -376,22 +376,28 @@ def puerta_metal(name):
     return bake_ao(join(name, obs), 0.04, 0.6, floor=0.0)
 
 # A door's threshold (umbral): a stone slab in the doorway, its nose rounded and its middle worn hollow by feet. A
-# metre wide (stretch x), 4.5 cm high, from 2 cm proud of the wall back 30 cm into the opening (stretch y to the
-# recess). Origin: the pavement at the wall face, at the door's middle.
-@piece
-def umbral(name):
-    bm = bmesh.new(); nx, prof = 10, [(-0.02, 0.0), (-0.02, 0.026), (-0.012, 0.04), (0.0, 0.045), (0.3, 0.045), (0.3, 0.0)]
+# metre wide (stretch x), 4.5 cm high. In two pieces, because doorways differ in depth: the nose, the first 2 cm
+# behind the wall face whatever the recess, and the slab, 30 cm deep (stretch y to the rest of the recess, set 2 cm
+# in). Nothing stands proud of the wall: there is no collider for it, and a chair pushed against the wall stood with
+# its feet inside a nose that did (stretched with the slab, by 4 cm in a deep doorway).
+# Origin: the pavement at the wall face, at the door's middle.
+def _umbral(name, prof, caps):
+    bm = bmesh.new(); nx = 10
     rows = []
     for i in range(nx + 1):
         x = -0.5 + i / nx; wear = 0.012 * math.exp(-((x) / 0.2) ** 2)                         # the hollow where everyone steps
         rows.append([bm.verts.new((x, y, z - (wear * (1.0 if 0.0 <= y < 0.3 and z > 0.04 else 0.5 if z > 0.03 else 0.0)))) for y, z in prof])
     for a, b in zip(rows, rows[1:]):
         for k in range(len(prof) - 1): poly(bm, (a[k], a[k + 1], b[k + 1], b[k]))
-    poly(bm, rows[0][::-1]); poly(bm, rows[-1])
-    bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
-    for f in bm.faces:
-        if f.normal.z < -0.5 or f.normal.y > 0.5: pass
+    if caps: poly(bm, rows[0][::-1]); poly(bm, rows[-1])
+    outward(bm)
     return bake_ao(obj(name, bm, 'trim'), 0.05, 0.6, floor=0.0)
+
+@piece
+def umbral(name): return _umbral(name, [(0.0, 0.045), (0.3, 0.045), (0.3, 0.0)], False)
+
+@piece
+def umbral_nariz(name): return _umbral(name, [(0.0, 0.0), (0.0, 0.026), (0.006, 0.04), (0.02, 0.045)], True)
 
 # ---------------------------------------------------------------------------------------------------- stone base -----
 # A rusticated base course (almohadillado): three courses of rock-faced blocks, chamfered at the joints, in running
@@ -662,6 +668,43 @@ def bandera(name):
     for z in (arm_z - 0.22, arm_z + 0.025): obs.append(at(rot(lathe([(0, 0), (0.008, 0), (0.008, 0.004), (0, 0.0065)], 6, 'iron'), 'X', 90), 0, -0.008, z))
     return bake_ao(join(name, obs), 0.04, 0.5, wall=0.0)
 
+# ---------------------------------------------------------------------------------------------------- meter ----------
+# An electricity meter as it hangs on a street wall: a board, a cast socket with the glass jar of the meter standing
+# out of it (a dial plate with its five small dials behind the glass, a seal on its ring), threaded hubs above and
+# below for the conduit, and a little switch box beside it with a hinged lid. Origin: the wall face at the socket's
+# middle; 0.36 m wide, 0.5 m high, 0.19 m out.
+@piece
+def medidor(name):
+    obs = [bevel(box(-0.2, 0.2, -0.022, 0.0, -0.26, 0.26, 'wood'), 0.004, 1, 30)]
+    obs.append(bevel(box(-0.165, -0.005, -0.085, -0.022, -0.13, 0.13, 'steel'), 0.012, 3, 30))                              # the socket
+    ringp = [(0.0, 0.0), (0.078, 0.0), (0.082, 0.006), (0.082, 0.02), (0.076, 0.026), (0.07, 0.026)]
+    obs.append(at(rot(lathe(ringp, 18, 'steel'), 'X', 90), -0.085, -0.085, 0.01))                                           # the sealing ring
+    jar = [(0.07, 0.0), (0.07, 0.06), (0.066, 0.078), (0.052, 0.094), (0.028, 0.102), (0.0, 0.104)]
+    obs.append(at(rot(lathe(jar, 18, 'glass'), 'X', 90), -0.085, -0.108, 0.01))                                             # the jar
+    face = lathe([(0.0, 0.0), (0.064, 0.0), (0.064, 0.004), (0.0, 0.004)], 18, 'dial', lambda z: (0.86, 0.85, 0.8))
+    obs.append(at(rot(face, 'X', 90), -0.085, -0.118, 0.01))                                                                 # the dial plate, behind the glass
+    for k in range(5):                                                                                                       # its five small dials
+        dx = -0.085 + (k - 2) * 0.022; d = lathe([(0.0, 0.0), (0.008, 0.0), (0.008, 0.002), (0.0, 0.002)], 8, 'dial', lambda z: (0.08, 0.08, 0.08))
+        obs.append(at(rot(d, 'X', 90), dx, -0.1225, 0.028))
+    obs.append(box(-0.115, -0.055, -0.1225, -0.1215, -0.02, -0.006, 'dial', 0.0, (0.1, 0.1, 0.1)))                           # the nameplate
+    for sz in (-1, 1): obs.append(at(lathe([(0.0, 0.0), (0.026, 0.0), (0.026, 0.02), (0.021, 0.028), (0.021, 0.05), (0.0, 0.05)], 10, 'steel'), -0.085, -0.042, 0.13 if sz > 0 else -0.18))   # conduit hubs
+    obs.append(tube([(-0.02, -0.1, 0.09), (-0.012, -0.095, 0.05), (-0.016, -0.09, 0.02)], 0.0025, 4, 'steel'))                   # the seal's wire
+    obs.append(bevel(box(-0.03, -0.006, -0.094, -0.088, 0.002, 0.03, 'dial', 0.0, (0.75, 0.6, 0.1)), 0.002, 1, 30))            # and its lead tag
+    obs.append(bevel(box(0.03, 0.16, -0.075, -0.022, -0.1, 0.09, 'steel'), 0.006, 2, 30))                                      # the switch box
+    obs.append(bevel(box(0.024, 0.166, -0.083, -0.075, -0.106, 0.096, 'steel'), 0.004, 1, 30))                                 # its lid
+    obs.append(tube([(0.03, -0.079, 0.1), (0.16, -0.079, 0.1)], 0.005, 6, 'steel'))                                            # the lid's hinge
+    obs.append(bevel(box(0.085, 0.105, -0.092, -0.083, -0.085, -0.055, 'steel'), 0.002, 1, 30))                                # the hasp
+    for (x, z) in ((-0.18, 0.24), (0.18, 0.24), (-0.18, -0.24), (0.18, -0.24)): obs.append(at(rot(lathe([(0, 0), (0.007, 0), (0.007, 0.003), (0, 0.005)], 6, 'steel'), 'X', 90), x, -0.022, z))
+    return bake_ao(join(name, obs), 0.05, 0.65, wall=0.0)
+
+# the same from across the street: the board, the socket, the jar as a stub, the switch box
+@piece
+def medidor_far(name):
+    # one material: the board, the boxes and the dome are told apart by vertex colour alone (it is tinted with the meter's paint)
+    obs = [box(-0.2, 0.2, -0.022, 0.0, -0.26, 0.26, 'steel', 0.0, (0.5, 0.36, 0.24)), box(-0.165, -0.005, -0.085, -0.022, -0.13, 0.13, 'steel'), box(0.03, 0.16, -0.08, -0.022, -0.1, 0.09, 'steel')]
+    obs.append(at(rot(lathe([(0.0, 0.0), (0.08, 0.0), (0.07, 0.07), (0.05, 0.1), (0.0, 0.104)], 8, 'steel', lambda z: (0.9, 0.96, 0.96)), 'X', 90), -0.085, -0.085, 0.01))
+    return bake_ao(join(name, obs), 0.05, 0.65, wall=0.0)
+
 # ---------------------------------------------------------------------------------------------------- the arch -------
 # The monumental arch across the main street, dressed as a triumphal arch is: an entablature round its top (an
 # architrave of two fasciae, a plain frieze, a course of dentils, a corona on an ogee), an archivolt round the opening
@@ -780,9 +823,9 @@ def gargola(name):
 cortina_slats('cortina_slats'); cortina_guide('cortina_guide'); cortina_bar('cortina_bar'); cortina_handle('cortina_handle'); cortina_lock('cortina_lock')
 cortina_box('cortina_box'); cortina_cap('cortina_cap'); cortina_roll('cortina_roll'); lamina_sheet('lamina_sheet'); perfil_x('perfil_x'); perfil_z('perfil_z')
 bisagra('bisagra'); pasador('pasador'); reja_calle('reja_calle'); zocalo('zocalo'); boveda('boveda'); vigueta('vigueta'); dado('dado'); puerta_fondo('puerta_fondo')
-puerta_metal('puerta_metal'); umbral('umbral'); repisa('repisa_a', ['can', 'can', 'can', 'jar', 'box', 'box']); repisa('repisa_b', ['bottle', 'bottle', 'jar', 'can', 'box']); lampara_tubo('lampara_tubo'); gargola('gargola')
+puerta_metal('puerta_metal'); umbral('umbral'); umbral_nariz('umbral_nariz'); repisa('repisa_a', ['can', 'can', 'can', 'jar', 'box', 'box']); repisa('repisa_b', ['bottle', 'bottle', 'jar', 'can', 'box']); lampara_tubo('lampara_tubo'); gargola('gargola')
 col_base('col_base'); col_shaft('col_shaft'); col_cap('col_cap'); col_bracket('col_bracket'); cartela('cartela'); marq_rib('marq_rib'); plafon('plafon'); tubo_x('tubo_x'); toldo_cassette('toldo_cassette'); toldo_soporte('toldo_soporte'); bandera('bandera')
-arco_cornisa('arco_cornisa'); arco_dentil('arco_dentil'); arco_archivolta('arco_archivolta'); arco_clave('arco_clave'); arco_imposta('arco_imposta'); arco_basa('arco_basa'); arco_panel('arco_panel'); arco_tablero('arco_tablero'); arco_medallon('arco_medallon')
+arco_cornisa('arco_cornisa'); arco_dentil('arco_dentil'); arco_archivolta('arco_archivolta'); arco_clave('arco_clave'); arco_imposta('arco_imposta'); arco_basa('arco_basa'); arco_panel('arco_panel'); arco_tablero('arco_tablero'); arco_medallon('arco_medallon'); medidor('medidor'); medidor_far('medidor_far')
 
 for ob in pieces: ob.location = (0, 0, 0)
 print('ARCH pieces (triangles):', ', '.join(f'{ob.name} {tri_count(ob)}' for ob in pieces))

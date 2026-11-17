@@ -357,14 +357,16 @@ Key bindings live in the same saved settings object (`binds`, including `frag` a
 
 - **The street floor and the shops, modelled** — what the district drew as a flat textured quad, or left out, is real
   geometry near the camera now, modelled in Blender from a third script (`tools/blender/arch.py`, `assets/kit/arch.glb`,
-  36 pieces with bevelled edges, weighted normals and occlusion baked into vertex colours) and fitted by
+  48 pieces with bevelled edges, weighted normals and occlusion baked into vertex colours) and fitted by
   `src/archdetail.js`:
   - *roll-up shutters* (cortinas): curved laths 75 mm apart in steel guide channels under a bent-sheet housing with
     riveted end plates, a bottom bar on its rubber, two lifting handles, and one or two hasps padlocked to rings in
     the pavement; the ones the district drew in corrugated sheet are *sheet gates* instead: two leaves of real
     corrugation on a tube frame, three barrel hinges a side, a slide bolt and a padlock;
   - *steel street doors*: a folded leaf with pressed panels, a louvred vent, a barred light, hinges, a pull and lock;
-    and in every doorway a stone threshold, its nose rounded and its middle worn hollow;
+    and in every doorway a stone threshold, its nose rounded and its middle worn hollow (slab and nose are two
+    pieces: the slab stretches to the doorway's depth, the nose keeps its shape, and neither stands proud of the
+    wall, so nothing pushed against the wall ends up inside it);
   - *window grilles* on every street-floor window: a projecting flat-bar frame on four legs, round bars through
     two rails with forged collars, spear points, and a band of S-scrolls and rings;
   - *base courses* on the casonas: three courses of rock-faced, chamfered blocks in running bond;
@@ -376,19 +378,33 @@ Key bindings live in the same saved settings object (`binds`, including `frag` a
     *hanging signs*: an angle-iron rim round the painted board, hung on links from a forged arm with a scroll and a wall plate;
   - *the market hall*: cast-iron columns (an octagonal panelled pedestal, base mouldings, a fluted shaft, a leafed
     capital under a square abacus) with a pierced cast bracket to each beam they carry, riveted gusset plates
-    where the truss members meet, and a roof of real corrugated sheet, half a metre a sheet, on every slope;
+    where the truss members meet (the roof stays a flat textured sheet: modelled corrugation overhead cost 1.3 ms
+    a frame from inside the hall, for something seen from eight metres below);
+  - *the monumental arch*: a moulded cornice on a row of dentils, an archivolt of three fasciae round each opening
+    with a scrolled keystone, impost and base mouldings to the piers, sunk panels, medallions and an inscription
+    tablet, always drawn (it is the plaza's landmark from every street);
+  - *electricity meters* on the street walls: a board, a cast socket with the meter's glass dome over its dial plate
+    and five small dials, a sealing ring and lead tag, threaded hubs the conduit runs into, and a switch box with a
+    hinged lid and hasp (the conduit itself now carries its texture at real scale);
   - *the 1950s blocks' canopies*: tapered concrete ribs from wall to edge and a caged bulkhead light between each pair;
   - *parapets*: a clay spout on a stone bracket every few metres of every street front.
   How it stays out of the game's way: `world.js` leaves a note where each belongs and tags its own flat version
   `far2`, so beyond the pass's switch distance the map is drawn exactly as before and the light bake's signature does
-  not move (it still loads as cached). The pass's pairs are sorted into 8 m cells and switch 14 m from their cell
+  not move (it still loads as cached). The pass's pairs are sorted into 8 m cells and switch 11 m from their cell
   (`R.kitNear2`), not per 24 m cell at 30 m as the kit does: laths, bars and corrugation are slivers a pixel wide
   from further off, and under multisampling every sliver is shaded once per triangle, which is where the pass's
-  cost was (a first version, switching per 24 m cell, cost 0.4–1.4 ms a frame). Nothing fine here casts a shadow;
-  the hall's columns and roof and the spouts do. A second `Builder`, with no colliders, loose props or random stream, places the
+  GPU cost was (a first version, switching per 24 m cell, cost 0.4–1.4 ms a frame). Nothing fine here casts a
+  shadow; the hall's columns, the arch's mouldings and the spouts do. The rest of the cost was on the main thread,
+  and only showed in WebKit (see the timings under Quality presets): thousands of small cells meant thousands of
+  multi-draw ranges, which WebKit's Metal backend issues one by one, so a batch now walks its cells as they lie
+  in the index buffer (row by row across the map) and sends neighbours as one range (2,028 ranges on the main
+  street became 777); the renderer's visibility pass keeps flat records instead of reading each mesh's
+  properties, judges half of the fine cells a frame, and judges zone culling (some 7,000 `atan2` a frame) again
+  only when the camera has moved far enough to change the answer. A second `Builder`, with no colliders, loose props or random stream, places the
   pieces; its meshes are batched like the district's and join the ray meshes, so a round sparks on the lath it hits.
-  `tools/layout-fingerprint.js` reports the layout identical and the district's own drawn index total unchanged
-  (20,190,462). `?arch=0` draws the map without the pass. Reference for the forms: iron mercados and commercial
+  `tools/layout-fingerprint.js` reports the layout identical; the district's own drawn index total moved by 252
+  triangles (the arch's old box mouldings, which the modelled ones replace), within what the bake's signature
+  allows. `?arch=0` draws the map without the pass. Reference for the forms: iron mercados and commercial
   streets of central Mexico (wrought and cast iron of the Porfirian period, steel-joist and brick-vault floors of
   1900-1950, cortinas metálicas and rejas de cajón as built today); for the method, the mid-poly, bevelled,
   weighted-normal modular kits that current environment art is built from.
@@ -559,10 +575,45 @@ leans on how three.js r170 draws a `BatchedMesh` and needs rechecking on an upgr
 (`?selftest=1`) pass as on `main` (64 checks, the one known failure). On-screen pacing in play was not measured for
 this build.
 
+**With the architecture pass** (`tools/blender/arch.py`, `src/archdetail.js`) — `?bench=` in the native window
+(WebKit), this build and `main` (in a separate worktree) run alternately after a discarded warm-up, three runs each,
+medians:
+
+| View | `main` | This build | Change | Draw calls | Triangles |
+| --- | --- | --- | --- | --- | --- |
+| Main street, long sightline | 12.81 ms | 12.79 ms | −0.02 ms (0 %) | 366 → 386 | 5.49 M → 5.57 M |
+| Arch and plaza | 11.90 ms | 11.93 ms | +0.03 ms (0 %) | 364 → 392 | 5.55 M → 5.49 M |
+| Covered market lane | 11.97 ms | 11.95 ms | −0.02 ms (0 %) | 366 → 390 | 4.88 M → 4.91 M |
+| Laundry alley | 10.81 ms | 11.09 ms | +0.28 ms (+3 %) | 352 → 370 | 4.29 M → 4.45 M |
+| Market lane through the north passage | 10.31 ms | 10.24 ms | −0.07 ms (−1 %) | 333 → 368 | 3.22 M → 3.24 M |
+| Market hall, from Calle del Mercado | 11.14 ms | 10.95 ms | −0.19 ms (−2 %) | 331 → 345 | 4.71 M → 4.57 M |
+| Inside the market hall | 10.91 ms | 11.13 ms | +0.22 ms (+2 %) | 322 → 336 | 4.08 M → 4.12 M |
+| Plazuela and kiosk | 11.06 ms | 10.70 ms | −0.36 ms (−3 %) | 302 → 313 | 3.74 M → 3.45 M |
+
+Level with `main`: the differences (−0.36 to +0.28 ms, −0.02 ms on average) are inside what runs of one build
+spread by here (`main` up to 0.4 ms, this build up to 0.7 ms), and the 95th-percentile frame is the same millisecond
+in every view but two (the alley 11 → 12 ms, the plazuela 12 → 11 ms). An earlier set, taken before the electricity
+meters went in, read −0.66 to +0.50 ms. It did not start level: the first version cost 0.4–1.4 ms a frame and the
+hall 1.7 ms. Finding where that went took an interleaved probe (`?ab=<tag>`, `tools/perf-probe.js`: the cases are
+switched inside one page, a few dozen frames each, round after round, and the medians compared, which takes run-to-run
+drift out): the modelled pieces themselves were about 0.45 ms on the main street, the hall's corrugated roof 1.3 ms
+from inside, and the renderer's own visibility pass about a millisecond in WebKit alone (it runs in a fraction of
+that in Chromium), most of it zone culling's arctangents. The roof went back to a flat sheet; the other two were
+fixed as described under *The street floor and the shops, modelled*.
+
+What it costs elsewhere: loading to the menu takes 0.8 s longer (10.2 s against 9.3 s; building the district 5.4 s
+against 4.6 s, for placing some thousands of pieces and their ray trees); estimated GPU memory 1362 → 1480 MB (+9 %,
+all of it geometry: 411 → 528 MB, as each 8 m cell keeps its own vertices). The fine pieces appear 11 m from their
+cell, which is a visible switch if one watches a shutter while walking up to it (laths and a flat texture of laths are
+not the same picture); the same pieces drawn from 30 m cost the 0.4–1.4 ms above. Nothing fine casts a shadow. The
+scripted checks (`?selftest=1`) pass as on `main` (64 checks, the one known failure); the layout fingerprint is
+identical and the light bake loads as cached. On-screen pacing in play was not measured for this build.
+
 Profiling switches: `?demo=1` auto-plays the match (for pacing runs), `?live=1` writes `captures/live.json` every 3 s,
 `?tune={"maxPR":1.25}` overrides any preset field. `?prof=<tag>` times three views whole and again with one part held or
 off at a time (cascades not redrawn, no AO, no bloom, no haze, no multisampling, a quarter of the pixels) and saves
-`captures/prof_<tag>.json`; `?batch=0` and `?life=0` switch the batching and the street-life layer off for A/B runs.
+`captures/prof_<tag>.json`; `?ab=<tag>` runs the interleaved probe and saves `captures/ab_<tag>.json`; `?batch=0`,
+`?life=0` and `?arch=0` switch the batching, the street-life layer and the architecture pass off for A/B runs.
 
 ## Tests and captures
 

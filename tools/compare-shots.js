@@ -44,6 +44,32 @@ export const VIEWS = {
   kiosk_near: [74.6, -30.2, 125, 22],             // the kiosk's roof and columns
   palm_near: [-11.0, -8.0, 226, 40],              // a plaza palm, up into its crown
   laurel_near: [76.5, -38.0, 221, 20],            // a laurel at the plazuela's corner
+  // ---- close views of the architecture pass (tools/blender/arch.py: shutters, grilles, doors, shop rooms, the hall, the arch)
+  sv_shutter_main: [-2.8, 50.5, -74.3, 4],        // a roll-up shutter on the main street
+  sv_slats_8m: [-2.8, 46, -60, 4],                // the same row from eight metres
+  sv_shutter_market: [28.6, 47.9, -70.9, 4],
+  sv_shop_main: [-1.8, -43.9, -80.3, 3],          // an open shop from the street: the room behind the opening
+  sv_shop_market: [28.8, -0.7, -75.6, 3],
+  sv_room_in: [24.6, -45.3, -116.6, 6],           // inside a shop: vault, dado, shelves, back door
+  sv_door_main: [-3.4, -29.6, -76.4, 4],
+  sv_wall_main: [-3, -33.4, -73.3, 6],            // street-floor wall: grille, base course
+  sv_wall_cross: [-13.8, -20, -163.3, 10],
+  sv_wall_alley: [-29.2, 39.4, 112.2, 6],
+  sv_comercial: [3.2, -47, -70, 14],
+  sv_upper: [-3.4, -36, 70, 24],
+  sv_zocalo2: [-3.2, 49.2, -100, -8],             // the base course and a threshold, looking down
+  sv_hall_stall: [63, -4.5, 60, -4],
+  sf_comercial: [50.2, 34.6, -1, 22],             // under a commercial block's canopy
+  sf_hall_a: [58, -6, 45, 6],                     // the market hall's columns and trusses
+  sf_hall_col: [61.6, -5.6, 40, 14],
+  sf_hall_cap: [64.4, -2.2, -150, 48],
+  sf_hall_roof: [66, 2, 30, 38],
+  sa_arch_far: [0.6, -30, 0, 4],                  // the monumental arch
+  sa_arch_s: [0.5, 3.5, 0, 16],
+  sa_arch_n: [-1.5, 27, 180, 14],
+  sa_arch_close: [4.2, 8.2, 12, 26],
+  sv_meter: [4.9, 16.2, 100, 4],                  // an electricity meter on its board
+  sv_meter_far: [-3, 16.5, 90, 2],                // and from across the street (the far version)
 };
 
 const park = G => { for (const b of G.bots.list) { b.alive = false; b.root.visible = false; b.gun.visible = false; b.respawnT = 1e9; } };

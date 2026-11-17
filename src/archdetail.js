@@ -31,6 +31,41 @@ const TILES = [   // a shop's dado: [field, band and capping] (linear: cream and
 const CAST = new Set(['cantera', 'teja', 'metal_green', 'roof_tin']);
 const INSIDE = new Set(['glossy', 'matte', 'brick', 'planks', 'door']);
 
+// The meshes of a builder of modelled pieces: culled, lit and hit like the district's own; drawn in batches.
+function finish(R, M, world, A) {
+  const meshes = A.build(M), group = new THREE.Group(); group.name = 'world';        // (named as the district's, so the renderer's zone culling takes these cells too)
+  for (const m of meshes) {
+    m.castShadow = CAST.has(m.name) || (m.name === 'concrete' && !m.userData.kitLod); m.receiveShadow = true; m.matrixAutoUpdate = false;   // (untagged concrete: the arch's mouldings)
+    // nothing here is worth drawing from far off, and what is inside a shop (tiles, goods, vault, shelves, the back door)
+    // only from close by: through the opening from across the street, not from the far end of it
+    m.userData.lod = INSIDE.has(m.name) ? 24 : lodRange(m) || (m.name === 'concrete' && !m.userData.kitLod ? 0 : 80);
+    if (!m.material.userData.noBVH) { m.geometry.computeBoundsTree({ maxLeafTris: 8 }); world.rayMeshes.push(m); }
+    group.add(m);
+  }
+  R.setupTree(group);
+  if (BATCH) { const d = batchWorld(meshes); d.group.name = 'archDraw'; R.scene.add(d.group); (R.detached ||= []).push(...meshes); } else R.scene.add(group);
+  return { meshes, group };
+}
+
+// Electricity meters on the street walls (streetlife.js finds the bare wall for each and draws the conduit): a board,
+// a cast socket with the meter's glass dome standing out of it over its dials, and a switch box. Within the kit's
+// near distance the modelled one, further off four boxes and a stub.
+export function addWallMeters(R, M, world, meters) {
+  if (!assets.kit?.medidor || !assets.kit?.medidor_far || !meters.length) return false;
+  const A = new Builder(), T = new THREE.Vector3(), N = new THREE.Vector3(), m4 = new THREE.Matrix4(), sl = { wood: 'planks', steel: 'metal_white', glass: 'jar', dial: 'metal_white' };
+  for (const mt of meters) {
+    const { x, z } = mt, o = mt.out + 0.001; N.set(mt.N.x, 0, mt.N.z); T.set(N.z, 0, -N.x);                 // (T x up = N: the piece is not mirrored, its switch box to the right of the socket)
+    const paint = mt.v < 0.5 ? [0.62, 0.64, 0.62] : [0.5, 0.56, 0.5], board = [0.95 + 0.25 * hash(x, z, 61), 0.88 + 0.2 * hash(x, z, 61), 0.78 + 0.16 * hash(x, z, 61)];   // (weathered boards, grey to brown)
+    m4.makeBasis(T, UP, N).setPosition(x + N.x * o + T.x * 0.085, 1.55, z + N.z * o + T.z * 0.085);   // (the socket's middle over the conduit)
+    A.pin2 = A.cell2(x, z);
+    for (const [name, lod] of [['medidor', 'near2'], ['medidor_far', 'far2']])
+      A.kit(name, m4, sl, { lod, slot: { wood: { lod, color: board, tile: 0.9 }, steel: { lod, color: paint, tile: 0.7 }, glass: { lod }, dial: { lod, tile: 0.7 } } });   // (the far one is all 'steel': one draw)
+  }
+  A.pin2 = null;
+  finish(R, M, world, A);
+  return true;
+}
+
 export function addArchDetail(R, M, world) {
   const notes = world.notes || [];
   if (!assets.kit?.cortina_slats || !notes.length) return null;
@@ -181,7 +216,8 @@ export function addArchDetail(R, M, world) {
     } else if (n.kind === 'umbral') {
       // ---- a worn stone threshold in a doorway, set on whatever the pavement is there
       const gd = cast(new THREE.Vector3(p.x + N.x * 0.3, 1.0, p.z + N.z * 0.3), new THREE.Vector3(0, -1, 0), 1.4), gy = gd < 1.35 ? 1.0 - gd : 0;
-      A.kit('umbral', KM(p, T, N, 0, gy, 0, n.w + 0.02, 1, n.d / 0.3), { trim: 'concrete' }, { lod: 'near2', tile: 1.3, color: [0.92, 0.84, 0.76] });
+      A.kit('umbral_nariz', KM(p, T, N, 0, gy, 0, n.w + 0.02, 1, 1), { trim: 'concrete' }, { lod: 'near2', tile: 1.3, color: [0.92, 0.84, 0.76] });   // the rounded nose: the first 2 cm, flush with the wall
+      A.kit('umbral', KM(p, T, N, 0, gy, 0.02, n.w + 0.02, 1, Math.max(0.02, n.d - 0.02) / 0.3), { trim: 'concrete' }, { lod: 'near2', tile: 1.3, color: [0.92, 0.84, 0.76] });
       stats.thresholds = (stats.thresholds || 0) + 1;
     } else if (n.kind === 'bandera') {
       A.kit('bandera', KM(p, T, N, 0, n.y, 0), { iron: 'iron' }, near); stats.signs = (stats.signs || 0) + 1;
@@ -250,19 +286,8 @@ export function addArchDetail(R, M, world) {
     }
   }
 
-  // ---- the meshes: culled, lit and hit like the district's own; drawn in batches
-  const meshes = A.build(M), group = new THREE.Group(); group.name = 'world';        // (named as the district's, so the renderer's zone culling takes these cells too)
-  for (const m of meshes) {
-    m.castShadow = CAST.has(m.name) || (m.name === 'concrete' && !m.userData.kitLod); m.receiveShadow = true; m.matrixAutoUpdate = false;   // (untagged concrete: the arch's mouldings)
-    // nothing here is worth drawing from far off, and what is inside a shop (tiles, goods, vault, shelves, the back door)
-    // only from close by: through the opening from across the street, not from the far end of it
-    m.userData.lod = INSIDE.has(m.name) ? 24 : lodRange(m) || (m.name === 'concrete' && !m.userData.kitLod ? 0 : 80);
-    if (!m.material.userData.noBVH) { m.geometry.computeBoundsTree({ maxLeafTris: 8 }); world.rayMeshes.push(m); }
-    group.add(m);
-  }
-  R.setupTree(group);
-  if (BATCH) { const d = batchWorld(meshes); d.group.name = 'archDraw'; R.scene.add(d.group); (R.detached ||= []).push(...meshes); } else R.scene.add(group);
+  const { meshes } = finish(R, M, world, A);
   const tris = meshes.reduce((s, m) => s + m.geometry.index.count / 3, 0);
   console.info(`architecture pass: ${stats.cortina} curtains, ${stats.gate} sheet gates, ${stats.reja} grilles, ${stats.zocalo} base courses, ${stats.tienda} shop fronts, ${stats.sala} rooms (${stats.shelves} shelves), ${stats.spouts} spouts; ${meshes.length} cell meshes, ${Math.round(tris / 1000)}k triangles`);
-  return { group, stats, meshes, tris };
+  return { stats, meshes, tris };
 }

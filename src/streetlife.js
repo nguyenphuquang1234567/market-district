@@ -13,6 +13,8 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { rng } from './util.js';
 import { windUniforms } from './materials.js';
 import { hash } from './facades.js';
+import { ARCH } from './assets.js';
+import { addWallMeters } from './archdetail.js';
 import { SIDEWALK } from './world.js';
 import { HALL } from './quarter.js';
 
@@ -596,20 +598,27 @@ export function addStreetLife(R, M, world) {
   const mtx = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), sc = new THREE.Vector3(1, 1, 1), pv = new THREE.Vector3();
   const at = (x, y, z, ry = 0, rx = 0, rz = 0) => mtx.compose(pv.set(x, y, z), q.setFromEuler(e.set(rx, ry, rz, 'YXZ')), sc).clone();
 
-  // ---- electricity meters: a grey box with a round glass on a conduit from the pavement, the service entering above
+  // a length of pipe with the sheet-metal texture at its real scale (1.4 m to a tile): wrapped whole round a 3 cm
+  // conduit, the texture's rust runs read as the grain of a wooden pole
+  const pipe = (r, len, seg = 8) => { const g = new THREE.CylinderGeometry(r, r, len, seg, 1, true), uv = g.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * r * 4.5, uv.getY(i) * len / 1.4); return g; };
+  // ---- electricity meters, on a conduit from the pavement, the service entering above. The meter itself is a modelled
+  // piece (archdetail.js addWallMeters); without the kit, a grey box with a round glass.
+  const kitMeters = ARCH && addWallMeters(R, M, world, meters);
   for (const mt of meters) {
     const { x, z, N, T, out } = mt, ry = Math.atan2(N.x, N.z), o = out + 0.001, bx = x + N.x * (o + 0.055), bz = z + N.z * (o + 0.055);
     const paintCol = mt.v < 0.5 ? [0.62, 0.64, 0.62] : [0.5, 0.56, 0.5];
-    put('metal_white', new THREE.BoxGeometry(0.24, 0.34, 0.11), at(bx, 1.55, bz, ry), paintCol, 3);
-    put('metal_white', new THREE.BoxGeometry(0.27, 0.025, 0.13), at(bx, 1.735, bz, ry), paintCol, 3);                                  // rain lip
-    put('glass', new THREE.CylinderGeometry(0.07, 0.07, 0.02, 14), at(x + N.x * (o + 0.118), 1.59, z + N.z * (o + 0.118), ry, Math.PI / 2), [1, 1, 1]);
-    put('iron', new THREE.CylinderGeometry(0.075, 0.075, 0.012, 14), at(x + N.x * (o + 0.113), 1.59, z + N.z * (o + 0.113), ry, Math.PI / 2), [1.6, 1.6, 1.6]);
-    const cx = x + N.x * (o + 0.022), cz = z + N.z * (o + 0.022);
+    if (!kitMeters) {
+      put('metal_white', new THREE.BoxGeometry(0.24, 0.34, 0.11), at(bx, 1.55, bz, ry), paintCol, 3);
+      put('metal_white', new THREE.BoxGeometry(0.27, 0.025, 0.13), at(bx, 1.735, bz, ry), paintCol, 3);                                  // rain lip
+      put('glass', new THREE.CylinderGeometry(0.07, 0.07, 0.02, 14), at(x + N.x * (o + 0.118), 1.59, z + N.z * (o + 0.118), ry, Math.PI / 2), [1, 1, 1]);
+      put('iron', new THREE.CylinderGeometry(0.075, 0.075, 0.012, 14), at(x + N.x * (o + 0.113), 1.59, z + N.z * (o + 0.113), ry, Math.PI / 2), [1.6, 1.6, 1.6]);
+    }
+    const off = kitMeters ? 0.042 : 0.022, cx = x + N.x * (o + off), cz = z + N.z * (o + off);          // (the modelled socket's hubs stand a little further off the wall)
     const galv = [0.74, 0.75, 0.77];
-    put('metal_white', new THREE.CylinderGeometry(0.017, 0.017, 1.38, 8), at(cx, 0.69, cz), galv, 2);                                // conduit down to the pavement
-    put('metal_white', new THREE.CylinderGeometry(0.017, 0.017, 1.1, 8), at(cx, 2.27, cz), galv, 2);                                 // and up to the service head
-    put('metal_white', new THREE.SphereGeometry(0.035, 8, 6), at(cx, 2.84, cz), galv, 2);
-    for (const y of [0.45, 1.1, 2.1, 2.6]) put('metal_white', new THREE.BoxGeometry(0.07, 0.022, 0.03), at(cx, y, cz, ry), [0.6, 0.6, 0.62], 2);   // saddle clips
+    put('metal_white', pipe(0.017, 1.38), at(cx, 0.69, cz), galv);                                                                   // conduit down to the pavement
+    put('metal_white', pipe(0.017, 1.1), at(cx, 2.27, cz), galv);                                                                    // and up to the service head
+    put('metal_white', new THREE.SphereGeometry(0.035, 8, 6), at(cx, 2.84, cz), galv, 0.08);
+    for (const y of [0.45, 1.1, 2.1, 2.6]) put('metal_white', new THREE.BoxGeometry(0.07, 0.022, off + 0.019), at(x + N.x * (o + (off + 0.019) / 2), y, z + N.z * (o + (off + 0.019) / 2), ry), [0.6, 0.6, 0.62], 0.05);   // saddle clips, back to the wall
     stats.meters++;
   }
 
@@ -657,5 +666,5 @@ export function addStreetLife(R, M, world) {
 
   R.scene.add(group); R.setupTree(group);
   console.info(`street life: ${stats.ground} ground decals, ${stats.wall} wall decals, ${stats.meters} meters, ${stats.tanks} tanks, ${stats.aerials} aerials (${stats.rays} rays)`);
-  return { group, stats };
+  return { group, stats, meters };
 }
