@@ -517,6 +517,86 @@ def lampara_tubo(name):
     for sx in (-0.42, 0.42): obs.append(tube([(sx, 0, -0.215), (sx, 0, 0.0)], 0.0035, 6, 'iron'))
     return bake_ao(join(name, obs), 0.04, 0.5)
 
+# ---------------------------------------------------------------------------------------------------- market hall ---
+# A cast-iron column of the market hall, in three parts so it fits any height: the pedestal and base mouldings (0.9 m,
+# from the floor), a fluted shaft (a metre, stretch z) and the capital (its top is the origin: a necking, a flared
+# bell, a square abacus the beams sit on). The pedestal keeps inside the 0.34 m the plain column's base took.
+def ring(prof, segs, slot, shade=None, phase=0.0):
+    ob = lathe(prof, segs, slot, shade)
+    return rot(ob, 'Z', phase) if phase else ob
+@piece
+def col_base(name):
+    plinth = bevel(box(-0.168, 0.168, -0.168, 0.168, 0.0, 0.1, 'iron'), 0.008, 2, 30)
+    ped = ring([(0.158, 0.1), (0.158, 0.13), (0.142, 0.15), (0.142, 0.56), (0.158, 0.58), (0.158, 0.62), (0.13, 0.66)], 8, 'iron', None, 22.5)
+    mould = ring([(0.13, 0.66), (0.138, 0.675), (0.138, 0.695), (0.118, 0.715), (0.118, 0.73), (0.128, 0.745), (0.128, 0.765), (0.098, 0.8), (0.092, 0.86), (0.086, 0.9)], 20, 'iron')
+    panels = []
+    for k in range(8):                                                                    # a sunk panel on each face of the pedestal
+        a = math.radians(45 * k); pn = bevel(box(-0.04, 0.04, -0.004, 0.004, 0.2, 0.5, 'iron'), 0.003, 1, 30)
+        xf(pn, Matrix.Rotation(a, 4, 'Z') @ Matrix.Translation((0, -0.134, 0))); panels.append(pn)
+    return bake_ao(join(name, [plinth, ped, mould] + panels), 0.06, 0.65, floor=0.0)
+@piece
+def col_shaft(name):
+    bm = bmesh.new(); n = 40; rings = []
+    for z in (0.0, 1.0): rings.append([bm.verts.new(((0.086 if k % 2 else 0.078) * math.cos(2 * math.pi * k / n), (0.086 if k % 2 else 0.078) * math.sin(2 * math.pi * k / n), z)) for k in range(n)])
+    col = bm.loops.layers.float_color.new('Col')
+    for k in range(n):
+        f = bm.faces.new((rings[0][k], rings[0][(k + 1) % n], rings[1][(k + 1) % n], rings[1][k]))
+        for l in f.loops: s = 1.0 if (math.hypot(l.vert.co.x, l.vert.co.y) > 0.082) else 0.62; l[col] = (s, s, s, 1.0)
+    outward(bm)
+    return obj(name, bm, 'iron')
+@piece
+def col_cap(name):
+    neck = ring([(0.086, -0.5), (0.098, -0.49), (0.098, -0.47), (0.086, -0.455), (0.086, -0.33), (0.1, -0.3), (0.108, -0.24), (0.13, -0.16), (0.165, -0.1), (0.172, -0.075), (0.15, -0.06)], 20, 'iron')
+    leaves = []
+    for k in range(8):                                                                    # eight cast leaves up the bell
+        a = math.radians(45 * k + 22.5)
+        lf = bevel(sweep_x([(-0.094, -0.3), (-0.112, -0.26), (-0.14, -0.17), (-0.178, -0.105), (-0.186, -0.115), (-0.15, -0.19), (-0.118, -0.27), (-0.1, -0.31)], -0.026, 0.026, 'iron'), 0.004, 1, 30)
+        xf(lf, Matrix.Rotation(a, 4, 'Z')); leaves.append(lf)
+    abacus = bevel(box(-0.17, 0.17, -0.17, 0.17, -0.06, 0.0, 'iron'), 0.008, 2, 30)
+    return bake_ao(join(name, [neck, abacus] + leaves), 0.06, 0.65, ceil=0.0)
+
+# A cast bracket from a column to the beam it carries: a quarter arch between two flanges with a pierced ring in the
+# spandrel. Origin: the corner where the column's axis meets the beam's underside; it reaches 0.75 m out along +x and
+# 0.75 m down, and stands 4 cm thick in the plane of the wall (y).
+@piece
+def col_bracket(name):
+    obs = []; R, t = 0.75, 0.02
+    arc = [Vector((0.09 + (R - 0.09) * (1 - math.cos(a)), 0, -R + (R - 0.02) * math.sin(a))) for a in [0.5 * math.pi * k / 12 for k in range(13)]]
+    obs.append(tube(arc, 0.021, 8, 'iron'))                                                                # the arch's rib
+    obs.append(box(0.085, R, -t, t, -0.026, -0.002, 'iron', 0.004))                                        # the flange under the beam
+    obs.append(box(0.07, 0.095, -t, t, -R, -0.002, 'iron', 0.004))                                         # the flange down the column
+    c = Vector((0.34, 0, -0.33))
+    obs.append(tube([c + Vector((0.115 * math.cos(a), 0, 0.115 * math.sin(a))) for a in [2 * math.pi * k / 16 for k in range(17)]], 0.016, 6, 'iron'))   # the ring
+    for a in (0.25, 0.75, 1.25, 1.75): obs.append(tube([c + Vector((0.115 * math.cos(a * math.pi), 0, 0.115 * math.sin(a * math.pi))), c + Vector((0.2 * math.cos(a * math.pi), 0, 0.2 * math.sin(a * math.pi)))], 0.012, 5, 'iron'))
+    obs.append(tube([c + Vector((0.035 * math.cos(a), 0, 0.035 * math.sin(a))) for a in [2 * math.pi * k / 8 for k in range(9)]], 0.012, 5, 'iron'))
+    for a in (0, 0.5, 1.0, 1.5): obs.append(tube([c + Vector((0.035 * math.cos(a * math.pi), 0, 0.035 * math.sin(a * math.pi))), c + Vector((0.115 * math.cos(a * math.pi), 0, 0.115 * math.sin(a * math.pi)))], 0.01, 5, 'iron'))
+    return bake_ao(join(name, obs), 0.05, 0.6)
+
+# A gusset plate where the members of a roof truss meet: 8 mm plate, riveted. It lies in the plane y = 0, 0.34 x 0.26 m
+# about its origin; rivet heads on both faces.
+@piece
+def cartela(name):
+    pl = bevel(sweep_z([(-0.17, -0.004), (0.17, -0.004), (0.17, 0.004), (-0.17, 0.004)], -0.13, 0.13, 'iron'), 0.002, 1, 40)
+    rv = []
+    for x in (-0.12, -0.04, 0.04, 0.12):
+        for z in (-0.08, 0.0, 0.08):
+            if abs(x) < 0.05 and z == 0.0: continue
+            for sy in (-1, 1): rv.append(at(rot(lathe([(0, 0), (0.008, 0), (0.0065, 0.004), (0, 0.0055)], 6, 'iron'), 'X', 90 * sy), x, -0.004 * sy, z))
+    return bake_ao(join(name, [pl] + rv), 0.03, 0.5)
+
+# ---------------------------------------------------------------------------------------------------- canopy ---------
+# Under a cantilevered concrete canopy (marquesina): a tapered rib from the wall to the edge, and a bulkhead light.
+# The rib's origin is the wall face at the slab's underside; it runs out 1.3 m (-y), 34 cm deep at the wall.
+@piece
+def marq_rib(name):
+    return bake_ao(bevel(sweep_x([(0.02, 0.0), (-1.3, 0.0), (-1.3, -0.07), (-0.9, -0.12), (-0.25, -0.3), (0.02, -0.34)], -0.06, 0.06, 'trim'), 0.012, 2, 30), 0.1, 0.6, wall=0.0, ceil=0.0)
+@piece
+def plafon(name):
+    base = lathe([(0.0, 0.0), (0.105, 0.0), (0.105, -0.022), (0.092, -0.03), (0.092, -0.022), (0.0, -0.022)], 16, 'iron')
+    glass = lathe([(0.09, -0.024), (0.086, -0.05), (0.066, -0.08), (0.03, -0.097), (0.0, -0.1)], 14, 'bulb')
+    cage = [tube([Vector((0.097 * math.cos(a), 0.097 * math.sin(a), -0.028)), Vector((0.075 * math.cos(a), 0.075 * math.sin(a), -0.085)), Vector((0.0, 0.0, -0.112))], 0.004, 5, 'iron') for a in [math.pi * k / 3 for k in range(6)]]
+    return bake_ao(join(name, [base, glass] + cage), 0.03, 0.5, ceil=0.0)
+
 # ---------------------------------------------------------------------------------------------------- roof spout -----
 # A clay spout through the parapet (gárgola de barro): a half-round channel on a stone bracket, throwing the roof's
 # water clear of the wall. Origin: the wall face at roof level; it runs out 0.48 m and falls a little.
@@ -542,6 +622,7 @@ cortina_slats('cortina_slats'); cortina_guide('cortina_guide'); cortina_bar('cor
 cortina_box('cortina_box'); cortina_cap('cortina_cap'); cortina_roll('cortina_roll'); lamina_sheet('lamina_sheet'); perfil_x('perfil_x'); perfil_z('perfil_z')
 bisagra('bisagra'); pasador('pasador'); reja_calle('reja_calle'); zocalo('zocalo'); boveda('boveda'); vigueta('vigueta'); dado('dado'); puerta_fondo('puerta_fondo')
 puerta_metal('puerta_metal'); repisa('repisa_a', ['can', 'can', 'can', 'jar', 'box', 'box']); repisa('repisa_b', ['bottle', 'bottle', 'jar', 'can', 'box']); lampara_tubo('lampara_tubo'); gargola('gargola')
+col_base('col_base'); col_shaft('col_shaft'); col_cap('col_cap'); col_bracket('col_bracket'); cartela('cartela'); marq_rib('marq_rib'); plafon('plafon')
 
 for ob in pieces: ob.location = (0, 0, 0)
 print('ARCH pieces (triangles):', ', '.join(f'{ob.name} {tri_count(ob)}' for ob in pieces))
@@ -568,7 +649,7 @@ if PREVIEW:                                                     # one render per
         pts = [ob.matrix_world @ Vector(c) for c in ob.bound_box]
         c = sum(pts, Vector()) / 8; rad = max((p - c).length for p in pts)
         d = Vector((0.7, -1.3, 0.55)).normalized()
-        if ob.name in ('boveda', 'vigueta', 'lampara_tubo'): d = Vector((0.7, -1.2, -0.8)).normalized()       # (seen from below, as in a room)
+        if ob.name in ('boveda', 'vigueta', 'lampara_tubo', 'plafon', 'marq_rib'): d = Vector((0.7, -1.2, -0.8)).normalized()       # (seen from below, as in a room)
         cam.location = c + d * rad / math.tan(cam.data.angle / 2) * 1.08
         cam.rotation_euler = (c - cam.location).to_track_quat('-Z', 'Y').to_euler()
         cam.data.clip_start = rad * 0.01; cam.data.clip_end = rad * 50

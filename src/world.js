@@ -621,6 +621,7 @@ export function architecture(B, rnd, buildings, anchors, rs = null, style = { ba
         // the cantilevered concrete canopy (marquesina) over the shop fronts, its fascia painted
         const a = Math.max(cs0, 0.02) + 0.03, b = L - Math.max(cs1, 0.02) - 0.03, y = 3.28, dep = 1.35;
         FB('concrete', a, y, b, y + 0.14, -dep, 0, conc); FB('paint', a, y - 0.06, b, y + 0.24, -dep - 0.05, -dep, { color: st.fascia, tile: 1.6, solid: false, x: bd.age });
+        note('marquesina', { p: P((a + b) / 2, y, 0), w: b - a, dep, conc });
         FC(a, y, b, y + 0.14, -dep, 0, 'concrete');
       } else if (kind === 'barrio') {
         for (const uc of doorsU) tiles(uc - 0.95, uc + 0.95, 2.32 + (bd.surround ? bd.surround.w : 0) + 0.14, 0.55, 0.45, [uc - 0.8, uc + 0.8]);

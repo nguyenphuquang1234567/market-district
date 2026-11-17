@@ -26,7 +26,7 @@ const PAINT = [[0.62, 0.64, 0.62], [0.36, 0.46, 0.38], [0.56, 0.3, 0.22], [0.74,
 const TILES = [   // a shop's dado: [field, band and capping] (linear: cream and deep green, grey-green and oxide red, ochre and umber, white and mustard, sage and cream)
   [[0.72, 0.66, 0.48], [0.07, 0.19, 0.13]], [[0.55, 0.6, 0.5], [0.3, 0.07, 0.045]], [[0.6, 0.46, 0.22], [0.1, 0.065, 0.04]], [[0.78, 0.78, 0.72], [0.5, 0.32, 0.06]], [[0.4, 0.5, 0.4], [0.72, 0.68, 0.52]],
 ];
-const CAST = new Set(['iron', 'cantera', 'concrete', 'teja', 'metal_white', 'planks']);
+const CAST = new Set(['iron', 'cantera', 'concrete', 'teja', 'metal_white', 'metal_green', 'planks']);
 
 export function addArchDetail(R, M, world) {
   const notes = world.notes || [];
@@ -85,6 +85,34 @@ export function addArchDetail(R, M, world) {
     } else if (n.kind === 'puerta') {
       A.kit('puerta_metal', KM(p, T, N, 0, 0, n.d - 0.012, n.w / 1.1, n.h / 2.32, 1), { steel: 'metal_green', iron: 'iron', brass: 'glossy', rubber: 'dark' }, { lod: 'near', slot: { steel: { color: n.tint, tile: 1.6, lod: 'near' }, iron: { lod: 'near' }, brass: { color: [0.62, 0.48, 0.2], lod: 'near' }, rubber: { lod: 'near' } } });
       stats.puerta = (stats.puerta || 0) + 1;
+    } else if (n.kind === 'columna') {
+      // ---- a cast-iron column of the market hall: pedestal, fluted shaft to fit, capital under the beams, and a bracket
+      // to each thing it carries (the truss's tie towards the nave, the beams along the hall; on a nave column the
+      // aisle's rafter and beam part-way up as well)
+      const { x, z, h } = n, top = h - 0.11, s = Math.sign(z), ir = { iron: 'metal_green' }, io = { lod: 'near', color: n.tint, tile: 1.2 };
+      const col = new THREE.Matrix4();
+      A.kit('col_base', col.makeTranslation(x, 0, z), ir, io);
+      A.kit('col_shaft', new THREE.Matrix4().makeScale(1, top - 0.5 - 0.9, 1).setPosition(x, 0.9, z), ir, io);
+      A.kit('col_cap', new THREE.Matrix4().makeTranslation(x, top, z), ir, io);
+      const X = new THREE.Vector3(1, 0, 0), Zv = new THREE.Vector3(0, 0, 1);
+      const br = (y, dir, nrm) => A.kit('col_bracket', new THREE.Matrix4().makeBasis(dir, UP, nrm).setPosition(x, y, z), ir, io);
+      const inw = new THREE.Vector3(0, 0, -s), outw = new THREE.Vector3(0, 0, s), nX = new THREE.Vector3(-1, 0, 0), nZ = new THREE.Vector3(0, 0, -1);
+      br(top - 0.06, inw, s > 0 ? X : nX);                                           // (the basis is kept right-handed: X x Y = Z)
+      if (n.nave) { br(top - 0.02, X, Zv); br(top - 0.02, nX, nZ); br(n.AISLE - 0.2, outw, s > 0 ? nX : X); br(n.AISLE - 0.13, X, Zv); br(n.AISLE - 0.13, nX, nZ); }
+      stats.columns = (stats.columns || 0) + 1;
+    } else if (n.kind === 'armadura') {
+      // ---- gusset plates where a truss's members meet, in the truss's own plane
+      const { x, NAVE, RIDGE, NZ } = n, pl = (y, z, sc = 1) => A.kit('cartela', new THREE.Matrix4().makeBasis(new THREE.Vector3(0, 0, sc), UP.clone().multiplyScalar(sc), new THREE.Vector3(-1, 0, 0)).setPosition(x, y, z), { iron: 'metal_green' }, { lod: 'near', color: n.tint, tile: 1.2 });
+      pl(RIDGE - 0.2, 0, 1.15); pl(NAVE + 0.02, 0); for (const sg of [-1, 1]) { pl(NAVE + 0.02, sg * NZ / 2, 0.85); pl(NAVE + (RIDGE - NAVE) / 2 - 0.1, sg * NZ / 2, 0.85); }
+    } else if (n.kind === 'marquesina') {
+      // ---- under a concrete canopy: tapered ribs from the wall to the edge, and a bulkhead light between each pair
+      const { w, dep, conc } = n, k = Math.max(2, Math.round(w / 2.3) + 1), co = { lod: 'near', color: conc?.color || [0.9, 0.9, 0.88], tile: conc?.tile || 2 };
+      for (let i = 0; i < k; i++) {
+        const u = -w / 2 + 0.18 + (w - 0.36) * i / (k - 1);
+        A.kit('marq_rib', KM(p, T, N, u, 0, 0, 1, 1, (dep - 0.03) / 1.3), { trim: 'concrete' }, co);
+        if (i < k - 1) A.kit('plafon', KM(p, T, N, u + (w - 0.36) / (k - 1) / 2, 0, -dep * 0.55), { iron: 'iron', bulb: 'glossy' }, { lod: 'near', slot: { iron: { lod: 'near' }, bulb: { color: [0.82, 0.8, 0.72], lod: 'near' } } });
+      }
+      stats.canopies = (stats.canopies || 0) + 1;
     } else if (n.kind === 'reja') {
       A.kit('reja_calle', KM(p, T, N, 0, 0, 0, n.w / 1.2, n.h / 1.25, 1), { iron: 'iron' }, near); stats.reja++;
     } else if (n.kind === 'zocalo') {

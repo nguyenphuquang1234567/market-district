@@ -12,6 +12,7 @@ import { rng } from './util.js';
 import { dressKit } from './dressing.js';
 import { signUV, SIGNS } from './mexico.js';
 import { hash as fhash } from './facades.js';
+import { assets, ARCH } from './assets.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 const UP = V(0, 1, 0);
@@ -103,9 +104,13 @@ export function buildQuarter({ B, M, buildings, anchors, ghosts, gates, architec
     const green = { color: [0.55, 0.75, 0.6], tile: 1.2 }, steel = 'metal_green';
     quad('terracotta', X0, Z0, X1, Z1, 0.0, { tile: 1.8 });
     // columns on a 4 m grid along the length, on the nave lines and the outer walls
+    // (the architecture pass models these in cast iron near the camera: the plain posts are then the far version, and a
+    // note says where each stands and what it carries; see world.js facade() and src/archdetail.js)
+    const FAR = ARCH && assets.kit?.col_base ? 'far' : undefined, note = (kind, d) => { if (FAR && !B.mute) (B.notes ||= []).push({ kind, ...d }); };
     for (let x = X0 + 4; x < X1 - 0.1; x += 4) for (const z of [Z0 + 0.2, -NZ, NZ, Z1 - 0.2]) {
       const h = Math.abs(z) < 5 ? NAVE : EAVE;
-      B.box(steel, x, h / 2, z, 0.2, h, 0.2, green); B.box(steel, x, 0.35, z, 0.34, 0.7, 0.34, { color: [0.5, 0.7, 0.55], tile: 0.8 });
+      B.box(steel, x, h / 2, z, 0.2, h, 0.2, { ...green, lod: FAR }); B.box(steel, x, 0.35, z, 0.34, 0.7, 0.34, { color: [0.5, 0.7, 0.55], tile: 0.8, lod: FAR });
+      note('columna', { x, z, h, nave: Math.abs(z) < 5, AISLE, tint: green.color });
       B.collide(x, h / 2, z, 0.26, h, 0.26, 0, 'metal');
     }
     // brick corner piers and the low walls between the openings (waist high: cover, and room to shoot over)
@@ -166,6 +171,7 @@ export function buildQuarter({ B, M, buildings, anchors, ghosts, gates, architec
       for (let k = 1; k <= 3; k++) { const t = k / 4, y = AISLE + (EAVE - AISLE) * t; B.box(steel, (X0 + X1) / 2, y - 0.12, s * (NZ + (Z1 - NZ) * t), L, 0.08, 0.08, green); }
     }
     for (let x = X0 + 4; x < X1 - 0.1; x += 4) {                                // a truss on every column line
+      note('armadura', { x, NAVE, RIDGE, NZ, tint: green.color });
       const tr = (a, b) => rod(a, b, 0.035, steel, green.color);
       tr(V(x, NAVE, -NZ), V(x, NAVE, NZ)); tr(V(x, NAVE, -NZ), V(x, RIDGE - 0.15, 0)); tr(V(x, NAVE, NZ), V(x, RIDGE - 0.15, 0)); tr(V(x, NAVE, 0), V(x, RIDGE - 0.15, 0));
       for (const s of [-1, 1]) { tr(V(x, NAVE, s * NZ / 2), V(x, NAVE + (RIDGE - NAVE) / 2 - 0.1, s * NZ / 2)); tr(V(x, NAVE, 0), V(x, NAVE + (RIDGE - NAVE) / 2 - 0.1, s * NZ / 2)); tr(V(x, AISLE, s * NZ), V(x, EAVE - 0.05, s * (Z1 - 0.2))); tr(V(x, EAVE - 0.6, s * (Z1 - 0.2)), V(x, AISLE - 0.9, s * NZ)); }
