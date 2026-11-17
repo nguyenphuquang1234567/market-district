@@ -10,10 +10,10 @@ import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { Pass, FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
 import { clamp, damp } from './util.js';
 import { noise } from './materials.js';
-import { AtmosPass, createMotes } from './atmos.js';
+import { AtmosPass, HistoryPass, createMotes } from './atmos.js';
 
 export const PRESETS = {
-  low:    { maxPR: 1.0,  scale: 0.7, shadow: 1024, cascades: 2, shadowFar: 90,  msaa: 0, ao: false, bloom: false, aoSamples: 8,  aoScale: 0.5, soft: false, lod: 0.7, air: 0 },
+  low:    { maxPR: 1.0,  scale: 0.7, shadow: 1024, cascades: 2, shadowFar: 90,  msaa: 0, ao: false, bloom: false, aoSamples: 8,  aoScale: 0.5, soft: false, lod: 0.7, air: 0, reflect: false },
   medium: { maxPR: 1.0,  scale: 0.9, shadow: 2048, cascades: 3, shadowFar: 120, msaa: 2, ao: true,  bloom: true,  aoSamples: 8,  aoScale: 0.5, soft: false, lod: 0.85, air: 8 },
   high:   { maxPR: 1.25, scale: 1.0, shadow: 2048, cascades: 3, shadowFar: 140, msaa: 4, ao: true,  bloom: true,  aoSamples: 12, aoScale: 0.5, soft: false, lod: 1.0, air: 12 },
   ultra:  { maxPR: 1.4,  scale: 1.0, shadow: 4096, cascades: 4, shadowFar: 170, msaa: 4, ao: true,  bloom: true,  aoSamples: 16, aoScale: 0.5, soft: true, lod: 1.35, air: 16 },   // measured: full-res AO cost 6.5 ms for little gain; the 4k cascades are nearly free
@@ -325,6 +325,9 @@ export function createRenderer(canvas, skyTex, presetName) {
   // sunlit dust in the air and the shadows through it (atmos.js; air = steps along each view ray, 0 = none)
   let atmos = null;
   if (Q.air) { atmos = new AtmosPass(camera, sceneRT.depthTexture, csm, { steps: Q.air, scale: 0.5, giUniforms, sunDir: sky.sunDir, sunColor, sunIntensity }); composer.addPass(atmos); }
+  // the frame kept for the next one's reflections in wet ground (not on Low)
+  const history = Q.reflect === false ? null : new HistoryPass(camera, sceneRT.depthTexture, 0.5);
+  if (history) composer.addPass(history);
   if (Q.bloom) {
     bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.16, 0.55, 5.5);
     composer.addPass(bloom);
@@ -340,7 +343,7 @@ export function createRenderer(canvas, skyTex, presetName) {
   const saveStep = () => { try { localStorage.setItem(stepKey, step); } catch { /* private mode */ } };
   try { const v = +localStorage.getItem(stepKey); if (v > 0 && v < STEPS.length) step = Math.floor(v); } catch { /* ignore */ }
   const api = {
-    renderer, scene, camera, composer, csm, setup, setupTree, gtao, bloom, atmos, sky, sunDir: sky.sunDir, sunColor, sunIntensity, haze, Q, final: final.uniforms, sceneRT, sceneDepth: sceneRT.depthTexture, wind,
+    renderer, scene, camera, composer, csm, setup, setupTree, gtao, bloom, atmos, history, sky, sunDir: sky.sunDir, sunColor, sunIntensity, haze, Q, final: final.uniforms, sceneRT, sceneDepth: sceneRT.depthTexture, wind,
     exposureTarget: 0.85, baseExposure: 0.85, renderScale: STEPS[step], adaptive: true, meter, autoExposure: true, keyLum: 0.125, exposure: 0.85,
     resize() {
       const w = canvas.clientWidth || window.innerWidth, h = canvas.clientHeight || window.innerHeight;
@@ -455,7 +458,7 @@ export function createRenderer(canvas, skyTex, presetName) {
       composer.render(dt);
     },
   };
-  api.motes = Q.air ? createMotes(api) : null;
+  api.motes = Q.air ? createMotes(api, giUniforms) : null;
   api.resize();
   return api;
 }

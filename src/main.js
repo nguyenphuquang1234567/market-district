@@ -16,6 +16,7 @@ import { clamp, damp } from './util.js';
 import { selfTest, proof, proofThrow, demoDriver } from './selftest.js';
 import { losClear, rayBoxes, ceilingAt, OVERHANG } from './physics.js';
 import { setupGI } from './gi.js';
+import { addStreetLife } from './streetlife.js';
 
 const params = new URLSearchParams(location.search);
 const $ = id => document.getElementById(id);
@@ -43,7 +44,9 @@ async function start() {
 
   const R = createRenderer(canvas, assets.sky, settings.quality);
   const M = createMaterials();
-  const world = buildWorld(R, M); performance.mark('boot:world');
+  const world = buildWorld(R, M);
+  if (!params.get('life') || params.get('life') !== '0') world.life = addStreetLife(R, M, world);          // decals, wall paper, meters, roof tanks (?life=0: none, for A/B)
+  performance.mark('boot:world');
   $('bootText').textContent = 'Lighting'; $('bootBar').style.width = '90%';
   await new Promise(r => setTimeout(r, 30));
   const gi = params.get('nogi') ? 'off' : await setupGI(R, world, M, p => { $('bootText').textContent = `Baking light ${Math.round(p * 100)}%`; }, !!params.get('bake'), !!params.get('stalegi'));   // (?nogi=1: no indirect light, for a quick look while the geometry changes; ?stalegi=1: the last bake, even if out of date)

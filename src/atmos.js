@@ -115,7 +115,7 @@ export class AtmosPass extends Pass {
       uSunDir: { value: o.sunDir }, uSunCol: { value: new THREE.Color().copy(o.sunColor).multiplyScalar(o.sunIntensity) },
       // density per metre at the ground in the open, the share of it that does not thin with height, the height (m) over
       // which the rest thins to a third, how many times thicker it gets indoors, forward scattering, overall strength
-      uMaxDist: { value: 80 }, uDensity: { value: 0.0045 }, uBase: { value: 0.35 }, uDustH: { value: 7 }, uEnclosed: { value: 9 }, uG: { value: 0.62 }, uGain: { value: 0.085 }, uFrame: { value: 0 },
+      uMaxDist: { value: 80 }, uDensity: { value: 0.0045 }, uBase: { value: 0.35 }, uDustH: { value: 7 }, uEnclosed: { value: 9 }, uG: { value: 0.6 }, uGain: { value: 0.072 }, uFrame: { value: 0 },
       tGiR: gi.tGiR, tGiG: gi.tGiG, tGiB: gi.tGiB, uGiMin: gi.uGiMin, uGiInv: gi.uGiInv, uGiOn: gi.uGiOn, uGiSky: gi.uGiSky, tCloud: gi.tCloud, uCloud: gi.uCloud,
     };
     const mat = (fs, uniforms, extra = {}) => new THREE.ShaderMaterial({ uniforms, vertexShader: VS, fragmentShader: fs, depthTest: false, depthWrite: false, ...extra });
@@ -151,10 +151,34 @@ export class AtmosPass extends Pass {
   dispose() { this.a.dispose(); this.b.dispose(); }
 }
 
+// The frame as it was last drawn, at half size: colour (before bloom and tone mapping) with the distance from the eye in
+// alpha, and the camera it was drawn from. Wet ground reflects the district by marching its reflected ray through this
+// (streetlife.js): one frame late, which a puddle does not show.
+export class HistoryPass extends Pass {
+  constructor(camera, depthTexture, scale = 0.5) {
+    super(); this.needsSwap = false; this.camera = camera; this.scale = scale;
+    this.rt = new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType, depthBuffer: false, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter });
+    this.viewProj = new THREE.Matrix4();
+    this.uniforms = { tPrev: { value: this.rt.texture }, uPrevVP: { value: this.viewProj }, uPrevOn: { value: 0 } };
+    this.quad = new FullScreenQuad(new THREE.ShaderMaterial({
+      uniforms: { tDiffuse: { value: null }, tDepth: { value: depthTexture }, uNear: { value: camera.near }, uFar: { value: camera.far } }, vertexShader: VS, depthTest: false, depthWrite: false,
+      fragmentShader: `#include <packing>
+        uniform sampler2D tDiffuse; uniform highp sampler2D tDepth; uniform float uNear, uFar; varying vec2 vUv;
+        void main() { gl_FragColor = vec4(min(texture2D(tDiffuse, vUv).rgb, vec3(48.0)), -perspectiveDepthToViewZ(texture2D(tDepth, vUv).x, uNear, uFar)); }`,
+    }));
+  }
+  setSize(w, h) { this.rt.setSize(Math.max(2, Math.round(w * this.scale)), Math.max(2, Math.round(h * this.scale))); this.uniforms.uPrevOn.value = 0; }
+  render(renderer, writeBuffer, readBuffer) {
+    const u = this.quad.material.uniforms; u.tDiffuse.value = readBuffer.texture; u.uNear.value = this.camera.near; u.uFar.value = this.camera.far;
+    renderer.setRenderTarget(this.rt); this.quad.render(renderer);
+    this.viewProj.multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse); this.uniforms.uPrevOn.value = 1;
+  }
+}
+
 // Dust motes: a few hundred specks in a box that travels with the camera (positions wrap, so the box never empties),
 // drifting on the wind. Each asks the nearest shadow cascade whether the sun reaches it and is all but invisible if not;
 // seen towards the sun they glint. Drawn into the scene itself, so walls hide them and bloom picks them up.
-export function createMotes(R, count = 420) {
+export function createMotes(R, gi, count = 520) {
   const g = new THREE.BufferGeometry(), seed = new Float32Array(count * 4);
   let s = 9173; const rnd = () => ((s = (s * 16807) % 2147483647) - 1) / 2147483646;
   for (let i = 0; i < count * 4; i++) seed[i] = rnd();
@@ -163,6 +187,7 @@ export function createMotes(R, count = 420) {
   g.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 1e6);
   const U = {
     uTime: { value: 0 }, uBox: { value: new THREE.Vector3(18, 7, 18) }, uCam: { value: new THREE.Vector3() }, uWind: { value: R.wind },
+    tGiR: gi.tGiR, tGiG: gi.tGiG, tGiB: gi.tGiB, uGiMin: gi.uGiMin, uGiInv: gi.uGiInv, uGiOn: gi.uGiOn, uGiSky: gi.uGiSky,
     tShadow: { value: null }, uShadowM: { value: new THREE.Matrix4() }, uSunDir: { value: R.sunDir }, uCol: { value: new THREE.Color().copy(R.sunColor).multiplyScalar(R.sunIntensity * 0.05) },
     uPx: { value: 1 }, uOn: { value: 0 },
   };
@@ -171,6 +196,7 @@ export function createMotes(R, count = 420) {
     vertexShader: `
       #include <packing>
       attribute vec4 aSeed; uniform float uTime, uPx, uOn; uniform vec3 uBox, uCam, uSunDir; uniform vec2 uWind; uniform sampler2D tShadow; uniform mat4 uShadowM;
+      uniform highp sampler3D tGiR; uniform highp sampler3D tGiG; uniform highp sampler3D tGiB; uniform vec3 uGiMin, uGiInv; uniform float uGiOn, uGiSky;
       varying float vA;
       void main() {
         vec3 drift = vec3(uWind.x * 0.18, -0.012, uWind.y * 0.18) * uTime + 0.05 * vec3(sin(uTime * 0.31 + aSeed.w * 40.0), sin(uTime * 0.23 + aSeed.x * 31.0), cos(uTime * 0.27 + aSeed.y * 37.0));
@@ -184,7 +210,11 @@ export function createMotes(R, count = 420) {
         float tw = 0.55 + 0.45 * sin(uTime * (1.1 + aSeed.w * 2.3) + aSeed.x * 60.0);  // a mote turning in the light
         vec3 e = abs(p - uCam) / (uBox * 0.5);                                         // fades out at the box's faces, so wrapping is not seen
         float edge = (1.0 - smoothstep(0.75, 1.0, max(e.x, max(e.y, e.z)))) * smoothstep(0.25, 0.9, dist) * step(0.02, p.y);
-        vA = uOn * sun * tw * edge * (0.25 + 0.75 * glint);
+        // only in enclosed air (the share of sky a point sees, from the light bake): against the open sky a mote is a white speck
+        vec3 gq = (p - uGiMin) * uGiInv;
+        float open = clamp((texture(tGiR, gq).x + texture(tGiG, gq).x + texture(tGiB, gq).x) * 0.3333 / uGiSky, 0.0, 1.0);
+        float indoors = uGiOn > 0.5 ? 1.0 - smoothstep(0.12, 0.45, open) : 0.0;
+        vA = uOn * sun * tw * edge * indoors * (0.25 + 0.75 * glint);
         gl_PointSize = clamp(uPx * (0.012 + 0.014 * aSeed.w) / dist, 1.0, 5.0);
       }`,
     fragmentShader: `uniform vec3 uCol; varying float vA;
