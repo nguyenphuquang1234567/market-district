@@ -116,6 +116,22 @@ export function addArchDetail(R, M, world) {
         if (i < k - 1) A.kit('plafon', KM(p, T, N, u + (w - 0.36) / (k - 1) / 2, 0, -dep * 0.55), { iron: 'iron', bulb: 'glossy' }, { lod: 'near', slot: { iron: { lod: 'near' }, bulb: { color: [0.82, 0.8, 0.72], lod: 'near' } } });
       }
       stats.canopies = (stats.canopies || 0) + 1;
+    } else if (n.kind === 'toldo') {
+      // ---- an awning's frame over the thin rods the district drew: the roller in its hood on the wall, a front bar,
+      // an arm and a stay each side in steel tube, a bolted bracket where each meets the wall
+      const { w, out } = n, st = { lod: 'near', color: [0.62, 0.64, 0.62], tile: 1.4 }, ms = { steel: 'metal_white', iron: 'iron' };
+      const at = (u, y, d) => new THREE.Vector3(p.x + T.x * u + N.x * d, y, p.z + T.z * u + N.z * d);
+      const span = (a, b) => {                                                       // a tube from a to b
+        const dir = new THREE.Vector3().subVectors(b, a), len = dir.length(), x = dir.clone().normalize(), z = new THREE.Vector3().crossVectors(x, UP).normalize(), y = new THREE.Vector3().crossVectors(z, x);
+        A.kit('tubo_x', new THREE.Matrix4().makeBasis(x.multiplyScalar(len), y, z).setPosition((a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2), ms, st);
+      };
+      A.kit('toldo_cassette', KM(p, T, N, 0, 3.15, 0, w, 1, 1), ms, st);
+      span(at(-w / 2 + 0.03, 2.5, out + 0.03), at(w / 2 - 0.03, 2.5, out + 0.03));
+      for (const u of [-w / 2 + 0.05, w / 2 - 0.05]) {
+        span(at(u, 3.1, 0.06), at(u, 2.5, out + 0.03)); span(at(u, 2.35, 0.05), at(u, 2.5, out + 0.03));
+        A.kit('toldo_soporte', KM(p, T, N, u, 3.1, 0), ms, near); A.kit('toldo_soporte', KM(p, T, N, u, 2.35, 0), ms, near);
+      }
+      stats.awnings = (stats.awnings || 0) + 1;
     } else if (n.kind === 'reja') {
       A.kit('reja_calle', KM(p, T, N, 0, 0, 0, n.w / 1.2, n.h / 1.25, 1), { iron: 'iron' }, near); stats.reja++;
     } else if (n.kind === 'zocalo') {

@@ -285,6 +285,7 @@ export function dressKit({ B, M, rnd, buildings, anchors, low, rs = null }) {
         }, { ...cv.o, color: cv.color });
         for (const u of [-w / 2 + 0.05, w / 2 - 0.05]) { rod(at(u, 3.12, 0.03), at(u, 2.5, out + 0.03), 0.014); rod(at(u, 2.35, 0.03), at(u, 2.5, out + 0.03), 0.012); }
         rod(at(-w / 2 + 0.05, 2.5, out + 0.03), at(w / 2 - 0.05, 2.5, out + 0.03), 0.014);
+        if (!B.mute) (B.notes ||= []).push({ kind: 'toldo', p: at(0, 0, 0), T, N, w, out });      // (the architecture pass frames it in tube near the camera: src/archdetail.js)
       }
       if (a.kind === 'shop') {
         for (const sgn of [-1, 1]) {

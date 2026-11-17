@@ -600,6 +600,28 @@ def plafon(name):
     cage = [tube([Vector((0.097 * math.cos(a), 0.097 * math.sin(a), -0.028)), Vector((0.075 * math.cos(a), 0.075 * math.sin(a), -0.085)), Vector((0.0, 0.0, -0.112))], 0.004, 5, 'iron') for a in [math.pi * k / 3 for k in range(6)]]
     return bake_ao(join(name, [base, glass] + cage), 0.03, 0.5, ceil=0.0)
 
+# ---------------------------------------------------------------------------------------------------- awning ---------
+# A shop awning's frame: steel tube, 38 mm, a metre long (stretch x) with a pressed cap at each end; the roller the
+# cloth winds onto, in its two end brackets (a metre wide, stretch x; origin on the wall at the roller's axis height);
+# and the wall bracket an arm pins to: a bolted plate with a clevis.
+@piece
+def tubo_x(name):
+    t = tube([(-0.5, 0, 0), (0.5, 0, 0)], 0.019, 10, 'steel')
+    caps = [at(rot(lathe([(0, 0), (0.0215, 0), (0.0215, 0.012), (0.017, 0.016), (0, 0.016)], 10, 'steel'), 'Y', 90 * sx), sx * 0.492, 0, 0) for sx in (-1, 1)]
+    return bake_ao(join(name, [t] + caps), 0.03, 0.4)
+@piece
+def toldo_cassette(name):
+    roll = tube([(-0.5, -0.07, 0), (0.5, -0.07, 0)], 0.042, 12, 'steel')
+    hood = sweep_x([(0.0, 0.07), (-0.1, 0.07), (-0.13, 0.05), (-0.135, 0.01), (-0.128, 0.01), (-0.124, 0.046), (-0.098, 0.063), (0.0, 0.063)], -0.5, 0.5, 'steel')
+    return bake_ao(join(name, [roll, hood]), 0.05, 0.6, wall=0.0)
+@piece
+def toldo_soporte(name):
+    plate = bevel(box(-0.04, 0.04, -0.008, 0.0, -0.065, 0.065, 'iron'), 0.002, 1, 30)
+    lugs = [bevel(box(sx * 0.022 - 0.004, sx * 0.022 + 0.004, -0.06, -0.008, -0.022, 0.022, 'iron'), 0.003, 1, 30) for sx in (-1, 1)]
+    pin = tube([(-0.034, -0.04, 0), (0.034, -0.04, 0)], 0.006, 7, 'iron')
+    bolts = [at(rot(lathe([(0, 0), (0.008, 0), (0.008, 0.004), (0.0055, 0.0065), (0, 0.0065)], 6, 'iron'), 'X', 90), sx * 0.026, -0.008, sz * 0.048) for sx in (-1, 1) for sz in (-1, 1)]
+    return bake_ao(join(name, [plate, pin] + lugs + bolts), 0.03, 0.6, wall=0.0)
+
 # ---------------------------------------------------------------------------------------------------- roof spout -----
 # A clay spout through the parapet (gárgola de barro): a half-round channel on a stone bracket, throwing the roof's
 # water clear of the wall. Origin: the wall face at roof level; it runs out 0.48 m and falls a little.
@@ -625,7 +647,7 @@ cortina_slats('cortina_slats'); cortina_guide('cortina_guide'); cortina_bar('cor
 cortina_box('cortina_box'); cortina_cap('cortina_cap'); cortina_roll('cortina_roll'); lamina_sheet('lamina_sheet'); perfil_x('perfil_x'); perfil_z('perfil_z')
 bisagra('bisagra'); pasador('pasador'); reja_calle('reja_calle'); zocalo('zocalo'); boveda('boveda'); vigueta('vigueta'); dado('dado'); puerta_fondo('puerta_fondo')
 puerta_metal('puerta_metal'); repisa('repisa_a', ['can', 'can', 'can', 'jar', 'box', 'box']); repisa('repisa_b', ['bottle', 'bottle', 'jar', 'can', 'box']); lampara_tubo('lampara_tubo'); gargola('gargola')
-col_base('col_base'); col_shaft('col_shaft'); col_cap('col_cap'); col_bracket('col_bracket'); cartela('cartela'); marq_rib('marq_rib'); plafon('plafon')
+col_base('col_base'); col_shaft('col_shaft'); col_cap('col_cap'); col_bracket('col_bracket'); cartela('cartela'); marq_rib('marq_rib'); plafon('plafon'); tubo_x('tubo_x'); toldo_cassette('toldo_cassette'); toldo_soporte('toldo_soporte')
 
 for ob in pieces: ob.location = (0, 0, 0)
 print('ARCH pieces (triangles):', ', '.join(f'{ob.name} {tri_count(ob)}' for ob in pieces))
