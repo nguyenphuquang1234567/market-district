@@ -64,6 +64,49 @@ export async function run(G, { frames = 120, views = Object.keys(VIEWS), w = 151
   return { size: `${canvas.width}x${canvas.height}`, views: out, memory: gpuMemory(G) };
 }
 
+// Where a frame's time goes: each view timed whole, then again with one thing held or switched off (the cascades not
+// redrawn, no ambient occlusion, no bloom, no multisampling, a quarter of the pixels), and the time spent in JavaScript
+// submitting the frame (not waiting on the GPU). The differences are each part's share; they overlap a little.
+export async function profile(G, { frames = 70, views = ['main_street', 'arch_plaza', 'hall_inside'], w = 1512, h = 846 } = {}) {
+  const R = G.R, canvas = R.renderer.domElement, gl = R.renderer.getContext(), px = new Uint8Array(4);
+  canvas.style.width = w + 'px'; canvas.style.height = h + 'px';
+  R.renderScale = 1; R.adaptive = false; R.resize();
+  G.manual = true; G.auto = true; G.frozen = true;
+  if (!G.matchLive) G.resetMatch();
+  G.playing = true; G.hud.show(null); park(G);
+  const time = (sync = true) => {
+    const ts = [];
+    for (let i = 0; i < frames; i++) { const t0 = performance.now(); G.step(1, 1 / 60); if (sync) { gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); } ts.push(performance.now() - t0); }
+    if (!sync) { gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); }
+    ts.splice(0, 10); ts.sort((a, b) => a - b);
+    return +(ts.reduce((a, b) => a + b, 0) / ts.length).toFixed(2);
+  };
+  const samples = R.sceneRT.samples, out = [];
+  const cases = {
+    full: [() => {}, () => {}],
+    js_only: null,
+    no_shadow_redraw: [() => { R.freezeShadows = true; }, () => { R.freezeShadows = false; }],
+    no_ao: [() => { if (R.gtao) R.gtao.enabled = false; }, () => { if (R.gtao) R.gtao.enabled = true; }],
+    no_bloom: [() => { if (R.bloom) R.bloom.enabled = false; }, () => { if (R.bloom) R.bloom.enabled = true; }],
+    no_atmos: [() => { if (R.atmos) R.atmos.enabled = false; }, () => { if (R.atmos) R.atmos.enabled = true; }],
+    no_msaa: [() => { R.sceneRT.samples = 0; R.sceneRT.dispose(); }, () => { R.sceneRT.samples = samples; R.sceneRT.dispose(); }],
+    quarter_pixels: [() => { R.renderScale = 0.5; R.resize(); }, () => { R.renderScale = 1; R.resize(); }],
+  };
+  for (const name of views) {
+    const [x, z, yaw, pitch] = VIEWS[name], row = { view: name };
+    G.goto(x, z, yaw, pitch); G.player.sim = { f: 0, s: 0, yaw: G.player.yaw, pitch: G.player.pitch };
+    G.step(120, 1 / 60);
+    for (const [k, c] of Object.entries(cases)) {
+      if (!c) { row[k] = time(false); continue; }
+      c[0](); G.step(12, 1 / 60); row[k] = time(); c[1](); G.step(4, 1 / 60);
+    }
+    const i = R.renderer.info.render; row.calls = i.calls; row.tris = Math.round(i.triangles / 1000) + 'k';
+    out.push(row); await new Promise(r => setTimeout(r, 0));
+  }
+  G.manual = false;
+  return { size: `${canvas.width}x${canvas.height}`, views: out };
+}
+
 // ---- GPU memory estimate --------------------------------------------------------------------------------------------------
 function texBytes(t) {
   if (!t) return 0;

@@ -348,6 +348,7 @@ async function start() {
   G.hud.show('start');
   G.los = (a, b) => losClear(a, b, world.colliders) && !G.throw.smoked(a, b);
   if (params.get('bench')) runBench(G, params.get('bench'));        // dev: timings and captures with no console at hand (the native window)
+  if (params.get('prof')) setTimeout(async () => { const perf = await import('/tools/perf-probe.js'); const r = await perf.profile(G); await fetch(`/__capture/prof_${params.get('prof')}.json`, { method: 'POST', body: JSON.stringify(r, null, 1) }); }, 1500);   // dev: where the frame time goes
   if (params.get('selftest')) setTimeout(() => fetch('/__capture/selftest.json', { method: 'POST', body: JSON.stringify(G.selfTest(), null, 1) }), 300);   // dev: the acceptance run, saved to captures/
   if (params.get('auto') || params.get('demo')) G.autoStart();
   if (params.get('demo')) { G.demo = demoDriver(G); G.frozen = false; G.audio.start(); }
