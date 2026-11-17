@@ -236,7 +236,7 @@ function paintAtlas() {
   });
   for (let i = 0; i < 3; i++) cell('lit' + i, (w, h) => {
     for (let k = 0; k < 5 + i * 2; k++) {                         // paper scraps, each a crumpled quadrilateral
-      const x = 34 + R() * (w - 68), y = 34 + R() * (h - 68), s = 7 + R() * 15, sh = 200 + R() * 45 | 0;
+      const x = 34 + R() * (w - 68), y = 34 + R() * (h - 68), s = 6 + R() * 11, sh = 150 + R() * 60 | 0;
       g.fillStyle = 'rgba(0,0,0,0.25)'; g.beginPath(); g.ellipse(x + 2, y + 3, s, s * 0.7, 0, 0, 7); g.fill();
       g.fillStyle = `rgb(${sh},${sh - 6},${sh - 22})`; g.beginPath(); for (let j = 0; j < 4; j++) { const a = j * 1.571 + R() * 0.9; g.lineTo(x + Math.cos(a) * s * (0.6 + R() * 0.5), y + Math.sin(a) * s * (0.5 + R() * 0.5)); } g.closePath(); g.fill();
       g.strokeStyle = 'rgba(90,80,70,0.35)'; g.lineWidth = 0.8; g.beginPath(); g.moveTo(x - s * 0.5, y); g.lineTo(x + s * 0.4, y + (R() - 0.5) * s); g.stroke();
@@ -433,7 +433,7 @@ export function addStreetLife(R, M, world) {
       else if (r < 0.085) lay('tar' + (r2 < 0.5 ? 0 : 1), x, z, 1.3 + r2 * 1.8, Math.round(rot / 1.5708) * 1.5708 + (hash(gx, gz, 6) - 0.5) * 0.1, tintOf(x, z, 0.85, 1), 0.88, 0.6 + 0.8 * hash(gx, gz, 7));
       else if (r < 0.125) lay('seal' + (r2 < 0.5 ? 0 : 1), x, z, 1.8 + r2 * 1.6, rot, [1, 1, 1], 0.85);
       else if (r < 0.15) lay('tyre', x, z, 1.5, (hash(gx, gz, 6) - 0.5) * 0.5 + (Math.abs(x) < 4 ? 0 : 1.5708), [1, 1, 1], 0.6, 2);
-      else if (kerb && r < 0.45) lay(r2 < 0.6 ? 'leaf' + Math.floor(r2 * 5) : 'lit' + Math.floor(r2 * 7.4 - 4.4), x, z, 0.9 + r2 * 0.7, rot, tintOf(x, z, 0.75, 0.95), 0.9);
+      else if (kerb && r < 0.33) lay(r2 < 0.6 ? 'leaf' + Math.floor(r2 * 5) : 'lit' + Math.floor(r2 * 7.4 - 4.4), x, z, 0.9 + r2 * 0.7, rot, tintOf(x, z, 0.75, 0.95), 0.9);
       continue;
     }
     if (inHall(x, z) || inLane(x, z)) {
@@ -560,7 +560,7 @@ export function addStreetLife(R, M, world) {
     const y = c0.point.y, cs = Math.cos(rot), sn = Math.sin(rot), hw = size / 2, hl = hw * aspect;
     const pts = [[-hw, hl], [hw, hl], [hw, -hl], [-hw, -hl]].map(([a, b]) => [x + a * cs + b * sn, z - a * sn + b * cs]);
     for (const [qx, qz] of pts) { const h = cast(qx, y + 0.5, qz, 0, -1, 0, 0.9); if (h && h.point.y < y - 0.02) return false; if (!h && wallDist(qx, qz) > 0.05) return false; }
-    const base = wq.p.length / 3, water = c0.object.name === 'cobble' ? 0.75 : inHall(x, z) ? 0.5 : 1;     // (cobbles hold less: the stones stand out of it; a mopped floor is a film)
+    const base = wq.p.length / 3, water = c0.object.name === 'cobble' ? 0.75 : inHall(x, z) ? 0.22 : 1;     // (cobbles hold less: the stones stand out of it; a mopped floor is a film)
     pts.forEach(([qx, qz], k) => { wq.p.push(qx, y + 0.009, qz); wq.n.push(0, 1, 0); wq.u.push(k === 0 || k === 3 ? 0 : 1, k < 2 ? 0 : 1); wq.c.push(full, water, 0); });
     wq.i.push(base, base + 1, base + 2, base, base + 2, base + 3); stats.puddles = (stats.puddles || 0) + 1; return true;
   };

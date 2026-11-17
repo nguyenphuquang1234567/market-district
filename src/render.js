@@ -11,6 +11,7 @@ import { Pass, FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
 import { clamp, damp } from './util.js';
 import { noise } from './materials.js';
 import { AtmosPass, HistoryPass, createMotes } from './atmos.js';
+import { nextFrame } from './batch.js';
 
 export const PRESETS = {
   low:    { maxPR: 1.0,  scale: 0.7, shadow: 1024, cascades: 2, shadowFar: 90,  msaa: 0, ao: false, bloom: false, aoSamples: 8,  aoScale: 0.5, soft: false, lod: 0.7, air: 0, reflect: false },
@@ -382,8 +383,8 @@ export function createRenderer(canvas, skyTex, presetName) {
       if (!api.lodList) {
         api.lodList = []; api.zoneList = [];
         const z = api.zones, bb = new THREE.Box3();
-        scene.traverse(o => {
-          if (!o.isMesh) return;
+        const add = o => {
+          if (!o.isMesh || o.isBatchedMesh || o.userData.twinOf) return;        // (a batch and a twin take their cells' verdicts: batch.js)
           if (!o.geometry.boundingSphere) o.geometry.computeBoundingSphere();
           const s = o.geometry.boundingSphere.clone().applyMatrix4(o.matrixWorld);
           if (o.userData.lod || o.userData.kitLod) api.lodList.push({ o, s });
@@ -391,7 +392,8 @@ export function createRenderer(canvas, skyTex, presetName) {
             const side = s.center.x < z.split0 ? -1 : s.center.x > z.split1 ? 1 : 0;
             if (side) { if (!o.geometry.boundingBox) o.geometry.computeBoundingBox(); bb.copy(o.geometry.boundingBox).applyMatrix4(o.matrixWorld); api.zoneList.push({ o, side, x0: bb.min.x, x1: bb.max.x, z0: bb.min.z, z1: bb.max.z, y1: bb.max.y }); }
           }
-        });
+        };
+        scene.traverse(add); if (api.detached) api.detached.forEach(add);     // (drawn in batches, the district's cell meshes are not in the scene)
       }
       const p = camera.position, k = api.lodScale;
       for (const { o, s } of api.lodList) {
@@ -429,10 +431,14 @@ export function createRenderer(canvas, skyTex, presetName) {
           }
         }
       }
+      if (api.twins) for (const t of api.twins) { const o = t.userData.twinOf; t.visible = o.visible; if (t.material !== o.material) t.material = o.material; }
       if (api.onCull) api.onCull(p, k);
     },
     farShadowLayer() {                                                    // everything already in the scene casts in the far cascade except the detail meshes
-      scene.traverse(o => { if (!o.userData.lod && o.userData.kitLod !== 'near') o.layers.enable(2); });
+      // (three.js tests a caster's layers against the view camera, not the cascade's, so for ordinary meshes this layer
+      // never took effect; a batch tests the cascade's camera itself. Awnings, roofing and shutters, culled from 80 m
+      // out, are large enough to be missed, so only what is culled nearer than that stays out of the far cascade.)
+      scene.traverse(o => { if (o.isBatchedMesh ? !(o.userData.lod && o.userData.lod < 80) && o.userData.kitLod !== 'near' : !o.userData.lod && o.userData.kitLod !== 'near') o.layers.enable(2); });
       const far = csm.lights[csm.lights.length - 1];
       if (csm.lights.length > 2) far.shadow.camera.layers.set(2);
     },
@@ -454,7 +460,7 @@ export function createRenderer(canvas, skyTex, presetName) {
         renderer.shadowMap.needsUpdate = true;
       }
       if (gtao) { gtao.gtaoMaterial.uniforms.tDepth.value = sceneRT.depthTexture; gtao.pdMaterial.uniforms.tDepth.value = sceneRT.depthTexture; }
-      renderer.info.reset();
+      renderer.info.reset(); nextFrame();
       composer.render(dt);
     },
   };

@@ -120,6 +120,7 @@ function texBytes(t) {
   return w * h * bpp * mips;
 }
 function geoBytes(g) {
+  if (g.userData.bytes) return g.userData.bytes;                // (a batch lets its arrays go once they are on the GPU: batch.js)
   let s = 0;
   for (const a of Object.values(g.attributes)) s += a.array ? a.array.byteLength : 0;
   if (g.index) s += g.index.array.byteLength;

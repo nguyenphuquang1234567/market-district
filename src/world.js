@@ -8,6 +8,7 @@ import { buildQuarter, HALL, PLAZUELA, ATRIUM, QUARTER_SPAWNS, QUARTER_HOTSPOTS 
 import { rng, clamp } from './util.js';
 import { facadeStyle, roomData, tint, hash as fhash } from './facades.js';
 import { noise, FOLIAGE } from './materials.js';
+import { BATCH, batchWorld } from './batch.js';
 
 THREE.BufferGeometry.prototype.computeBoundsTree = computeBoundsTree;
 THREE.BufferGeometry.prototype.disposeBoundsTree = disposeBoundsTree;
@@ -967,7 +968,7 @@ export function buildWorld(R, M) {
     else if (m.material.userData.noBVH && !water && !FOLIAGE.includes(m.name) && !m.name.startsWith('d_')) { m.geometry.computeBoundsTree({ maxLeafTris: 8 }); m.userData.cloth = true; clothMeshes.push(m); }
     group.add(m);
   }
-  R.scene.add(group); R.setupTree(group);
+  R.setupTree(group);
   // Near a tree its modelled leaves cast no shadow: the old leaf cards stay in its place, drawn unseen (no colour, no
   // depth) by a proxy material, and cast the canopy's shadow (render.js cull) instead of thousands of leaves in every cascade.
   for (const m of meshes) {
@@ -977,6 +978,11 @@ export function buildWorld(R, M) {
       m.userData.baseMaterial = m.material; m.userData.shadowProxy = R.setup(p);
     }
   }
+  // Drawing: one multi-draw per material (batch.js). The cell meshes stay out of the scene, as the district's data: ray
+  // trees, the light bake's input, and where the renderer's culling writes each cell's visibility. The trees' shadow
+  // proxies (their material changes with distance) and the fountain's water (drawn in a fixed order) keep meshes of their own.
+  if (BATCH) { const d = batchWorld(meshes, m => !!m.userData.shadowProxy || m.name.startsWith('water')); R.scene.add(d.group); R.detached = meshes; R.twins = d.twins; }
+  else R.scene.add(group);
 
   const nav = new NavGrid(B.colliders, -48, -82, 113, 82);
   const spawns = {
