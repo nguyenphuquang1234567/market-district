@@ -370,7 +370,7 @@ export function createRenderer(canvas, skyTex, presetName) {
     },
     // Distance culling of small things (userData.lod, metres; see world.js) and the far cascade's layer: details are not
     // drawn into the outermost shadow cascade, whose texels are too coarse for them anyway.
-    lodScale: Q.lod ?? 1, lodList: null, zones: null, zoneList: null, zoneHidden: 0, kitNear: 30, kitNear2: 18,
+    lodScale: Q.lod ?? 1, lodList: null, zones: null, zoneList: null, zoneHidden: 0, kitNear: 30, kitNear2: 14,
     // Is this mesh the version of a kit piece on screen (near within kitNear of its cell's box, far beyond)? True for
     // anything without one. The rays that stand for what the player sees (rounds, markers, thrown things) skip the other
     // version: a modelled piece and its plain stand-in overlap, and a round must not spark off the one that is not drawn.

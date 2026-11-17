@@ -57,18 +57,24 @@ export class Builder {
     this.lodDefault = null;     // the lod of anything drawn without one (see swap())
     this.pin = null;            // while set, the cell everything is drawn into (see swap())
     this.muteDraw = false;      // while set, nothing is drawn but solids are still recorded (see replace())
+    this.pin2 = null;           // while set, the fine cell every 'near2' / 'far2' draw goes into (see cell2())
   }
 
   // Merged geometry is split into 24 m cells so the camera frustum and each shadow cascade only draw what they cover.
   // The columns break at x = 22 and 46, so no cell straddles the east ring: the renderer can then leave out whichever
   // side of the ring the camera cannot see (see render.js, zone culling).
   cell(x, z) { return Math.min(6, Math.max(0, Math.floor((x + 50) / 24))) + 7 * Math.min(6, Math.max(0, Math.floor((z + 84) / 24))); }
+  // The architecture pass's pairs ('near2' / 'far2': fine ironwork, laths, fittings) are sorted into 8 m cells instead,
+  // so they switch within a few metres of the distance asked for. A 24 m cell switches anywhere from that distance to
+  // 30 m beyond it, and thin geometry drawn that far off is a sliver a pixel wide in every triangle: all cost, no detail.
+  cell2(x, z) { return 1000 + Math.min(31, Math.max(0, Math.floor((x + 50) / 8))) + 32 * Math.min(31, Math.max(0, Math.floor((z + 84) / 8))); }
   // lod: 'near' for the detailed architectural kit, 'far' for the plain stand-in it replaces; the renderer shows one or
   // the other per cell by distance (render.js, cull). Untagged geometry is always drawn. Without a lod (undefined) a draw
   // takes lodDefault; null means untagged even then.
   _b(key, x, z, far, lod) {
     if (lod === undefined && !far) lod = this.lodDefault;
-    const cell = far ? -1 : (this.pin ?? this.cell(x, z)), id = key + '|' + (far ? 'far' : cell) + (lod ? '|' + lod : '');
+    const fine = lod === 'near2' || lod === 'far2';
+    const cell = far ? -1 : fine ? (this.pin2 ?? this.cell2(x, z)) : (this.pin ?? this.cell(x, z)), id = key + '|' + (far ? 'far' : cell) + (lod ? '|' + lod : '');
     let b = this.buckets.get(id);
     if (!b) this.buckets.set(id, b = { key, lod, cell, p: [], n: [], u: [], c: [], i: [], x: [] });
     return b;
@@ -391,8 +397,8 @@ export class Builder {
       const mesh = new THREE.Mesh(g, M[key]);
       mesh.name = key; mesh.userData.surf = M[key].userData.surf;
       if (k.lod) {                                       // the cell's plan box: near and far versions switch at the same distance
-        const cx = k.cell % 7, cz = Math.floor(k.cell / 7);
-        mesh.userData.kitLod = k.lod; mesh.userData.lodBox = [-50 + 24 * cx, -84 + 24 * cz, -26 + 24 * cx, -60 + 24 * cz];
+        const fine = k.cell >= 1000, c = fine ? k.cell - 1000 : k.cell, n = fine ? 32 : 7, sz = fine ? 8 : 24, cx = c % n, cz = Math.floor(c / n);
+        mesh.userData.kitLod = k.lod; mesh.userData.lodBox = [-50 + sz * cx, -84 + sz * cz, -50 + sz * (cx + 1), -84 + sz * (cz + 1)];
       }
       meshes.push(mesh);
     }

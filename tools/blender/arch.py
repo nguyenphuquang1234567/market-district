@@ -181,6 +181,7 @@ def bake_ao(ob, dist=0.1, strength=0.7, wall=None, floor=None, ceil=None, rays=1
         for l in f.loops: c = l[col]; a = val[l.vert.index]; l[col] = (c[0] * a, c[1] * a, c[2] * a, 1.0)
     bm.to_mesh(me); bm.free(); return ob
 
+SMOOTH = {'cortina_slats': 52, 'cortina_roll': 52, 'lamina_sheet': 60}        # smoothing angle per piece (degrees), 35 otherwise
 pieces = []
 def keep(ob, sm=35):
     me = ob.data
@@ -190,14 +191,16 @@ def keep(ob, sm=35):
 def piece(fn):
     def run(name, *a):
         if ONLY and name not in ONLY: return None
-        ob = fn(name, *a); ob.name = name; ob.data.name = name; return keep(ob)
+        ob = fn(name, *a); ob.name = name; ob.data.name = name; return keep(ob, SMOOTH.get(name, 35))
     return run
 
 # ---------------------------------------------------------------------------------------------------- shutters -------
 # A roll-up shutter (cortina metálica): curved laths 75 mm apart, each hooked into the next. One strip is a metre
 # wide (stretch x) and eight laths high (stack, never stretch z); it is a one-sided skin facing the street. The hook
 # line between laths is shaded in, since no light gets into it.
-LATH = [(0.0, 0.0045), (0.09, 0.0045), (0.15, -0.001), (0.3, -0.0095), (0.5, -0.0125), (0.7, -0.0095), (0.85, -0.001), (0.91, 0.0045)]
+# (three faces to a lath, shaded smooth across them and sharp from lath to lath: every further face is a sliver a pixel
+# tall a few metres off, shaded once per triangle under multisampling)
+LATH = [(0.0, 0.0035), (0.26, -0.0115), (0.74, -0.0115)]
 @piece
 def cortina_slats(name, pitch=0.075, n=8):
     bm = bmesh.new(); col = bm.loops.layers.float_color.new('Col'); pts = []
@@ -207,7 +210,7 @@ def cortina_slats(name, pitch=0.075, n=8):
     A = [bm.verts.new((-0.5, y, z)) for y, z in pts]; B = [bm.verts.new((0.5, y, z)) for y, z in pts]
     for i in range(len(pts) - 1):
         f = bm.faces.new((A[i], B[i], B[i + 1], A[i + 1]))
-        for l in f.loops: s = 0.38 + 0.62 * min(1.0, max(0.0, (0.0045 - l.vert.co.y) / 0.012)); l[col] = (s, s, s, 1.0)
+        for l in f.loops: s = 0.34 + 0.66 * min(1.0, max(0.0, (0.0035 - l.vert.co.y) / 0.012)); l[col] = (s, s, s, 1.0)
     return obj(name, bm, 'steel')
 
 # The guide the curtain runs in: a steel channel, a metre tall (stretch z), open towards the middle of the opening
@@ -293,7 +296,7 @@ def cortina_roll(name):
 # several side by side) and a metre tall (stretch z). One-sided, facing the street.
 @piece
 def lamina_sheet(name):
-    bm = bmesh.new(); col = bm.loops.layers.float_color.new('Col'); waves, per = 6.5, 8; n = int(waves * per)
+    bm = bmesh.new(); col = bm.loops.layers.float_color.new('Col'); waves, per = 6.5, 4; n = int(waves * per)
     pts = [(-0.25 + 0.5 * k / n, -0.009 * math.cos(2 * math.pi * waves * k / n)) for k in range(n + 1)]
     A = [bm.verts.new((x, y, 0.0)) for x, y in pts]; B = [bm.verts.new((x, y, 1.0)) for x, y in pts]
     for i in range(n):

@@ -56,6 +56,8 @@ export function addArchDetail(R, M, world) {
 
   for (const n of notes) {
     const { p, T, N } = n;
+    // everything belonging to one note goes into one fine cell, the one world.js put its flat version in
+    { const q = n.kind === 'sala' ? n.P((n.ra + n.rb) / 2, 0, (n.d0 + n.D) / 2) : n.kind === 'columna' || n.kind === 'armadura' ? { x: n.x, z: n.z || 0 } : p; A.pin2 = A.cell2(q.x, q.z); }
     if (n.kind === 'cortina') {
       const { w, h, d, key, so } = n, dS = d - 0.022, tint = so.color;
       if (key === 'corrugated') {                                                    // ---- a sheet gate: two leaves of corrugated sheet on a tube frame
@@ -179,6 +181,7 @@ export function addArchDetail(R, M, world) {
     }
   }
 
+  A.pin2 = null;
   // ---- clay spouts through the parapets of every street front (not under a tiled eave, which sheds its own water)
   for (const b of world.buildings) {
     if (b.ghost || !b.H || !b.sides || b.kit?.tejaroz) continue;
