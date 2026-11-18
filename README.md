@@ -400,10 +400,11 @@ Key bindings live in the same saved settings object (`binds`, including `frag` a
   - *parapets*: a clay spout on a stone bracket every few metres of every street front.
   How it stays out of the game's way: `world.js` leaves a note where each belongs and tags its own flat version
   `far2`, so beyond the pass's switch distance the map is drawn exactly as before and the light bake's signature does
-  not move (it still loads as cached). The pass's pairs are sorted into 8 m cells and switch 11 m from their cell
-  (`R.kitNear2`), not per 24 m cell at 30 m as the kit does: laths, bars and corrugation are slivers a pixel wide
-  from further off, and under multisampling every sliver is shaded once per triangle, which is where the pass's
-  GPU cost was (a first version, switching per 24 m cell, cost 0.4–1.4 ms a frame). Nothing fine here casts a
+  not move (it still loads as cached). The pass's pairs are sorted into 8 m cells and switch by distance from their own cell
+  (`R.kitNear2`: 30 m; it was 11 m while the pass was being timed, see the timings), not per 24 m cell as the kit
+  does: laths, bars and corrugation are slivers a pixel wide from further off, and under multisampling every sliver
+  is shaded once per triangle, which is where the pass's GPU cost was (a first version, switching per 24 m cell at
+  30 m, cost 0.4–1.4 ms a frame). Nothing fine here casts a
   shadow; the hall's columns, the arch's mouldings and the spouts do. The rest of the cost was on the main thread,
   and only showed in WebKit (see the timings under Quality presets): thousands of small cells meant thousands of
   multi-draw ranges, which WebKit's Metal backend issues one by one, so a batch now walks its cells as they lie
@@ -613,16 +614,19 @@ fixed as described under *The street floor and the shops, modelled*.
 
 What it costs elsewhere: loading to the menu takes 0.8 s longer (10.2 s against 9.3 s; building the district 5.4 s
 against 4.6 s, for placing some thousands of pieces and their ray trees); estimated GPU memory 1362 → 1480 MB (+9 %,
-all of it geometry: 411 → 528 MB, as each 8 m cell keeps its own vertices). The fine pieces appear 11 m from their
-cell, which is a visible switch if one watches a shutter while walking up to it (laths and a flat texture of laths are
-not the same picture); the same pieces drawn from 30 m cost the 0.4–1.4 ms above. Nothing fine casts a shadow. The
+all of it geometry: 411 → 528 MB, as each 8 m cell keeps its own vertices). In these runs the fine pieces appeared 11 m
+from their cell, which is a visible switch if one watches a shutter while walking up to it (laths and a flat texture
+of laths are not the same picture). `R.kitNear2` has been 30 m since, which takes the switch out of sight; drawn from
+30 m per 24 m cell, before the range merging and the lighter visibility pass, the same pieces had cost the 0.4–1.4 ms
+above. Nothing fine casts a shadow. The
 scripted checks (`?selftest=1`) pass as on `main` (64 checks, the one known failure); the layout fingerprint is
 identical and the light bake loads as cached. On-screen pacing in play was not measured for this build.
 
 The casonas' pilaster orders and the dressed stone came after those runs: 79,000 more triangles in the district's own
 meshes and a fresh light bake (about three minutes in the browser; `?stalegi=1` holds the old one while geometry is
-being worked on). One run afterwards, not paired against `main`, read within half a millisecond of this build's
-earlier runs in every view (−0.34 to +0.48 ms, inside the spread between runs); estimated GPU memory 1480 → 1485 MB.
+being worked on). One run afterwards, with the switch at 30 m too and not paired against `main`, read within half a millisecond of
+this build's earlier runs in every view (−0.34 to +0.48 ms, inside the spread between runs, which a single run cannot
+resolve further); estimated GPU memory 1480 → 1485 MB.
 The scripted checks and the layout fingerprint are unchanged.
 
 Profiling switches: `?demo=1` auto-plays the match (for pacing runs), `?live=1` writes `captures/live.json` every 3 s,
