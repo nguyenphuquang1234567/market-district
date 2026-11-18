@@ -101,8 +101,8 @@ Key bindings live in the same saved settings object (`binds`, including `frag` a
   faces (each street has its own mix) by a random stream of the building's own (`src/facades.js`):
   - *casona* — a colonial house: tall openings in cantera surrounds under moulded hoods, pediments or round arches with
     keystones, an iron balcony with scrolled railings to each first-floor door (some with stone balustrades), French
-    window rails above, quoins up the corners, pilasters between the bays, a rusticated stone base, string courses, a
-    heavy cornice and sometimes a balustraded roof between piers with ball finials;
+    window rails above, quoins up the corners, an order of pilasters to each storey between the bays, a rusticated
+    stone base, string courses, a heavy cornice and sometimes a balustraded roof between piers with ball finials;
   - *vecindad* — a tenement: small windows with scrolled grilles set where the rooms needed them, a bathroom slit beside
     some, bricked-up openings, a single off-centre balcony, newer plaster in patches, plaster fallen off to the brick;
   - *comercial* — a 1950s block: bands of wide steel windows between projecting floor slabs, concrete fins, a glass-block
@@ -112,7 +112,17 @@ Key bindings live in the same saved settings object (`binds`, including `frag` a
   - *barrio* — a small house in strong colours: wooden casements and shutters, painted surrounds, a tile hood over the
     door and a window, a niche with a saint, a curved crest on the parapet or a tiled eave.
   The new kit pieces (archivolt, hood, pediment, quoins, pilaster with base and capital, scrolled balcony railing,
-  window grille, casement, balustrade, niche) are modelled in `tools/blender/kit.py` like the rest. Every window's glass
+  window grille, casement, balustrade, niche) are modelled in `tools/blender/kit.py` like the rest. A pilaster is an
+  order of its storey, about 1:7 (0.38 m wide to 2.5–2.9 m): an Attic base (plinth, torus, scotia, torus), a shaft of
+  three or four stones with eased arrises, V bed joints and a sunk panel in a quirk-and-ovolo moulding (a *pilastra
+  cajeada*), and a capital of astragal, neck, annulets, echinus and abacus. It stands on the base course or on the
+  string course, which breaks forward over the pilaster below, and under the main cornice carries a short block of
+  architrave and frieze. (As first drawn it was one 36 cm strip from pavement to roof, 1:22, with a panel a centimetre
+  deep: a stripe.) All the carved stone of a stone-trimmed house (surrounds, sills, hoods, string courses, cornices,
+  quoins, balusters, pilasters) is dressed stone now, the `sillar` material: a fine-grained surface with the clouding
+  and inclusions of cut cantera added in the shader in world space, tinted to the mean colour of the cantera wall
+  texture so the palette does not move. That wall texture is rough blocks in wide mortar joints, and on a moulding
+  its joints ran across every member; it stays where it is walling. Each shaft stone and quoin takes a shade of its own. Every window's glass
   shows a room behind it (interior mapping in the `room` material): plaster in one of a few colours with a darker dado, a
   doorway, a wardrobe or a picture on the far wall, a tiled or boarded floor, a ceiling lamp lit in some rooms, and sheer
   curtains or drapes just inside the glass; the room moves with the viewpoint, and the sky's reflection takes over at
@@ -608,6 +618,12 @@ cell, which is a visible switch if one watches a shutter while walking up to it 
 not the same picture); the same pieces drawn from 30 m cost the 0.4–1.4 ms above. Nothing fine casts a shadow. The
 scripted checks (`?selftest=1`) pass as on `main` (64 checks, the one known failure); the layout fingerprint is
 identical and the light bake loads as cached. On-screen pacing in play was not measured for this build.
+
+The casonas' pilaster orders and the dressed stone came after those runs: 79,000 more triangles in the district's own
+meshes and a fresh light bake (about three minutes in the browser; `?stalegi=1` holds the old one while geometry is
+being worked on). One run afterwards, not paired against `main`, read within half a millisecond of this build's
+earlier runs in every view (−0.34 to +0.48 ms, inside the spread between runs); estimated GPU memory 1480 → 1485 MB.
+The scripted checks and the layout fingerprint are unchanged.
 
 Profiling switches: `?demo=1` auto-plays the match (for pacing runs), `?live=1` writes `captures/live.json` every 3 s,
 `?tune={"maxPR":1.25}` overrides any preset field. `?prof=<tag>` times three views whole and again with one part held or

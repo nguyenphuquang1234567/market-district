@@ -427,15 +427,84 @@ def quoin(name, la, lb):
     return keep(bevel(q, 0.018, 2, 30), sm=40)
 quoin('quoin_a', 0.44, 0.26); quoin('quoin_b', 0.26, 0.44)
 
-# Pilaster: a shaft 0.36 wide and 4 cm proud with a sunk panel, one metre tall (stretched), and its base and capital.
-sh = box('pilaster', -0.18, 0.18, -0.04, 0.01, 0.0, 1.0, TRIM); cut(sh, box('_pp', -0.11, 0.11, -0.06, -0.028, 0.05, 0.95, TRIM))
-keep(bevel(sh, 0.004, 1, 40), sm=40)
-pb = [box('_b1', -0.23, 0.23, -0.085, 0.01, 0.0, 0.12, TRIM), box('_b2', -0.21, 0.21, -0.07, 0.01, 0.12, 0.17, TRIM), box('_b3', -0.19, 0.19, -0.05, 0.01, 0.17, 0.2, TRIM)]
-for o in pb: bevel(o, 0.012, 2, 30)
-keep(join('pil_base', pb), sm=40)
-pc = [box('_c1', -0.19, 0.19, -0.05, 0.01, 0.0, 0.04, TRIM), box('_c2', -0.21, 0.21, -0.075, 0.01, 0.04, 0.1, TRIM), box('_c3', -0.24, 0.24, -0.1, 0.01, 0.1, 0.16, TRIM)]
-for o in pc: bevel(o, 0.012, 2, 30)
-keep(join('pil_cap', pc), sm=40)
+# Pilasters, one order to a storey: an Attic base, a shaft of three or four stones with a sunk, moulded panel
+# (pilastra cajeada, as on the cantera fronts of central Mexico), and a capital of astragal, neck, annulets, echinus and
+# abacus. The string course above breaks forward over each one (a ressaut) and the next storey's stands on it; under
+# the main cornice a short entablature block takes its place. Proportion about 1:7 (0.38 m wide to a storey of 2.5 to
+# 2.9 m): one strip from pavement to roof, as these were first drawn, is 1:22 and reads as a painted stripe.
+PW, PF = 0.19, 0.07           # half the shaft's width; how far its face stands out of the wall
+
+def wrap(name, prof, hw=PW, f=PF):
+    """A moulding returned round a pilaster. prof: [(e, z)], how far it stands beyond the shaft's face and sides at
+    each height, bottom to top. The front run and the two returns meet on mitres; the returns die into the wall."""
+    bm = bmesh.new(); rows = []
+    for e, z in prof:
+        rows.append([bm.verts.new((-(hw + e), 0.02, z)), bm.verts.new((-(hw + e), -(f + e), z)), bm.verts.new((hw + e, -(f + e), z)), bm.verts.new((hw + e, 0.02, z))])
+    for a, b in zip(rows, rows[1:]):
+        for k in range(4): poly(bm, (a[k], a[(k + 1) % 4], b[(k + 1) % 4], b[k]))
+    poly(bm, rows[0][::-1]); poly(bm, rows[-1])
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
+    return to_obj(name, bm, TRIM)
+
+def rnd_arc(ec, zc, r, a0, a1, n):       # points of a moulding's round: (e, z) about (ec, zc), angles in degrees from +e towards +z
+    return [(ec + r * math.cos(math.radians(a0 + (a1 - a0) * k / n)), zc + r * math.sin(math.radians(a0 + (a1 - a0) * k / n))) for k in range(n + 1)]
+
+# The base, 25 cm: plinth, torus, fillet, scotia, fillet, a smaller torus, fillet, and the shaft's apophyge.
+BASE = [(0.058, 0.0), (0.058, 0.09), (0.054, 0.095), (0.032, 0.095)] + rnd_arc(0.03, 0.122, 0.027, -90, 90, 8)[1:] + \
+       [(0.023, 0.149), (0.023, 0.156)] + rnd_arc(0.035, 0.171, 0.0192, 232, 128, 5)[1:] + [(0.023, 0.192)] + \
+       rnd_arc(0.009, 0.209, 0.017, -90, 90, 6) + [(0.006, 0.226), (0.006, 0.233), (0.003, 0.24), (0.0008, 0.246), (0.0, 0.25)]
+keep(wrap('pil_base', BASE), sm=40)
+
+# The capital, 30 cm from the astragal up: a bead on its fillet, the neck, two annulets, the echinus (a quarter round)
+# and the abacus under a small cyma and fillet.
+CAP = [(0.0, 0.0), (0.004, 0.006), (0.006, 0.012)] + rnd_arc(0.006, 0.025, 0.013, -90, 90, 6)[1:] + [(0.0, 0.038), (0.0, 0.132), (0.006, 0.134),
+       (0.006, 0.142), (0.012, 0.144), (0.012, 0.152)] + [(0.012 + 0.046 * math.sin(math.radians(t)), 0.152 + 0.05 * (1 - math.cos(math.radians(t)))) for t in (15, 30, 45, 60, 75, 90)] + \
+      [(0.064, 0.202), (0.064, 0.25), (0.068, 0.254)] + [(0.068 + 0.018 * (0.5 - 0.5 * math.cos(math.pi * k / 5)), 0.254 + 0.03 * k / 5) for k in range(1, 6)] + [(0.09, 0.284), (0.09, 0.3)]
+keep(wrap('pil_cap', CAP), sm=40)
+
+# The string course broken forward over a pilaster: its ovolo and band (STR, as along the wall), and a flat top for
+# the base of the pilaster above to stand on. Centred on z = 0 like the course itself.
+RES = [(0.0, -0.085), (0.012, -0.085)] + [(-y, z) for y, z in arc(-0.012, -0.05, 0.035, -math.pi / 2, -math.pi, 4)[1:]] + [(0.06, -0.05), (0.06, 0.08), (0.054, 0.088)]
+keep(wrap('pil_ressaut', RES), sm=40)
+# Under the main cornice: an architrave of two fasciae and a plain frieze, 22 cm.
+ENT = [(0.0, 0.0), (0.0, 0.05), (0.008, 0.052), (0.008, 0.1), (0.014, 0.103)] + [(0.014 + 0.012 * math.sin(math.radians(t)), 0.103 + 0.012 * (1 - math.cos(math.radians(t)))) for t in (30, 60, 90)] + \
+      [(0.03, 0.115), (0.03, 0.125), (0.004, 0.128), (0.004, 0.22)]
+keep(wrap('pil_entab', ENT), sm=40)
+
+# The shaft's stones, 0.7 m each (stretched a little to share the storey out): the arrises eased, the bed joints a
+# shallow V, and the panel cut in with a quirk, an ovolo and a fillet round it. za..zb: the panel's ends in this stone
+# (beyond the stone: it runs through).
+MOULD = [(0.0, -0.02), (0.0, 0.006)] + [(0.022 * math.sin(math.radians(t)), 0.006 + 0.022 * (1 - math.cos(math.radians(t)))) for t in (22.5, 45, 67.5, 90)] + [(0.022, 0.034)]
+def drum(name, za, zb, h=0.7, j=0.004, c=0.008, xp=0.125):
+    bm = bmesh.new()
+    def ring(z, i):
+        pts = [(-(PW - i), 0.02), (-(PW - i), -(PF - c)), (-(PW - c), -(PF - i)), (PW - c, -(PF - i)), (PW - i, -(PF - c)), (PW - i, 0.02)]
+        return [bm.verts.new((x, y, z)) for x, y in pts]
+    rings = [ring(0.0, j), ring(j, 0.0), ring(h - j, 0.0), ring(h, j)]
+    for a, b in zip(rings, rings[1:]):
+        for k in range(6): poly(bm, (a[k], a[(k + 1) % 6], b[(k + 1) % 6], b[k]))
+    poly(bm, rings[0][::-1]); poly(bm, rings[-1])
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
+    body = to_obj(name, bm, TRIM)
+    bm = bmesh.new(); rows = []
+    for d, s in MOULD:
+        y = -PF + s
+        rows.append([bm.verts.new((-xp + d, y, za + d)), bm.verts.new((xp - d, y, za + d)), bm.verts.new((xp - d, y, zb - d)), bm.verts.new((-xp + d, y, zb - d))])
+    for a, b in zip(rows, rows[1:]):
+        for k in range(4): poly(bm, (a[k], a[(k + 1) % 4], b[(k + 1) % 4], b[k]))
+    poly(bm, rows[0][::-1]); poly(bm, rows[-1])
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
+    cut(body, to_obj('_panel', bm, TRIM))
+    yf, xf = -PF + MOULD[-1][1], xp - MOULD[-1][0]                   # the bed joint's V carried across the panel's field, where the panel runs through that end
+    for z, up in ((0.0, 1), (h, -1)):
+        if za < z < zb:
+            bm = bmesh.new(); tri = [(yf - 0.01, z + up * (j + 0.01)), (yf + j + 0.01, z - up * 0.01), (yf - 0.01, z - up * 0.01)]
+            A = [bm.verts.new((-xf, y, zz)) for y, zz in tri]; B = [bm.verts.new((xf, y, zz)) for y, zz in tri]
+            for k in range(3): poly(bm, (A[k], A[(k + 1) % 3], B[(k + 1) % 3], B[k]))
+            poly(bm, A[::-1]); poly(bm, B); bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
+            cut(body, to_obj('_vee', bm, TRIM))
+    return keep(body, sm=40)
+drum('pil_drum', -1.0, 1.7); drum('pil_drum_lo', 0.14, 1.7); drum('pil_drum_hi', -1.0, 0.56)
 
 # Wrought iron balcony railing (barandal de herreria), 1 m wide and 1 m tall, in the plane y = 0: rails, square
 # balusters, S scrolls along the foot, paired C scrolls under the top rail and a ring in the middle.

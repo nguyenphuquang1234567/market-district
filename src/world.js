@@ -17,6 +17,8 @@ THREE.Mesh.prototype.raycast = acceleratedRaycast;
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 export const FLOOR0 = 3.5, FLOORN = 3.05, PARAPET = 0.95, SIDEWALK = 0.14;
+// dressed cantera's tint over the 'sillar' material's grey: the mean colour of the cantera wall texture (linear), so carved members sit with the rest of a casona's stone
+const SILLAR = [1.0, 0.81, 0.61];
 // Passages (z ranges) cut through the east ring (x 31-46) into the new quarter: the two spawn streets and the two cross
 // streets carry on east. Their edges sit on the ring's own building joints, so no sliver of a house is left standing.
 export const GATES = [[-63, -55.57], [-23.27, -17], [17, 23], [57, 63]];
@@ -117,7 +119,7 @@ export function architecture(B, rnd, buildings, anchors, rs = null, style = { ba
     // KM: a kit piece's placement, its local X, Y, Z along the given axes (scaled) from the facade point (u, v, d).
     const KM = (u, v, d, X, Y, Z, sx = 1, sy = 1, sz = 1) => new THREE.Matrix4().makeBasis(X.clone().multiplyScalar(sx), Y.clone().multiplyScalar(sy), Z.clone().multiplyScalar(sz)).setPosition(P(u, v, d));
     const nT = T.clone().negate();
-    const kTrim = { trim: bd.kit.stone ? 'cantera' : 'concrete' }, oTrim = bd.kit.stone ? { color: [1, 1, 1], tile: 3.2 } : { color: bd.trim, tile: 2.0 };
+    const kTrim = { trim: bd.kit.stone ? 'sillar' : 'concrete' }, oTrim = bd.kit.stone ? { color: SILLAR, tile: 1.5 } : { color: bd.trim, tile: 2.0 };   // (stone mouldings are dressed stone: the wall texture's block joints cut across them)
     // Outside corners where this facade meets the next (or the previous) one: a quarter metre of each wall is a worn,
     // rounded corner piece instead (stacked a metre at a time, some of it chipped to the brick).
     // (not on a side added later, force: its neighbours were drawn without knowing about it)
@@ -161,7 +163,7 @@ export function architecture(B, rnd, buildings, anchors, rs = null, style = { ba
       FB('paint', u0 - w, v0 - (v0 > 0.05 ? w : 0), u0, v1 + w, -0.008, 0, o); FB('paint', u1, v0 - (v0 > 0.05 ? w : 0), u1 + w, v1 + w, -0.008, 0, o);
       if (top) FB('paint', u0, v1, u1, v1 + w, -0.008, 0, o);
       if (v0 > 0.05) FB('paint', u0, v0 - w, u1, v0, -0.008, 0, o);
-      const fk = { trim: bd.kit.stone ? 'cantera' : 'w_plaster' }, fo = bd.kit.stone ? { tile: 3.2, color: [1, 1, 1], lod: 'near' } : { tile: 1.8, color: sr.ck || sr.c, lod: 'near' };
+      const fk = { trim: bd.kit.stone ? 'sillar' : 'w_plaster' }, fo = bd.kit.stone ? { tile: 1.5, color: SILLAR, lod: 'near' } : { tile: 1.8, color: sr.ck || sr.c, lod: 'near' };
       const s = w / 0.15, vb = v0 > 0.05 ? v0 - 0.075 : 0;                    // the jambs run down to the sill's underside, or the ground
       if (top) {
         B.kit('frame_bar', KM((u0 + u1) / 2, v1, 0, T, UP, N, u1 - u0, s, 1), fk, fo);
@@ -362,7 +364,9 @@ export function architecture(B, rnd, buildings, anchors, rs = null, style = { ba
       const st = bd.style; if (!st) return;
       if (street === 'none') { for (let f = 1; f < bd.floors; f++) { const v0 = FLOOR0 + (f - 1) * FLOORN; Q(wall, m, v0, L - m, v0 + FLOORN); } return; }
       const vr = st.vr, kind = st.kind, A = st.A, I4 = new THREE.Matrix4(), free2 = [];
-      const stoneK = { trim: 'cantera' }, stoneO = { color: [1, 1, 1], tile: 3.2 };
+      // a casona's carved stone (surrounds, sills, string courses, quoins, balusters, pilasters) is dressed cantera: the
+      // wall texture of rough blocks ran its mortar joints across every moulding
+      const stoneK = { trim: 'sillar' }, stoneO = { color: SILLAR, tile: 1.5 };
       const trimK = kind === 'casona' ? stoneK : kTrim, trimO = kind === 'casona' ? stoneO : oTrim;
       // colours: the scheme's (facades.js): B or white round the openings, wood stained or painted, the shutters with it
       const sw = kind === 'casona' ? 0.15 : 0.13, sCol = st.frameP, sColW = st.frameW, frameTint = st.woodP;
@@ -635,12 +639,20 @@ export function architecture(B, rnd, buildings, anchors, rs = null, style = { ba
         for (const uc of doorsU) tiles(uc - 0.95, uc + 0.95, 2.32 + (bd.surround ? bd.surround.w : 0) + 0.14, 0.55, 0.45, [uc - 0.8, uc + 0.8]);
       }
       // quoins up the corner, pilasters between the bays
-      if (st.quoins && cs1) for (let y = 0.95, k = 0; y < H - 0.3; y += 0.36, k++) B.kit(k % 2 ? 'quoin_a' : 'quoin_b', KM(L, y, 0, T, UP, N), stoneK, stoneO);
+      if (st.quoins && cs1) for (let y = 0.95, k = 0; y < H - 0.3; y += 0.36, k++) { const q = P(L, 0, 0), g = 0.92 + 0.14 * fhash(q.x + k * 0.37, q.z, 75); B.kit(k % 2 ? 'quoin_a' : 'quoin_b', KM(L, y, 0, T, UP, N), stoneK, { tile: 1.5, color: [SILLAR[0] * g, SILLAR[1] * g, SILLAR[2] * g], uo: fhash(q.x, q.z, 76 + k), vo: fhash(q.x, q.z, 77 + k) }); }   // (each corner stone a shade of its own)
+      // An order to each storey: base, a shaft of three or four stones with a sunk panel, capital. It stands on the base
+      // course or on the string course broken forward over the pilaster below, and carries the next string course or,
+      // under the main cornice, a short entablature block. Dressed stone, each stone a shade of its own.
       if (st.pilasters && nb > 1) for (let i = 1; i < nb; i++) {
-        const u = m + i * bw, y0 = kind === 'casona' ? 0.97 : 0.05, y1 = H - 0.42;
-        B.kit('pil_base', KM(u, y0, 0, T, UP, N), trimK, trimO);
-        B.kit('pilaster', KM(u, y0 + 0.2, 0, T, UP, N, 1, y1 - y0 - 0.36, 1), trimK, trimO);
-        B.kit('pil_cap', KM(u, y1 - 0.16, 0, T, UP, N), trimK, trimO);
+        const u = m + i * bw, c = P(u, 0, 0), sK = { trim: 'sillar' }, sO = k => { const g = 0.93 + 0.12 * fhash(c.x + k * 0.37, c.z, 71), w = (fhash(c.x, c.z + k * 0.37, 72) - 0.5) * 0.05; return { tile: 1.5, color: [SILLAR[0] * g * (1 + w), SILLAR[1] * g, SILLAR[2] * g * (1 - w)], uo: fhash(c.x, c.z, 73 + k), vo: fhash(c.x, c.z, 74 + k) }; };
+        for (let f = 0; f < bd.floors; f++) {
+          const top = f === bd.floors - 1, lo = f === 0 ? (kind === 'casona' ? 0.97 : 0.05) : FLOOR0 + (f - 1) * FLOORN + 0.088, hi = top ? H - 0.42 : FLOOR0 + f * FLOORN - 0.085;
+          const len = hi - lo - 0.55, n = Math.max(2, Math.round(len / 0.7)), d = len / n;
+          B.kit('pil_base', KM(u, lo, 0, T, UP, N), sK, sO(f * 10));
+          for (let k = 0; k < n; k++) B.kit(k === 0 ? 'pil_drum_lo' : k === n - 1 ? 'pil_drum_hi' : 'pil_drum', KM(u, lo + 0.25 + k * d, 0, T, UP, N, 1, d / 0.7, 1), sK, sO(f * 10 + 1 + k));
+          B.kit('pil_cap', KM(u, hi - 0.3, 0, T, UP, N), sK, sO(f * 10 + 8));
+          if (top) B.kit('pil_entab', KM(u, hi, 0, T, UP, N), sK, sO(f * 10 + 9)); else B.kit('pil_ressaut', KM(u, hi + 0.085, 0, T, UP, N), sK, sO(f * 10 + 9));
+        }
       }
 
       // ---- repairs and wear: newer plaster in patches, plaster fallen off to the brick, stains ---------------------------
@@ -756,7 +768,7 @@ export function architecture(B, rnd, buildings, anchors, rs = null, style = { ba
     const H = bd.H, wo = { color: bd.tint, tile: bd.tile, uo: bd.uo, vo: bd.vo, x: bd.age }, pt = 0.26, py = H + PARAPET / 2;
     B.quad('concrete', V(x0, H, z1), V(x1, H, z1), V(x1, H, z0), V(x0, H, z0), { tile: 3, color: [0.78, 0.76, 0.72] });
     // the parapet's moulded coping (kit), crowned and dripped on both faces
-    const cTrim = { trim: bd.kit.stone ? 'cantera' : 'concrete' }, cO = bd.kit.stone ? { color: [1, 1, 1], tile: 3.2 } : { color: bd.trim, tile: 2.0 };
+    const cTrim = { trim: bd.kit.stone ? 'sillar' : 'concrete' }, cO = bd.kit.stone ? { color: SILLAR, tile: 1.5 } : { color: bd.trim, tile: 2.0 };
     const coping = (cx, cz, sx, sz, y = H + PARAPET) => {
       const along = sz > sx ? new THREE.Vector3(0, 0, 1) : new THREE.Vector3(1, 0, 0), len = Math.max(sx, sz) + 0.04;
       B.kit('coping', new THREE.Matrix4().makeBasis(along.clone().multiplyScalar(len), UP, along.clone().cross(UP)).setPosition(cx, y, cz), cTrim, cO);
@@ -781,7 +793,7 @@ export function architecture(B, rnd, buildings, anchors, rs = null, style = { ba
     const finial = (x, z, y) => { B.box('cantera', x, y + 0.48, z, 0.36, 0.96, 0.36, { tile: 3.2 }); B.box('cantera', x, y + 0.99, z, 0.44, 0.06, 0.44, { tile: 3.2 }); B.geom('cantera', new THREE.SphereGeometry(0.13, 10, 8), new THREE.Matrix4().makeTranslation(x, y + 1.17, z), { uvScale: 0.5 }); };
     function balustrade(cx, cz, sx, sz) {
       const { along, len, Z } = runOf(cx, cz, sx, sz), n = Math.max(1, Math.round(len - 0.4)), ul = (len - 0.4) / n;
-      for (let k = 0; k < n; k++) { const t = -len / 2 + 0.2 + ul * (k + 0.5); B.kit('balustrade', new THREE.Matrix4().makeBasis(along.clone().multiplyScalar(ul), UP, Z.clone()).setPosition(cx + along.x * t, H, cz + along.z * t), { trim: 'cantera' }, { slot: { trim: { color: [1, 1, 1], tile: 3.2 } } }); }
+      for (let k = 0; k < n; k++) { const t = -len / 2 + 0.2 + ul * (k + 0.5); B.kit('balustrade', new THREE.Matrix4().makeBasis(along.clone().multiplyScalar(ul), UP, Z.clone()).setPosition(cx + along.x * t, H, cz + along.z * t), { trim: 'sillar' }, { slot: { trim: { color: SILLAR, tile: 1.5 } } }); }
       for (const t of [-len / 2 + 0.18, len / 2 - 0.18]) finial(cx + along.x * t, cz + along.z * t, H);
     }
     function roofline(cx, cz, sx, sz) {

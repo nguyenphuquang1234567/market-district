@@ -35,7 +35,7 @@ function textureAverages() {
       let out = [0.5, 0.5, 0.5];
       try {
         if (tex.image && drawable(tex.image)) out = read(tex.image);
-        else if (tex.userData?.src) { const img = new Image(); img.src = tex.userData.src; await img.decode(); out = read(img); }
+        else if (tex.userData?.src) { const bmp = await createImageBitmap(await (await fetch(tex.userData.src)).blob()); out = read(bmp); bmp.close?.(); }   // (not Image.decode(): in a page that is not being shown it never settles, and the bake waited on it for good)
       } catch { /* data textures etc. */ }
       cache.set(tex, out);
     }

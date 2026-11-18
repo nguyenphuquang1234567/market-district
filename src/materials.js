@@ -25,11 +25,12 @@ function pbr(id, o = {}) {
 // peel { lo, hi, flat, mean }: the texture is paint flaking off plaster, and the vertex tint (the paint's colour) takes
 // only where its texel is lighter than lo..hi; the plaster showing through keeps its own grey. Over the paint the
 // plaster's grain is evened out by `flat` towards `mean` (the painted texels' average, so the tint still lands on it).
+// stone: the clouding, grain and inclusions of cut stone, in world space (so it runs unbroken over a moulding's pieces).
 // age: the paint's age per building, in the vec3 attribute aAge (the builder's extra attribute, o.x): x how far the sun
 // has bleached it, y how much road dust and rising damp it has taken, z 1 + the height (m) the street floor was repainted
 // to. (1, 1, 1), what anything drawn without it gets, is a common amount of both and no repainting.
-function weather(m, grime = 1, macro = 1, peel = null, age = false) {
-  m.userData.patchKey = `w${grime}_${macro}` + (peel ? `_p${peel.lo}_${peel.hi}_${peel.flat}` : '') + (age ? '_age' : '');
+function weather(m, grime = 1, macro = 1, peel = null, age = false, stone = 0) {
+  m.userData.patchKey = `w${grime}_${macro}` + (peel ? `_p${peel.lo}_${peel.hi}_${peel.flat}` : '') + (age ? '_age' : '') + (stone ? `_s${stone}` : '');
   if (age) m.userData.extra = 'aAge';
   m.userData.patch = shader => {
     shader.vertexShader = shader.vertexShader
@@ -52,6 +53,12 @@ function weather(m, grime = 1, macro = 1, peel = null, age = false) {
           diffuseColor.rgb *= 1.0 - smoothstep(0.50, 0.78, st) * sm * wall * 0.34 * ${macro.toFixed(2)};
           float g = wall * (1.0 - smoothstep(0.05, 0.7 + n2 * 1.1, vWPos.y)) * ${grime.toFixed(2)}${age ? ' * vAge.y * 0.75' : ''};
           diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.66, 0.58, 0.47), g * 0.8);
+          ${stone ? `{   // cut stone: clouds a hand or two across, warmer and cooler, a finer grain, and a few dark inclusions
+            vec2 wr = vec2(wuv.x * 0.8 + wuv.y * 0.6, wuv.y * 0.8 - wuv.x * 0.6);                  // (a second, turned lookup: the two never line up, so no tile shows)
+            float s1 = texture2D(tCloud, wuv * 1.3 + 0.11).g, s2 = texture2D(tCloud, wr * 3.1 + 0.53).r, s3 = texture2D(tCloud, wr * 9.7 + 0.29).b * texture2D(tCloud, wuv * 6.1 + 0.61).g;
+            diffuseColor.rgb *= mix(vec3(1.0), mix(vec3(0.84, 0.83, 0.82), vec3(1.12, 1.09, 1.05), s1) * mix(0.94, 1.05, s2), ${stone.toFixed(2)});
+            diffuseColor.rgb *= 1.0 - smoothstep(0.28, 0.62, s3) * 0.11 * ${stone.toFixed(2)};
+          }` : ''}
         }`);
     if (!peel && !age) return;
     const paint = peel ? `{
@@ -422,6 +429,7 @@ export function createMaterials() {
     terracotta: weather(pbr('terracotta_floor_tiles'), 0, 0.5),                           // the hall's floor, patios
     brick: weather(pbr('castle_brick_02_red'), 0.7, 0.5),                                 // the hall's portal, piers and low walls
     cantera: weather(pbr('red_sandstone_wall'), 0.6, 0.6),                                // pink building stone: surrounds, cornices, steps
+    sillar: weather(pbr('plastered_wall_04', { normalScale: 1.5 }), 0.6, 0.7, null, false, 1),                                  // dressed cantera, for carved members: fine-grained, no wall joints (the joints of a pilaster's stones are modelled)
     shutter_paint: weather(pbr('painted_metal_shutter', { metal: true }), 0.5, 0.6),      // painted roll-up shutters (cortinas)
     roof_tin: pbr('worn_corrugated_iron', { side: THREE.DoubleSide }),                    // corrugated roofing, seen from below too (painted and rusted: no bare metal, so it takes the bounce light)
     sign: new THREE.MeshStandardMaterial({ map: signAtlas(), roughness: 0.78, vertexColors: true }),
@@ -451,7 +459,7 @@ export function createMaterials() {
     w_brick: 'brick', planks: 'wood', shutter_wood: 'wood', door: 'wood', shutter_metal: 'metal', corrugated: 'metal',
     metal_white: 'metal', metal_green: 'metal', metal_plate: 'metal', iron: 'metal', glass: 'glass', burlap: 'fabric',
     ground: 'dirt', bark: 'wood', cable: 'fabric', plastic: 'wood', rubble: 'concrete', gravel: 'dirt', tiles: 'concrete', dark: 'none',
-    cobble: 'concrete', terracotta: 'concrete', brick: 'brick', cantera: 'concrete', shutter_paint: 'metal', roof_tin: 'metal', sign: 'plaster',
+    cobble: 'concrete', terracotta: 'concrete', brick: 'brick', cantera: 'concrete', sillar: 'concrete', shutter_paint: 'metal', roof_tin: 'metal', sign: 'plaster',
     talavera: 'concrete', cloth_papel: 'fabric', cloth_tarp: 'fabric', leaves: 'wood', bulb: 'glass', jar: 'glass', paint: 'plaster', flowers: 'wood', glossy: 'wood', teja: 'concrete',
     room: 'glass', glassblock: 'glass', leaf: 'wood', leaf_mass: 'wood', palm_leaf: 'wood', paper: 'fabric',
   };

@@ -70,6 +70,13 @@ export const VIEWS = {
   sa_arch_close: [4.2, 8.2, 12, 26],
   sv_meter: [4.9, 16.2, 100, 4],                  // an electricity meter on its board
   sv_meter_far: [-3, 16.5, 90, 2],                // and from across the street (the far version)
+  // ---- the casonas' stone pilasters (tools/blender/kit.py)
+  pil_facade: [-14, -63.6, 0, 22],                // a three-storey casona's south front from across the street
+  pil_close: [-9.4, -58.5, 0, 10],                // one pilaster's shaft at arm's length
+  pil_base: [-9.1, -58.3, -22, -12],              // its base on the stone base course
+  pil_cap: [-9.6, -59.6, 0, 62],                  // up at its capital under the cornice
+  pil_main: [-0.4, -52.6, -90, 24],               // the same house on the main street
+  pil_quarter: [46.4, -30.8, 90, 22],             // a casona on Calle del Mercado
 };
 
 const park = G => { for (const b of G.bots.list) { b.alive = false; b.root.visible = false; b.gun.visible = false; b.respawnT = 1e9; } };

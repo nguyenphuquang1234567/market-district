@@ -460,7 +460,7 @@ export function createRenderer(canvas, skyTex, presetName) {
       // out, are large enough to be missed, so only what is culled nearer than that stays out of the far cascade.)
       // Carved stone (balusters, quoins, pilasters, surrounds: three quarters of a million triangles, a third of each
       // cascade's) stays out as well: at the far cascade's ten centimetres a texel its shadows are not resolved.
-      scene.traverse(o => { if (o.isBatchedMesh ? !(o.userData.lod && o.userData.lod < 80) && !String(o.userData.kitLod).startsWith('near') && o.name !== 'batch:cantera' : !o.userData.lod && !String(o.userData.kitLod).startsWith('near')) o.layers.enable(2); });
+      scene.traverse(o => { if (o.isBatchedMesh ? !(o.userData.lod && o.userData.lod < 80) && !String(o.userData.kitLod).startsWith('near') && o.name !== 'batch:cantera' && o.name !== 'batch:sillar' : !o.userData.lod && !String(o.userData.kitLod).startsWith('near')) o.layers.enable(2); });
       const far = csm.lights[csm.lights.length - 1];
       if (csm.lights.length > 2) far.shadow.camera.layers.set(2);
     },
