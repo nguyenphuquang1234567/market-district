@@ -72,7 +72,7 @@ export class Player {
     this.health -= amount; this.hurtT = 0;
     const G = this.G; G.audio.hurt(amount);
     const ang = Math.atan2(from.x - this.pos.x, from.z - this.pos.z) - this.yaw;
-    G.hud.damageFrom(ang); this.punchP += 0.03 + amount * 0.0012; this.punchR += (this.rnd() - 0.5) * 0.06; this.flash = Math.min(1, (this.flash || 0) + 0.45 + amount / 80);
+    G.hud.damageFrom(ang); G.blood?.splash(ang, amount); this.punchP += 0.03 + amount * 0.0012; this.punchR += (this.rnd() - 0.5) * 0.06; this.flash = Math.min(1, (this.flash || 0) + 0.45 + amount / 80);
     if (this.health <= 0) {
       this.health = 0; this.alive = false; this.deadT = 0; this.respawnT = 4; this.deaths++;
       G.throw.dropHeld();
@@ -138,13 +138,13 @@ export class Player {
       else if (surf === 'wood' || surf === 'glass' || surf === 'fabric' || (surf === 'metal' && wh.object.name !== 'iron')) {
         let pv = null, pt = wt + 7, pz = 'body';
         for (const b of foes) { if (!b.alive || b.team === this.team) continue; const h = rayActor(origin, dir, b, pt); if (h && h.t > wt) { pt = h.t; pv = b; pz = h.zone; } }
-        if (pv) { victim = pv; zone = pz; vt = pt; pen = true; G.fx.impact('fabric', origin.clone().addScaledVector(dir, wt + 0.25), dir.clone(), lit, 0.6); }
+        if (pv) { victim = pv; zone = pz; vt = pt; pen = true; G.fx.impact('fabric', origin.clone().addScaledVector(dir, wt + 0.25), dir.clone(), lit, 0.6, false); }
       }
     }
     if (victim) {
       const base = zone === 'head' ? 100 : zone === 'limb' ? 27 : 36, dmg = base * (pen ? 0.3 : 1), p = origin.clone().addScaledVector(dir, vt);
       const killed = victim.damage(dmg, this.pos, this, zone);
-      G.fx.impact('fabric', p, dir.clone().negate(), 0.9, 0.7); G.audio.bodyHit({ x: p.x, y: p.y, z: p.z }, zone, vt < 30);
+      G.blood.hit(victim, p, dir, zone, 0.9); G.audio.bodyHit({ x: p.x, y: p.y, z: p.z }, zone, vt < 30);
       G.hud.hitmarker(killed ? 'kill' : zone === 'head' ? 'head' : pen ? 'weak' : 'hit'); G.audio.ui(zone === 'head' ? 'head' : 'hit');
     }
     if (W.ammo % 3 === 0) G.fx.tracer(muzzle, end, 380);

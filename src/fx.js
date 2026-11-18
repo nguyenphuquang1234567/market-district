@@ -132,12 +132,13 @@ export class FX {
     d.im.setMatrixAt(i, this.m4); d.im.instanceMatrix.needsUpdate = true;
   }
 
-  // Surface-specific bullet impact. lit = 0..1 rough brightness for unlit dust sprites.
-  impact(surf, p, n, lit = 1, big = 1) {
+  // Surface-specific bullet impact. lit = 0..1 rough brightness for unlit dust sprites. mark false: no mark left (the
+  // puff is in the air: a round coming out of the far side of thin cover).
+  impact(surf, p, n, lit = 1, big = 1, mark = true) {
     if (surf === 'none') return;
     const R = this.rnd, col = DUST[surf] || DUST.concrete, L = 0.55 + 0.75 * lit;
     const c = [col[0] * L, col[1] * L, col[2] * L];
-    this.decal(surf, p, n, (surf === 'glass' ? 0.26 : surf === 'wood' ? 0.13 : surf === 'metal' ? 0.07 : 0.14) * (0.8 + R() * 0.5) * big);
+    if (mark) this.decal(surf, p, n, (surf === 'glass' ? 0.26 : surf === 'wood' ? 0.13 : surf === 'metal' ? 0.07 : 0.14) * (0.8 + R() * 0.5) * big);
     const rv = (spread, out) => V(n.x * out + (R() - 0.5) * spread, n.y * out + (R() - 0.5) * spread, n.z * out + (R() - 0.5) * spread);
     if (surf === 'metal') {
       this.glow.add(p, V(0, 0, 0), [6, 4.5, 2.6], 1, 0.28 * big, 0.05);

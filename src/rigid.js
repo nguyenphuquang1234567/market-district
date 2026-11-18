@@ -341,7 +341,7 @@ export class Rigid {
     const J = it.kind === 'rag' ? Math.min(22, 4 + it.mass * 0.7) : Math.min(3.4, 1.2 + it.mass * 0.6);    // bodies get a helped shove so hits read
     it.body.applyImpulseAtPoint({ x: d.x * J, y: d.y * J + (it.kind === 'prop' ? 0.25 : 0), z: d.z * J }, p, true);
     const n = V(h.n.x, h.n.y, h.n.z);
-    G.fx.impact(M[2], p, n, 1, it.kind === 'rag' ? 0.7 : 0.8);
+    if (it.kind === 'rag') G.blood.hit(null, p, d, 'corpse', 1); else G.fx.impact(M[2], p, n, 1, 0.8);
     if (it.kind === 'rag') G.audio.bodyHit({ x: p.x, y: p.y, z: p.z }, it.key === 'head' ? 'head' : 'body', near);      // the fallen, shot again
     else G.audio.impact(it.mat === 'bin' || it.mat === 'can' || it.mat === 'tank' ? 'metal' : it.mat === 'clay' ? 'plaster' : it.mat === 'plastic' ? 'plastic' : M[2], { x: p.x, y: p.y, z: p.z }, near);
     return M[3];

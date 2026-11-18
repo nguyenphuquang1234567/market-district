@@ -1312,7 +1312,7 @@ export class Bots {
     if (victim) {
       const dmg = (zone === 'head' ? 42 : zone === 'limb' ? 13 : 18) * D.dmg * (victim.isPlayer ? 1 : 1.25);
       victim.damage(dmg, b.pos, b, zone);
-      G.fx.impact('fabric', end, dir.clone().negate(), 0.8, 0.6);
+      G.blood.hit(victim, end, dir, zone, 0.8);
       if (!victim.isPlayer) G.audio.bodyHit({ x: end.x, y: end.y, z: end.z }, zone, false);      // (the player feels his own: Player.damage)
     } else if (hitInfo.b) {
       const n = V(hitInfo.nx, hitInfo.ny, hitInfo.nz), s = hitInfo.b.surf;

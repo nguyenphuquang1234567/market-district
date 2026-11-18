@@ -453,6 +453,7 @@ export class Throwables {
       if (by && a !== by && a.team === by.team) dmg *= 0.4;                                             // own side: hurt, rarely killed
       if (dmg < 1) continue;
       const killed = a.damage(dmg, o, by, 'blast');
+      if (dmg > 12) { const c = V(a.pos.x, a.pos.y + 1.05, a.pos.z), d = V(c.x - o.x, c.y - o.y, c.z - o.z); if (d.lengthSq() > 1e-4) G.blood.hit(a, c, d.normalize(), 'blast', 0.8); }   // fragments through a body
       if (by === P && a !== P && a.team !== P.team) { G.hud.hitmarker(killed ? 'kill' : 'hit'); G.audio.ui('hit'); G.stats.hits++; }
     }
     const moved = G.rigid.blast(o, BLAST.shove, BLAST.power);

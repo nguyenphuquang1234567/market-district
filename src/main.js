@@ -6,6 +6,7 @@ import { createMaterials, windUniforms } from './materials.js';
 import { buildWorld } from './world.js';
 import { Weapon } from './weapon.js';
 import { FX } from './fx.js';
+import { Blood } from './blood.js';
 import { Audio } from './audio.js';
 import { Player } from './player.js';
 import { Bots, CARRY } from './bots.js';
@@ -23,7 +24,7 @@ const params = new URLSearchParams(location.search);
 const $ = id => document.getElementById(id);
 const canvas = $('view');
 const DEFAULTS = {
-  sensitivity: 1, fov: 60, adsSens: 1, invertY: false, quality: 'high', difficulty: 'normal', blur: 'low', shake: true, vignette: true, grain: true, chroma: true, bob: true,
+  sensitivity: 1, fov: 60, adsSens: 1, invertY: false, quality: 'high', difficulty: 'normal', blur: 'low', shake: true, vignette: true, grain: true, chroma: true, bob: true, blood: true,
   binds: { forward: 'KeyW', back: 'KeyS', left: 'KeyA', right: 'KeyD', sprint: 'ShiftLeft', crouch: 'KeyC', jump: 'Space', reload: 'KeyR', mode: 'KeyB', inspect: 'KeyF', frag: 'KeyG', smoke: 'KeyQ' },
 };
 const MATCH = { time: 600, score: 30 };
@@ -59,6 +60,7 @@ async function start() {
   G.audio.blocked = (a, b) => !losClear(a, b, world.colliders);
   G.audio.emitters = world.emitters;
   G.fx = new FX(R);
+  G.blood = new Blood(G, R);                                                // what a hit on a body leaves: mist, drops, stains, pools (?blood=0 or the options panel: none)
   G.hud = new HUD(G);
   G.player = new Player(G);
   G.weapon = new Weapon(R, R.camera, { fire: (spread, kickYaw, kickPitch) => G.player.fire(spread, kickYaw, kickPitch), sound: n => G.audio.weapon(n) });
@@ -83,6 +85,7 @@ async function start() {
     const f = R.final, s = G.settings;
     f.uVignette.value = s.vignette ? 0.24 : 0; f.uGrain.value = s.grain ? 0.02 : 0; f.uCA.value = s.chroma ? 0.32 : 0;
     G.blurK = { off: 0, low: 0.55, high: 1.1 }[s.blur] ?? 0.55;
+    G.blood.on = s.blood !== false && params.get('blood') !== '0';
     s.shake = s.shake === true ? 1 : s.shake === false ? 0 : s.shake; s.bob = s.bob === true ? 1 : s.bob === false ? 0 : s.bob;
   };
   const save = () => localStorage.setItem('market.settings', JSON.stringify({ ...G.settings, shake: !!G.settings.shake, bob: !!G.settings.bob }));
@@ -102,7 +105,7 @@ async function start() {
   };
   function resetMatch() {
     G.score = [0, 0]; G.timeLeft = MATCH.time; G.time = 0; G.stats = { shots: 0, hits: 0 };
-    G.fx.reset(); G.bots.reset(); G.throw.reset(); G.rigid.reset(); G.player.kills = G.player.deaths = 0;
+    G.fx.reset(); G.blood.reset(); G.bots.reset(); G.throw.reset(); G.rigid.reset(); G.player.kills = G.player.deaths = 0;
     $('feed').innerHTML = ''; G.hud.feed = []; G.hud.pings.clear();
     G.player.spawn(world.spawns[0][1]);
     G.matchLive = true;
@@ -222,6 +225,7 @@ async function start() {
     G.throw.update(dt);
     G.rigid.step(dt);
     G.fx.update(dt, R.camera, (p, v) => G.audio.casing({ x: p.x, y: p.y, z: p.z }, v));
+    G.blood.update(dt);
     G.hud.update(dt);
     const P = G.player, low = P.health < 35 ? (35 - P.health) / 35 : 0;
     G.audio.setListener(R.camera, dt, P.alive ? P.health : 100, P.interior && ceilingAt(P.pos.x, P.pos.z, P.eyeY, 0.2, world.colliders, OVERHANG) < P.eyeY + 3.2 ? 1 : 0);   // (a balcony overhead is no room)
