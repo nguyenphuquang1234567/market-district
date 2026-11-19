@@ -327,14 +327,25 @@ Key bindings live in the same saved settings object (`binds`, including `frag` a
   elbows with anatomical limits, limited ball joints with a little muscle tone elsewhere, a shove from the round that
   killed. The rifle drops as its own body. Bodies react to further hits, and when the soldier respawns the body and rifle
   are left behind as a static mesh (the six most recent).
-- **Audio** — almost every sound is modelled, not recorded: 96 sounds in 280 takes are computed at boot (about 0.3 s) from
+- **Audio** — almost every sound is modelled, not recorded: 109 sounds in 348 takes are computed at boot (about half a second) from
   physical ingredients (blast pulse, filtered turbulence, modal ringing, grain scatter) — the rifle from behind the sights
   (Saltline's rifle, ported from that earlier game step for step and checked to come out sample-identical: crack, a thump
   gliding down from 160 Hz, the report's body and bark, the bolt carrier back and home, with its own outdoor and indoor
   tails, played at most once each 0.28 s through a burst), other soldiers' rifles (the same round without the action
   within 20 m, then the reports at middle and long range), supersonic cracks, ricochets, strikes on eight materials, boots on six surfaces, rifle
   handling, brass, eleven prop materials, body falls, pin and lever, grenade and canister knocks, bursts at three ranges,
-  falling debris, the canister's pop and hiss. A soldier going down has his own set: the round going into him (cloth and
+  falling debris, the canister's pop and hiss. The reload (`src/reload-foley.js`) is built part by part from one rifle
+  whose modes are drawn once: the forged lower round its magazine well, the upper with the barrel ringing in its
+  extension, the handguard, the carrier group, the magazine catch and the bolt catch, the buffer's weights and the
+  receiver extension, a polymer magazine and the brass in it, the sling's loop, a cordura pouch, each a bank of modes
+  driven by contact pulses as long as the contact would last (about 150 µs for the carrier on the barrel extension, most
+  of a millisecond for a magazine seating), by the micro-impacts and grit of one surface sliding over another, and by a
+  gloved palm; the buffer spring twangs as a loop of dispersive allpasses, and sleeves and pouch rustle by the arm's
+  speed. Eleven sounds in four or five stereo takes each: the rifle lifted, the release pressed, the magazine stripped
+  (an empty one's spring jumping instead of its rounds shifting), stowed, a full one drawn from the pouch, seated with the
+  catch snapping into the notch, tapped and tugged, or after an empty one the bolt catch slapped and the carrier slamming
+  home with the round stripped and the bolt locking, and the rifle settled back; each placed so its click lands on the
+  frame of the motion it belongs to. Other soldiers' reloads play the same takes in one channel from where they stand. A soldier going down has his own set: the round going into him (cloth and
   body, the plate in his vest, the helmet); his last sound, which is a real recording — 52 clips of men screaming, crying out,
   dying and groaning from openly licensed packs (`assets/audio/voices.wav`, credits in `ASSETS.md`; a modelled voice stands in
   if the file is missing): mostly a scream or a death cry, otherwise a short cry of pain or a groan, and from a head shot a cry
@@ -730,6 +741,9 @@ In the browser console, with the dev server running:
   player hears through a second copy of the audio engine on an `OfflineAudioContext` to a WAV in `captures/` (HRTF, delays,
   occlusion, reflections, reverbs, ducking and the master chain all included). `G.audio.stats().played` counts every sound
   started, so `G.report()` shows which ones a live session actually used.
+- `node tools/reload-probe.mjs` — renders the modelled reload outside the browser: a reload with rounds left and an
+  empty one laid out at the moments `weapon.js` plays them, and every take back to back, as WAVs with spectrograms in
+  `captures/audio/`; prints the bake time and, per sound, its level, band balance and where its click falls.
 - `python3 tools/build-voices.py` — downloads the recorded voice and body-fall packs listed in `ASSETS.md` and rebuilds
   `assets/audio/voices.wav` and `voices.json` (needs ffmpeg, bsdtar and numpy).
 
@@ -788,10 +802,11 @@ src/throwables.js     grenade and smoke canister: models, hands, throw, fuzes, b
 src/smoke.js          lit smoke / dust / fire volumes, the smoke-screen simulation, sight through smoke
 src/sounds.js         modelled sound library (pure JS, computed at boot)
 src/saltline-rifle.js the rifle and its tails, ported from Saltline
+src/reload-foley.js   the reload, modelled part by part, and when each of its sounds plays
 src/audio.js          audio engine: propagation, occlusion, reflections, reverbs, mix
 src/hud.js            HUD and menus
 src/selftest.js       scripted checks and capture set
-tools/                asset downloader, static server, native window (tools/shell), audio-report.mjs, death-probe.js, build-voices.py,
+tools/                asset downloader, static server, native window (tools/shell), audio-report.mjs, reload-probe.mjs, death-probe.js, build-voices.py,
                       locomotion-probe.js, perf-probe.js, clip-probe.js, compare-shots.js, compare-montage.py, encode-ktx2.mjs,
                       blender/kit.py (the architectural kit), blender/props.py (the detail pass), blender/arch.py (the architecture pass), detail-check.js,
                       layout-fingerprint.js, compare-fingerprints.mjs

@@ -364,11 +364,11 @@ export class Audio {
   cloth(v = 1) { if (this.ctx) this._play('cloth', { gain: 0.26 * v }); }
   weapon(name) {
     if (!this.ctx) return;
-    if (name === 'cloth') return this.cloth(1.2);
-    this._play(name, { bus: this.bus.weapon, gain: { dry: 0.5, select: 0.4, magout: 0.55, magin: 0.6, magtap: 0.5, bolt: 0.7 }[name] ?? 0.5, jitter: 0.03, rev: 0.08, er: 0.05 });
+    const rl = name.startsWith('rl_');                                       // the reload (reload-foley.js) comes levelled as it was made
+    this._play(name, { bus: this.bus.weapon, gain: rl ? 1 : { dry: 0.5, select: 0.4 }[name] ?? 0.5, jitter: rl ? 0.012 : 0.03, rev: 0.08, er: 0.05 });
   }
-  // Another soldier's rifle handling, heard from where they are.
-  foleyAt(name, pos, gain = 0.7) { if (!this.ctx) return; const o = { bus: this.bus.world, ref: 1.6, gain, rev: 0.1 }; if (this._carry(pos, o) < 25) this._play(name, o); }
+  // Another soldier's rifle handling, heard from where they are (a reload's sounds in their one-channel takes).
+  foleyAt(name, pos, gain = 0.7) { if (!this.ctx) return; const o = { bus: this.bus.world, ref: 1.6, gain, rev: 0.1 }; if (this._carry(pos, o) < 25) this._play(this.S[name + '_mono'] ? name + '_mono' : name, o); }
 
   // ---- ui / state ---------------------------------------------------------------------------------------------------------------
   ui(name) {

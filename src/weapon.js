@@ -6,6 +6,7 @@ import { assets } from './assets.js';
 import { canvasTexture, rng, clamp, lerp, damp, smooth } from './util.js';
 import { cap, field, polygonise } from './sdf.js';
 import { MuzzleFlash } from './muzzleflash.js';
+import { RELOAD_BOLT, RELOAD_CUES, RELOAD_LEAD } from './reload-foley.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 export const MUZZLE = V(0, -0.070, -0.552);
@@ -314,7 +315,6 @@ function reticleMaterial() {
 // Low-detail world model shared by the bots.
 let worldGun = null;
 export const BOT_RELOAD_DURATION = 2.4;
-export const BOT_MAG_OUT = 0.48;
 export const BOT_MAG_IN = 1.37;
 
 export function botReloadPose(remaining) {
@@ -351,7 +351,7 @@ const RELOAD = {
   lh: [[0, 0], [0.1, 0], [0.34, 1], [1.42, 1], [1.98, 0]],         // return to the handguard as the rifle settles
   mag: [[0, 0], [0.36, 0], [0.52, -0.2], [0.94, -0.2], [1.3, -0.016], [1.4, 0]],
 };
-const RELOAD_BOLT_RELEASE = 1.43;
+const RELOAD_BOLT_RELEASE = RELOAD_BOLT;                       // the bolt catch slapped on the hand's way back to the handguard
 const RESERVE_CAPACITY = 120;
 const RESERVE_REFILL = 30;
 const RESERVE_REFILL_SECONDS = 30;
@@ -520,7 +520,7 @@ export class Weapon {
       const hp = this.lh.position.copy(this.lhMag).add(this.mag.position).multiplyScalar(w).addScaledVector(this.lhGrip, 1 - w);   // hand rides the magazine
       hp.y -= Math.sin(w * Math.PI) * 0.03; this.lh.quaternion.identity().slerp(this.lhMagQ, w);
       const cue = (at, name) => { if (t0 < at && t >= at) this.cb.sound(name); };
-      cue(0.02, 'cloth'); cue(0.36, 'magout'); cue(1.3, 'magin'); cue(1.42, 'magtap'); if (this.reloadEmpty) cue(RELOAD_BOLT_RELEASE, 'bolt');
+      for (const [at, part, empty] of RELOAD_CUES) { const name = this.reloadEmpty ? empty : part; if (name) cue(at - (RELOAD_LEAD[name] ?? 0), name); }   // each sound timed by the motion it belongs to
       if (!this.reloaded && t >= 1.32) { const take = Math.min(this.magSize - this.ammo, this.reserve); this.ammo += take; this.reserve -= take; this.reloaded = true; }
       if (t >= this.reloadLen) { this.reloadT = -1; this.lh.position.copy(this.lhGrip); this.lh.quaternion.identity(); this.mag.position.set(0, 0, 0); this.mag.visible = true; }
     } else if (this.inspectT >= 0) {

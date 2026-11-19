@@ -2,7 +2,8 @@
 import * as THREE from 'three';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { assets } from './assets.js';
-import { BOT_MAG_IN, BOT_MAG_OUT, BOT_RELOAD_DURATION, MUZZLE, gunMaterials, worldGunMesh } from './weapon.js';
+import { BOT_RELOAD_DURATION, MUZZLE, gunMaterials, worldGunMesh } from './weapon.js';
+import { BOT_RELOAD_CUES, RELOAD_LEAD } from './reload-foley.js';
 import { poseBotRifle, setUpBotRifle } from './bot-rifle.js';
 import { STEP, STRIDE_STEP, resolveXZ, groundAt, rayBoxes, losClear } from './physics.js';
 import { rng, clamp, lerp, damp, smooth, angDiff } from './util.js';
@@ -561,8 +562,10 @@ class Bot {
       const before = BOT_RELOAD_DURATION - this.reloadT;
       this.reloadT = Math.max(0, this.reloadT - dt);
       const elapsed = BOT_RELOAD_DURATION - this.reloadT;
-      if (before < BOT_MAG_OUT && elapsed >= BOT_MAG_OUT) G.bots.sound(this, 'magout');
-      if (before < BOT_MAG_IN && elapsed >= BOT_MAG_IN) G.bots.sound(this, 'magin');
+      for (const [at, part, empty] of BOT_RELOAD_CUES) {                 // (ammo stays at what was left until the new magazine is in)
+        const kind = this.ammo <= 0 ? empty : part, t = kind ? at - (RELOAD_LEAD[kind] ?? 0) : -1;
+        if (kind && before < t && elapsed >= t) G.bots.sound(this, kind);
+      }
       if (this.reloadT === 0) this.ammo = 30;
     }
     this.think -= dt;

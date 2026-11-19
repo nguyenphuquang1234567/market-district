@@ -3,6 +3,7 @@
 // so the same code can be run and measured outside the browser.
 import { rng } from './util.js';
 import { saltlineRifle } from './saltline-rifle.js';
+import { reloadFoley } from './reload-foley.js';
 
 export function bakeSounds(SR = 48000, seed = 9001) {
   const R = rng(seed), rr = (a, b) => a + (b - a) * R(), TAU = Math.PI * 2, N = s => Math.ceil(s * SR);
@@ -115,10 +116,8 @@ export function bakeSounds(SR = 48000, seed = 9001) {
   const one = f => [f()];
   S.dry = one(() => { const x = new Float32Array(N(0.08)); add(x, burst(0.01, 'hp', 3000, 0.7, 0.0016), 1); modes(x, [[1850, 0.006, 1], [3900, 0.004, 0.5]], 0.6); return norm(x, 0.8); });
   S.select = one(() => { const x = new Float32Array(N(0.12)); for (const at of [0, 0.034]) { add(x, burst(0.008, 'hp', 3500, 0.7, 0.0012), 0.8, at); modes(x, [[2900, 0.005, 1], [4700, 0.004, 0.5]], 0.5, at); } return norm(x, 0.7); });
-  S.magout = one(() => { const x = new Float32Array(N(0.3)); add(x, burst(0.008, 'hp', 3200, 0.7, 0.0015), 0.9); modes(x, [[2200, 0.008, 1]], 0.5); add(x, burst(0.09, 'bp', 2100, 1.2, 0.06, 0.04), 0.35, 0.02); modes(x, [[300, 0.02, 1], [520, 0.018, 0.7], [1700, 0.01, 0.4]], 0.6, 0.1); fade(x); return norm(x, 0.8); });
-  S.magin = one(() => { const x = new Float32Array(N(0.3)); add(x, burst(0.07, 'bp', 1900, 1.2, 0.05, 0.03), 0.35); add(x, burst(0.012, 'hp', 2400, 0.7, 0.002), 1, 0.07); modes(x, [[260, 0.03, 1], [430, 0.024, 0.8], [1900, 0.012, 0.5], [3300, 0.008, 0.3]], 0.7, 0.07); fade(x); return norm(x, 0.85); });
-  S.magtap = one(() => { const x = new Float32Array(N(0.2)); add(x, burst(0.1, 'lp', 260, 0.8, 0.03), 1); modes(x, [[380, 0.025, 1], [1500, 0.008, 0.3]], 0.5); fade(x); return norm(x, 0.8); });
-  S.bolt = one(() => { const x = new Float32Array(N(0.35)); add(x, burst(0.012, 'hp', 2000, 0.7, 0.0028), 1); modes(x, [[520, 0.03, 1], [1300, 0.03, 0.8], [2700, 0.02, 0.6], [4100, 0.014, 0.4]], 0.6); sweep(x, 640, 590, 0.07, 0.12, 0.004, 0.2); add(x, burst(0.05, 'bp', 1700, 1.5, 0.014), 0.3, 0.018); fade(x); return norm(x, 0.9); });
+  // the reload: modelled part by part in reload-foley.js (rl_*, stereo; rl_*_mono for other soldiers' reloads)
+  Object.assign(S, reloadFoley(SR));
   S.casing = many(4, () => { const v = rr(0.88, 1.14), x = new Float32Array(N(0.3)); modes(x, [[4100 * v, 0.05, 1], [6350 * v, 0.04, 0.8], [9200 * v, 0.025, 0.5], [11800 * v, 0.014, 0.3]], 0.5); add(x, burst(0.004, 'hp', 4000, 0.7, 0.0008), 0.6); fade(x); return norm(x, 0.7); });
 
   // ---- loose objects knocked about, by material -----------------------------------------------------------------------------------
