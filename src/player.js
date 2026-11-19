@@ -148,7 +148,7 @@ export class Player {
       G.hud.hitmarker(killed ? 'kill' : zone === 'head' ? 'head' : pen ? 'weak' : 'hit'); G.audio.ui(zone === 'head' ? 'head' : 'hit');
     }
     if (W.ammo % 3 === 0) G.fx.tracer(muzzle, end, 380);
-    G.fx.muzzleSmoke(muzzle, dir, W.heat);
+    G.fx.muzzleSmoke(muzzle, dir, W.heat); if (W.flashKind > 0.9 && G.fx.rnd() < 0.5) G.fx.muzzleSparks(muzzle, dir, W.flashKind);
     const ej = W.ejectWorld(V()), camRight = V(1, 0, 0).applyQuaternion(cam.quaternion);
     G.fx.casing(ej, V(camRight.x * (1.6 + R()) + this.vel.x, 1.4 + R() * 0.9, camRight.z * (1.6 + R()) + this.vel.z).addScaledVector(dir, -0.6 - R() * 0.5), this.pos.y);
     if (this.pos.y + 1.4 - muzzle.y > 0.9 || this.crouch > 0.5) G.fx.kickDust(V(muzzle.x + dir.x * 0.6, this.pos.y + 0.03, muzzle.z + dir.z * 0.6), this.inSun ? 1 : 0.3);

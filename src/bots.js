@@ -1305,7 +1305,7 @@ export class Bots {
     const ph = G.rigid.ray(eye, dir, tMax);                                 // loose clutter and the fallen in the line of fire
     if (ph && G.rigid.bulletHit(ph, eye, dir, false)) { tMax = ph.t; victim = null; hitInfo.b = null; }
     const end = eye.clone().addScaledVector(dir, tMax), cam = G.R.camera.position, dCam = cam.distanceTo(m);
-    G.fx.glow.add(m, V(0, 0, 0), [7, 5, 2.6], 1, 0.34, 0.05); G.fx.muzzleSmoke(m, dir, 0.3);
+    const bright = G.flashes.at(m, dir); G.fx.muzzleSmoke(m, dir, 0.3); if (bright > 0.9 && dCam < 40 && G.fx.rnd() < 0.4) G.fx.muzzleSparks(m, dir, bright);
     if (R() < 0.6) G.fx.tracer(m, end, 300);
     G.audio.shotAt({ x: m.x, y: m.y, z: m.z });
     this.hear(b.pos, 55, b.team); if (b.team !== G.player.team) G.hud.ping(b, 2.2);

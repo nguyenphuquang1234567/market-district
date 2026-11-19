@@ -121,6 +121,8 @@ export class Blood {
   }
 
   later(t, fn) { this.queue.push({ t, fn }); }
+  // Boot: one stain of each kind drawn with the frame that warms every pipeline, so the first hit does not wait on one.
+  warm(on) { for (const d of Object.values(this.sets)) d.im.count = on ? 1 : 0; }
 
   // the drawn meshes that come within r of c (and are the version on screen): what a handful of rays is then cast at
   nearMeshes(c, r) {

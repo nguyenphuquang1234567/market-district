@@ -5,6 +5,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { assets } from './assets.js';
 import { canvasTexture, rng, clamp, lerp, damp, smooth } from './util.js';
 import { cap, field, polygonise } from './sdf.js';
+import { MuzzleFlash } from './muzzleflash.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 export const MUZZLE = V(0, -0.070, -0.552);
@@ -309,20 +310,6 @@ function reticleMaterial() {
   });
 }
 
-function flashTexture() {
-  const R = rng(9);
-  return canvasTexture(256, 256, (g, w) => {
-    g.clearRect(0, 0, w, w); g.globalCompositeOperation = 'lighter';
-    for (let i = 0; i < 7; i++) {
-      const a = (i / 7) * 6.283 + R() * 0.5, len = 60 + R() * 62, wd = 10 + R() * 16;
-      g.save(); g.translate(128, 128); g.rotate(a);
-      const gr = g.createLinearGradient(0, 0, len, 0); gr.addColorStop(0, 'rgba(255,240,200,0.9)'); gr.addColorStop(0.35, 'rgba(255,170,70,0.55)'); gr.addColorStop(1, 'rgba(255,90,20,0)');
-      g.fillStyle = gr; g.beginPath(); g.moveTo(0, -wd / 2); g.quadraticCurveTo(len * 0.6, -wd * 0.3, len, 0); g.quadraticCurveTo(len * 0.6, wd * 0.3, 0, wd / 2); g.fill(); g.restore();
-    }
-    const c = g.createRadialGradient(128, 128, 0, 128, 128, 46); c.addColorStop(0, 'rgba(255,255,245,1)'); c.addColorStop(0.4, 'rgba(255,210,130,0.7)'); c.addColorStop(1, 'rgba(255,120,30,0)');
-    g.fillStyle = c; g.fillRect(0, 0, w, w);
-  });
-}
 
 // Low-detail world model shared by the bots.
 let worldGun = null;
@@ -408,11 +395,7 @@ export class Weapon {
     this.lhMag = V(-0.0125, -0.225, -0.070);
     this.lhMagQ = new THREE.Quaternion().setFromRotationMatrix(basis(V(0, -0.94, -0.342), V(0, 0.342, -0.94), V(1, 0, 0), V(0, 0, 0)).multiply(basis(lX, lY, lZ, V(0, 0, 0)).transpose()));
     // muzzle flash + light
-    const ft = flashTexture();
-    this.flash = new THREE.Group(); this.flash.position.copy(MUZZLE); gun.add(this.flash);
-    const fm = new THREE.MeshBasicMaterial({ map: ft, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, color: new THREE.Color(7, 5.2, 3.2), fog: false, toneMapped: false });
-    for (let i = 0; i < 3; i++) { const q = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), fm); if (i === 1) q.rotation.y = Math.PI / 2; if (i === 2) { q.rotation.y = Math.PI / 2; q.rotation.x = Math.PI / 2; } q.userData.noAO = true; q.frustumCulled = false; q.renderOrder = 12; this.flash.add(q); }
-    this.flash.visible = false; this.flash.userData.noAO = true;
+    this.fxRnd = rng(31337); this.flashFx = new MuzzleFlash(); this.flash = this.flashFx.group; this.flash.position.copy(MUZZLE); gun.add(this.flash);
     this.light = new THREE.PointLight(new THREE.Color(1, 0.72, 0.42), 0, 14, 2); this.light.position.copy(MUZZLE).add(V(0, 0.02, -0.12)); gun.add(this.light);
     R.setupTree(root);
 
@@ -494,13 +477,14 @@ export class Weapon {
       this.kickRot.x = Math.min(0.018, this.kickRot.x + 0.006 * hipKick);
       this.shots = Math.min(30, this.shots + 1); this.heat = Math.min(1, this.heat + 0.035);
       this.kickV += lerp(1.25, 0.85, this.ads); this.kickRot.z += (R() - 0.5) * lerp(0.03, 0.008, this.ads); this.kickRot.y += (R() - 0.5) * lerp(0.012, 0.002, this.ads);
-      this.flashT = 0.045; this.boltT = 0;
-      const s = lerp(0.2, 0.3, R()); this.flash.scale.set(s, s, s * 1.6); this.flash.rotation.z = R() * 6.28; this.flash.visible = R() > 0.12;
+      this.flashT = 0.05; this.boltT = 0;
+      R(); R(); R();                                                          // (the old flash drew three numbers here: the stream the recoil also draws from keeps its place)
+      this.flashKind = this.flashFx.fire(this.fxRnd, lerp(0.74, 0.5, this.ads));   // (smaller through the optic: it sits just under the line of sight)
       if (this.ammo === 0 && this.reserve > 0) this.autoReload = 0.28;
     }
     if (this.autoReload > 0) { this.autoReload -= dt; if (this.autoReload <= 0 && this.ammo === 0) this.startReload(); }
-    this.flashT -= dt; if (this.flashT < 0.02) this.flash.visible = false;
-    this.light.intensity = this.flashT > 0 ? 9 * (this.flashT / 0.045) : 0;
+    this.flashT -= dt; this.flashFx.update(dt);
+    this.light.intensity = 10 * this.flashFx.level;
     this.boltT = Math.min(1, this.boltT + dt / 0.07);
     const boltLocked = this.reloading ? this.reloadEmpty && this.reloadT < RELOAD_BOLT_RELEASE : this.ammo === 0;
     this.bolt.position.z = Math.sin(this.boltT * Math.PI) * 0.038 + (boltLocked ? 0.036 : 0);

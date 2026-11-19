@@ -173,10 +173,16 @@ export class FX {
     }
   }
 
+  // The gas behind the round: a quick grey jet down the bore that slows and spreads, thicker from a hot barrel.
   muzzleSmoke(p, dir, heat) {
     const R = this.rnd;
-    for (let i = 0; i < 2; i++) this.dust.add(p, V(dir.x * (1.5 + R() * 2) + (R() - 0.5) * 0.4, dir.y * 2 + 0.25 + R() * 0.3, dir.z * (1.5 + R() * 2) + (R() - 0.5) * 0.4), [0.8, 0.8, 0.8], 0.10 + heat * 0.12, 0.05, 0.35 + R() * 0.3, -0.5, 4, 0.5);
+    for (let i = 0; i < 4; i++) { const s = 1.2 + i * 1.5 + R() * 1.2; this.dust.add(p, V(dir.x * s + (R() - 0.5) * 0.5, dir.y * s + 0.2 + R() * 0.3, dir.z * s + (R() - 0.5) * 0.5), [0.78, 0.77, 0.75], 0.07 + heat * 0.1 + R() * 0.04, 0.035 + i * 0.012, 0.3 + R() * 0.3 + i * 0.05, -0.45, 4.2, 0.55 + i * 0.12); }
     this.glow.add(p, V(dir.x * 6, dir.y * 6, dir.z * 6), [3, 1.6, 0.6], 0.6, 0.05, 0.04);
+  }
+  // Unburnt powder: a few grains still alight, thrown a metre or two past the muzzle. bright: how big the flash was.
+  muzzleSparks(p, dir, bright = 1) {
+    const R = this.rnd, n = Math.round((1 + R() * 4) * bright);
+    for (let i = 0; i < n; i++) { const s = 14 + R() * 30; this.glow.add(p, V(dir.x * s + (R() - 0.5) * 7, dir.y * s + (R() - 0.5) * 7 + 1, dir.z * s + (R() - 0.5) * 7), [6.5, 3.4 + R() * 1.4, 1.1], 1, 0.009 + R() * 0.009, 0.05 + R() * R() * 0.2, 9.8, 5); }
   }
   barrelSmoke(p, heat) { this.dust.add(p, V((this.rnd() - 0.5) * 0.08, 0.28 + this.rnd() * 0.15, (this.rnd() - 0.5) * 0.08), [0.82, 0.82, 0.82], 0.06 * heat, 0.03, 0.9, -0.1, 0.8, 0.07); }
   kickDust(p, lit) { for (let i = 0; i < 3; i++) this.dust.add(p, V((this.rnd() - 0.5) * 1.2, 0.2 + this.rnd() * 0.4, (this.rnd() - 0.5) * 1.2), [0.62 * (0.5 + lit * 0.6), 0.55 * (0.5 + lit * 0.6), 0.44 * (0.5 + lit * 0.6)], 0.14, 0.2, 0.9, -0.05, 2.2, 0.6); }

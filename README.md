@@ -208,7 +208,15 @@ Key bindings live in the same saved settings object (`binds`, including `frag` a
   driven by surface curvature, and light dust on upward faces. Gloved hands are modelled as smooth distance-field surfaces
   with knuckle guards, cuff straps and stitched seams; the support-hand grip is solved so each finger joint rests on the
   handguard. ADS, semi/auto, recoil pattern, inspect, wall lowering, muzzle flash and light, casings, tracers, per-surface
-  impacts and decals, light penetration and ricochets. Reloads bring the rifle up, the hand strips and seats the magazine,
+  impacts and decals, light penetration and ricochets. The muzzle flash (`src/muzzleflash.js`) is drawn by a shader
+  from a seed, so no two shots are the same picture: a white-hot core at the crown, a tongue of burning gas down the
+  bore, pinched at the muzzle and bulging a hand's length out, and a short jet through each of the birdcage flash
+  hider's five slots, up and to the sides (the bottom is closed). One bright frame and a larger, much fainter second;
+  one shot in eight is dim and one in eight is the big secondary flash; some throw a few grains of burning powder, and
+  the gas goes out as a quick grey jet. It is three cards on the muzzle (one across the bore for the view from behind
+  or in front, two along it for the view from the side) and a core sprite, each faded as it turns edge-on or would
+  blur over the target; smaller from the hip than a bot's, smaller again through the optic. The bots' rifles draw
+  from a pool of the same flashes, and the one nearest the eye carries a light, as the player's does. Reloads bring the rifle up, the hand strips and seats the magazine,
   and the bolt closes as the support hand returns after an empty reload.
 - **Blood** — a round into a body (`src/blood.js`) throws a short red mist at the wound, back towards the shooter and
   more of it out of the far side, and drops along the round's flight that fall under gravity. What they reach is
@@ -775,6 +783,7 @@ src/physics.js        box collision, rays, navigation grid + A* with wall cleara
 src/rigid.js          rigid-body world: loose props, pushing, bullets, ragdolls, dropped rifles, corpses
 src/fx.js             particles, decals, tracers, casings, blast sparks and debris
 src/blood.js          blood: mist and drops at a wound, stains on walls and ground, trails, pools, the lens
+src/muzzleflash.js    the muzzle flash: a seeded flame shader on three cards, and the pool the bots' rifles share
 src/throwables.js     grenade and smoke canister: models, hands, throw, fuzes, burst, damage, fragments
 src/smoke.js          lit smoke / dust / fire volumes, the smoke-screen simulation, sight through smoke
 src/sounds.js         modelled sound library (pure JS, computed at boot)

@@ -7,6 +7,7 @@ import { buildWorld } from './world.js';
 import { Weapon } from './weapon.js';
 import { FX } from './fx.js';
 import { Blood } from './blood.js';
+import { FlashPool } from './muzzleflash.js';
 import { Audio } from './audio.js';
 import { Player } from './player.js';
 import { Bots, CARRY } from './bots.js';
@@ -60,6 +61,7 @@ async function start() {
   G.audio.blocked = (a, b) => !losClear(a, b, world.colliders);
   G.audio.emitters = world.emitters;
   G.fx = new FX(R);
+  G.flashes = new FlashPool(R.scene, R.camera);                                         // muzzle flashes for the bots' rifles (the player's hangs on his own)
   G.blood = new Blood(G, R);                                                // what a hit on a body leaves: mist, drops, stains, pools (?blood=0 or the options panel: none)
   G.hud = new HUD(G);
   G.player = new Player(G);
@@ -105,7 +107,7 @@ async function start() {
   };
   function resetMatch() {
     G.score = [0, 0]; G.timeLeft = MATCH.time; G.time = 0; G.stats = { shots: 0, hits: 0 };
-    G.fx.reset(); G.blood.reset(); G.bots.reset(); G.throw.reset(); G.rigid.reset(); G.player.kills = G.player.deaths = 0;
+    G.fx.reset(); G.flashes.reset(); G.blood.reset(); G.bots.reset(); G.throw.reset(); G.rigid.reset(); G.player.kills = G.player.deaths = 0;
     $('feed').innerHTML = ''; G.hud.feed = []; G.hud.pings.clear();
     G.player.spawn(world.spawns[0][1]);
     G.matchLive = true;
@@ -225,7 +227,7 @@ async function start() {
     G.throw.update(dt);
     G.rigid.step(dt);
     G.fx.update(dt, R.camera, (p, v) => G.audio.casing({ x: p.x, y: p.y, z: p.z }, v));
-    G.blood.update(dt);
+    G.blood.update(dt); G.flashes.update(dt);
     G.hud.update(dt);
     const P = G.player, low = P.health < 35 ? (35 - P.health) / 35 : 0;
     G.audio.setListener(R.camera, dt, P.alive ? P.health : 100, P.interior && ceilingAt(P.pos.x, P.pos.z, P.eyeY, 0.2, world.colliders, OVERHANG) < P.eyeY + 3.2 ? 1 : 0);   // (a balcony overhead is no room)
@@ -324,7 +326,7 @@ async function start() {
   R.zones = world.zones;
   R.onCull = (p, k) => G.rigid.cullProps(p, 70 * k);  // loose clutter out of reach is not drawn
   G.weapon.root.visible = true; for (const b of G.bots.list) { b.root.visible = true; b.gun.visible = true; }
-  G.throw.warm(true);
+  G.throw.warm(true); G.flashes.warm(true, [G.weapon.flashFx]); G.blood.warm(true);
   // Compile for the target the scene is really drawn into (linear half-float, tone mapped later): compiled for the
   // screen, a material gets a tone-mapped sRGB program nothing uses and still compiles on first sight in play. Twice:
   // with the first-person weapon shown, and hidden as while the player is dead, which also hides its muzzle light,
@@ -350,7 +352,7 @@ async function start() {
   });
   R.render(0.016, 0);                                  // warm every pipeline before the first interactive frame
   G.weapon.root.visible = false; for (const b of G.bots.list) { b.root.visible = false; b.gun.visible = false; }
-  G.throw.warm(false); G.throw.puffs.reset();
+  G.throw.warm(false); G.throw.puffs.reset(); G.flashes.warm(false, [G.weapon.flashFx]); G.blood.warm(false);
   $('boot').remove(); performance.mark('boot:ready');
   // Load-time phases in ms since navigation: assets fetched and decoded, district built, light loaded or baked, shaders and textures warmed.
   G.bootTimes = () => Object.fromEntries(['assets', 'world', 'gi', 'ready'].map(k => [k, Math.round(performance.getEntriesByName('boot:' + k)[0]?.startTime ?? -1)]));
