@@ -58,7 +58,7 @@ async function start() {
   await new Promise(r => setTimeout(r, 30));
   const gi = params.get('nogi') ? 'off' : await setupGI(R, world, M, p => { $('bootText').textContent = `Baking light ${Math.round(p * 100)}%`; }, !!params.get('bake'), !!params.get('stalegi'));   // (?nogi=1: no indirect light, for a quick look while the geometry changes; ?stalegi=1: the last bake, even if out of date)
   performance.mark('boot:gi');
-  const G = window.G = { R, M, world, settings, THREE, gi, time: 0, playing: false, matchLive: false, score: [0, 0], timeLeft: MATCH.time, stats: { shots: 0, hits: 0 } };
+  const G = window.G = { R, M, world, settings, THREE, gi, match: MATCH, time: 0, playing: false, matchLive: false, score: [0, 0], timeLeft: MATCH.time, stats: { shots: 0, hits: 0 } };
   G.audio = new Audio();
   G.audio.cast = (ox, oy, oz, dx, dy, dz, max) => rayBoxes(ox, oy, oz, dx, dy, dz, max, world.colliders, null, dy > 0.5 ? OVERHANG : 0);       // echoes and occlusion use the real walls (looking up, balconies are not a ceiling)
   G.audio.blocked = (a, b) => !losClear(a, b, world.colliders);
@@ -112,7 +112,7 @@ async function start() {
   function resetMatch() {
     G.score = [0, 0]; G.timeLeft = MATCH.time; G.time = 0; G.stats = { shots: 0, hits: 0 };
     G.fx.reset(); G.flashes.reset(); G.blood.reset(); G.bots.reset(); G.throw.reset(); G.rigid.reset(); G.player.kills = G.player.deaths = 0;
-    $('feed').innerHTML = ''; G.hud.feed = []; G.hud.pings.clear();
+    $('feed').innerHTML = ''; G.hud.feed = []; G.hud.pings.clear(); G.hud.reset();
     G.player.spawn(world.spawns[0][1]);
     G.matchLive = true;
   }

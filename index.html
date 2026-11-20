@@ -16,58 +16,136 @@
   #view.unlocked-look { cursor: none; }
   .panel { background: linear-gradient(180deg, rgba(12, 14, 16, .46), rgba(12, 14, 16, .30)); border: 1px solid rgba(255, 255, 255, .16); }
 
-  /* ---------- HUD ---------- */
-  #hud { position: fixed; inset: 0; pointer-events: none; opacity: 0; transition: opacity .18s; text-transform: uppercase; letter-spacing: .08em; text-shadow: 0 1px 3px rgba(0, 0, 0, .55); }
+  /* ---------- HUD ----------
+     Two faces: DIN Condensed for every number (tall and narrow, all figures one width, so a count never shuffles) and
+     Avenir Next Condensed for words. White by default; amber only for what asks for action (kit in the hand, low
+     ammunition, headshots, refill clocks); team colours only for teams; red for harm. No boxes: the corners sit on a
+     soft shade and every glyph carries a dark halo, so the HUD reads on a sunlit wall and in a dark hall alike.
+     Sizes are in --u, a pixel at 1080 lines and more on taller screens; corner readouts stay inside 21:9 on wider ones.
+     hud.js only sets text, classes and a few variables (--hp, --chip, --rl, --p0/--p1, --r), so a re-skin is CSS. */
+  @font-face { font-family: "HUD Text"; font-weight: 500; src: local("AvenirNextCondensed-Medium"), local("Avenir Next Condensed Medium"); }
+  @font-face { font-family: "HUD Text"; font-weight: 600; src: local("AvenirNextCondensed-DemiBold"), local("Avenir Next Condensed Demi Bold"); }
+  @font-face { font-family: "HUD Text"; font-weight: 700; src: local("AvenirNextCondensed-Bold"), local("Avenir Next Condensed Bold"); }
+  #hud {
+    --u: clamp(1px, calc(100vh / 1080), 2px); --m: clamp(18px, 3.3vh, 52px); --sx: max(var(--m), calc((100vw - 233vh) / 2 + var(--m)));
+    --num: "DIN Condensed", "Bahnschrift Condensed", "Roboto Condensed", "Arial Narrow", sans-serif;
+    --txt: "HUD Text", "Avenir Next Condensed", "Bahnschrift SemiCondensed", "Roboto Condensed", "Arial Narrow", sans-serif;
+    --ink: #f3f1ea; --ink2: rgba(243, 241, 234, .66); --ink3: rgba(243, 241, 234, .24); --amber: #ffc24a;
+    --halo: 0 0 1px rgba(0, 0, 0, .9), 0 1px 2px rgba(0, 0, 0, .55), 0 0 12px rgba(0, 0, 0, .3);
+    --edge: drop-shadow(0 0 1px rgba(0, 0, 0, .85)) drop-shadow(0 1px 2px rgba(0, 0, 0, .4));
+    position: fixed; inset: 0; pointer-events: none; opacity: 0; transition: opacity .18s;
+    font: 600 calc(15 * var(--u)) / 1 var(--txt); color: var(--ink); text-shadow: var(--halo); font-variant-numeric: tabular-nums;
+  }
   #hud.on { opacity: 1; }
+  #hud kbd { display: inline-grid; place-items: center; box-sizing: border-box; min-width: calc(18 * var(--u)); height: calc(18 * var(--u)); padding: calc(2 * var(--u)) calc(4 * var(--u)) 0; border: 1px solid var(--ink2); border-radius: calc(2 * var(--u)); background: rgba(0, 0, 0, .36); font: 700 calc(12 * var(--u)) / 1 var(--num); letter-spacing: .06em; color: var(--ink); text-shadow: none; }
+  @keyframes throb { to { opacity: .5; } }
+
+  /* markers over soldiers in sight within 45 m: a ring for an ally, a diamond for an enemy; the one under the sights is named */
   .team-mark { position: absolute; top: 0; left: 0; color: var(--ally); }
   .team-mark.enemy { color: var(--foe); }
-  .team-mark::before { content: ""; position: absolute; width: 7px; height: 7px; box-sizing: border-box; border: 2px solid currentColor; border-radius: 50%; background: #12151a; box-shadow: 0 0 0 1px #12151a; transform: translate(-50%, -50%); }
-  .team-mark.enemy::before { width: 6px; height: 6px; border: 0; border-radius: 0; background: currentColor; transform: translate(-50%, -50%) rotate(45deg); }
-  .team-mark span { position: absolute; padding: 2px 6px; background: rgba(12, 14, 16, .87); border: 1px solid currentColor; transform: translate(-50%, calc(-100% - 8px)); font-size: 11px; font-weight: 700; line-height: 1.1; }
-  #minimap { position: absolute; left: var(--pad); top: var(--pad); width: 180px; height: 180px; border: 1px solid rgba(255, 255, 255, .22); background: rgba(10, 12, 14, .38); }
-  #top { position: absolute; top: var(--pad); left: 50%; transform: translateX(-50%); display: grid; justify-items: center; gap: 6px; }
-  #compass { width: 320px; height: 22px; -webkit-mask-image: linear-gradient(90deg, transparent, #000 22%, #000 78%, transparent); mask-image: linear-gradient(90deg, transparent, #000 22%, #000 78%, transparent); }
-  #scorebar { display: flex; align-items: center; gap: 14px; padding: 5px 16px; font-size: 14px; }
-  #scorebar b { font-size: 22px; font-weight: 600; margin: 0 4px; letter-spacing: 0; } #scorebar .t0 { color: var(--ally); } #scorebar .t1 { color: var(--foe); }
-  #mode { font-size: 11px; opacity: .7; letter-spacing: .22em; } #timer { font-size: 20px; font-weight: 600; min-width: 46px; text-align: center; letter-spacing: .02em; }
-  #scorebar .sep { width: 1px; height: 18px; background: rgba(255, 255, 255, .22); }
-  #feed { position: absolute; right: var(--pad); top: var(--pad); display: grid; gap: 4px; justify-items: end; font-size: 14px; }
-  #feed .row { display: flex; align-items: center; gap: 8px; padding: 3px 10px; background: rgba(12, 14, 16, .40); border-right: 2px solid rgba(255, 255, 255, .35); transition: opacity .2s; }
-  #feed .gun { width: 34px; height: 10px; fill: #e9e4d8; opacity: .85; } #feed .hs { color: #ffd27a; font-weight: 400; }
-  #health { position: absolute; left: var(--pad); bottom: var(--pad); padding: 9px 14px 11px; min-width: 190px; }
-  #health .lbl, #ammo .lbl { font-size: 11px; letter-spacing: .26em; opacity: .72; }
-  #hp { font-size: 40px; font-weight: 600; line-height: 1; letter-spacing: 0; margin: 2px 0 6px; transition: color .15s; }
-  #hpbar { display: grid; grid-template-columns: repeat(10, 1fr); gap: 3px; } #hpbar i { height: 5px; background: rgba(255, 255, 255, .18); transition: background .15s; } #hpbar i.on { background: #efeadf; }
-  #health.low #hp { color: var(--foe); } #health.low #hpbar i.on { background: var(--foe); }
-  #ammo { position: absolute; right: var(--pad); bottom: var(--pad); padding: 9px 14px 11px; min-width: 210px; text-align: right; }
-  #ammo .rowtop { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; }
-  #fmode { font-size: 12px; padding: 1px 7px; border: 1px solid rgba(255, 255, 255, .45); letter-spacing: .2em; }
-  #ammo .count { margin: 2px 0 6px; line-height: 1; } #mag { font-size: 40px; font-weight: 600; letter-spacing: 0; transition: color .15s; } #res { font-size: 19px; opacity: .7; font-style: normal; margin-left: 8px; }
-  #res::before { content: "/ "; opacity: .6; }
-  #resRefill:not(:empty) { margin-left: 8px; color: #ffd27a; font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
-  #abar { display: grid; grid-template-columns: repeat(30, 1fr); gap: 2px; } #abar i { height: 9px; background: rgba(255, 255, 255, .15); } #abar i.on { background: #efeadf; }
-  #nades { display: flex; justify-content: flex-end; gap: 14px; margin-top: 8px; font-size: 15px; font-weight: 600; letter-spacing: .04em; }
-  #nades .n { display: flex; align-items: center; gap: 5px; padding: 1px 0 2px; border-bottom: 2px solid transparent; transition: opacity .15s, border-color .15s; }
-  #nades svg { height: 19px; width: auto; fill: #efeadf; } #nades kbd { font: 600 10px var(--ui); letter-spacing: .1em; opacity: .55; border: 1px solid rgba(255, 255, 255, .4); padding: 0 4px; margin-left: 2px; }
-  #nades .n.none > :not(.refill) { opacity: .3; } #nades .n.sel { border-bottom-color: #ffd27a; } #nades .n.sel svg { fill: #ffd27a; }
-  #nades .refill { min-width: 3ch; color: #ffd27a; font-size: 12px; font-variant-numeric: tabular-nums; text-align: right; }
-  #feed .nadei { width: 13px; height: 15px; fill: #e9e4d8; opacity: .9; }
-  #ammo.low #mag { color: #ffb347; } #ammo.low #abar i.on { background: #ffb347; } #ammo.reload .count::after { content: "RELOADING"; font-size: 11px; letter-spacing: .22em; margin-left: 10px; opacity: .8; }
-  #cross { position: absolute; left: 50%; top: 50%; --g: 6px; transition: opacity .1s; }
-  #cross i { position: absolute; background: rgba(255, 255, 255, .92); box-shadow: 0 0 2px rgba(0, 0, 0, .8); }
-  #cross i:nth-child(1) { width: 2px; height: 7px; left: -1px; top: calc(-7px - var(--g)); } #cross i:nth-child(2) { width: 2px; height: 7px; left: -1px; top: var(--g); }
-  #cross i:nth-child(3) { height: 2px; width: 7px; top: -1px; left: calc(-7px - var(--g)); } #cross i:nth-child(4) { height: 2px; width: 7px; top: -1px; left: var(--g); }
-  #cross i:nth-child(5) { width: 2px; height: 2px; left: -1px; top: -1px; opacity: .8; }
-  #hit { position: absolute; left: 50%; top: 50%; width: 30px; height: 30px; margin: -15px; opacity: 0; transition: opacity .12s; }
-  #hit.on { opacity: 1; transition: none; } #hit::before, #hit::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, #fff 0 32%, transparent 32% 68%, #fff 68%) center / 100% 2px no-repeat; }
+  .team-mark::before { content: ""; position: absolute; width: calc(10 * var(--u)); height: calc(10 * var(--u)); box-sizing: border-box; border: calc(2.5 * var(--u)) solid currentColor; border-radius: 50%; box-shadow: 0 0 0 1px rgba(0, 0, 0, .6), inset 0 0 0 1px rgba(0, 0, 0, .4); transform: translate(-50%, -50%); }
+  .team-mark.enemy::before { width: calc(8 * var(--u)); height: calc(8 * var(--u)); border: 0; border-radius: 1px; background: currentColor; box-shadow: 0 0 0 1px rgba(0, 0, 0, .65); transform: translate(-50%, -50%) rotate(45deg); }
+  .team-mark span { position: absolute; transform: translate(-50%, calc(-100% - 10 * var(--u))); padding: calc(4 * var(--u)) calc(8 * var(--u)) calc(3 * var(--u)); background: rgba(0, 0, 0, .62); box-shadow: inset 0 calc(-2 * var(--u)) currentColor; font-size: calc(13 * var(--u)); letter-spacing: .03em; white-space: nowrap; text-shadow: none; }
+
+  /* top: map, compass with the bearing under it, the score race to 30 either side of the clock, the kill feed */
+  #minimap { position: absolute; left: var(--sx); top: var(--m); width: calc(188 * var(--u)); height: calc(188 * var(--u)); }
+  #top { position: absolute; top: var(--m); left: 50%; transform: translateX(-50%); display: grid; justify-items: center; }
+  #compass { width: calc(440 * var(--u)); height: calc(30 * var(--u)); -webkit-mask-image: linear-gradient(90deg, transparent, #000 20%, #000 80%, transparent); mask-image: linear-gradient(90deg, transparent, #000 20%, #000 80%, transparent); }
+  #bearing { margin-top: calc(3 * var(--u)); padding: calc(4 * var(--u)) calc(6 * var(--u)) calc(2 * var(--u)); background: rgba(0, 0, 0, .4); font: 700 calc(14 * var(--u)) / 1 var(--num); letter-spacing: .08em; }
+  #scorebar { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; column-gap: calc(12 * var(--u)); margin-top: calc(9 * var(--u)); }
+  #scorebar .team { display: flex; align-items: center; gap: calc(9 * var(--u)); }
+  #scorebar .t0 { justify-content: flex-end; color: var(--ally); } #scorebar .t1 { color: var(--foe); }
+  #scorebar b { min-width: 2ch; font: 700 calc(32 * var(--u)) / .8 var(--num); padding-top: calc(4 * var(--u)); } #scorebar .t0 b { text-align: right; }
+  #scorebar .glyph { width: calc(9 * var(--u)); height: calc(9 * var(--u)); box-sizing: border-box; border: calc(2 * var(--u)) solid currentColor; border-radius: 50%; filter: var(--edge); }
+  #scorebar .t1 .glyph { width: calc(8 * var(--u)); height: calc(8 * var(--u)); border: 0; border-radius: 1px; background: currentColor; transform: rotate(45deg); }
+  #scorebar .pbar { position: relative; width: calc(150 * var(--u)); height: calc(5 * var(--u)); background: var(--ink3); box-shadow: 0 0 0 1px rgba(0, 0, 0, .3); }
+  #scorebar .pbar::after { content: ""; position: absolute; top: 0; bottom: 0; background: currentColor; transition: width .4s; }
+  #scorebar .t0 .pbar::after { right: 0; width: calc(var(--p0, 0) * 100%); } #scorebar .t1 .pbar::after { left: 0; width: calc(var(--p1, 0) * 100%); }
+  #scorebar .clock { display: grid; justify-items: center; gap: calc(5 * var(--u)); padding: calc(8 * var(--u)) calc(13 * var(--u)) calc(6 * var(--u)); background: rgba(0, 0, 0, .42); }
+  #timer { font: 700 calc(30 * var(--u)) / .8 var(--num); letter-spacing: .03em; } #timer.low { color: var(--amber); }
+  #mode { font-size: calc(11 * var(--u)); color: var(--ink2); letter-spacing: .03em; }
+  #feed { position: absolute; right: var(--sx); top: var(--m); display: grid; gap: calc(3 * var(--u)); justify-items: end; }
+  #feed .row { display: flex; align-items: center; gap: calc(8 * var(--u)); padding: calc(6 * var(--u)) calc(11 * var(--u)) calc(4 * var(--u)); background: linear-gradient(270deg, rgba(0, 0, 0, .6), rgba(0, 0, 0, .28)); animation: feedIn .22s cubic-bezier(.2, .8, .25, 1); }
+  #feed .row.me { background: linear-gradient(270deg, rgba(58, 42, 8, .78), rgba(30, 22, 4, .4)); box-shadow: inset calc(-3 * var(--u)) 0 var(--amber); }
+  #feed svg { flex: none; fill: var(--ink); filter: var(--edge); margin-top: calc(-2 * var(--u)); }
+  #feed .gun { width: calc(42 * var(--u)); height: calc(12 * var(--u)); } #feed .nadei { width: calc(13 * var(--u)); height: calc(15 * var(--u)); }
+  #feed .hs { width: calc(14 * var(--u)); height: calc(14 * var(--u)); color: var(--amber); fill: var(--amber); }
+  @keyframes feedIn { from { opacity: 0; transform: translateX(calc(16 * var(--u))); } }
+
+  /* bottom left: health, its bar quartered, the chunk just lost draining in red, a sweep while it regenerates */
+  #health { position: absolute; left: var(--sx); bottom: var(--m); width: calc(270 * var(--u)); display: grid; grid-template-columns: auto 1fr; align-items: end; column-gap: calc(8 * var(--u)); isolation: isolate; }
+  #health .lbl svg { display: block; width: calc(15 * var(--u)); height: calc(15 * var(--u)); margin-bottom: calc(4 * var(--u)); fill: var(--ink2); filter: var(--edge); }
+  #hp { font: 700 calc(46 * var(--u)) / .8 var(--num); padding-top: calc(5 * var(--u)); transition: color .15s; }
+  #hpbar { grid-column: 1 / -1; position: relative; height: calc(7 * var(--u)); margin-top: calc(9 * var(--u)); background: var(--ink3); box-shadow: 0 0 0 1px rgba(0, 0, 0, .35); }
+  #hpbar i { position: absolute; left: 0; top: 0; bottom: 0; }
+  #hpbar .chip { width: calc(var(--chip, 1) * 100%); background: rgba(255, 106, 85, .8); }
+  #hpbar .fill { width: calc(var(--hp, 1) * 100%); background: var(--ink); }
+  #hpbar::after { content: ""; position: absolute; inset: 0; background: repeating-linear-gradient(90deg, transparent 0 calc(25% - 2px), rgba(0, 0, 0, .6) calc(25% - 2px) 25%); }
+  #health.regen #hpbar .fill { background: linear-gradient(90deg, transparent 35%, rgba(255, 255, 255, .7) 50%, transparent 65%) 0 0 / 300% 100% no-repeat, var(--ink); animation: sweep 1.3s linear infinite; }
+  @keyframes sweep { from { background-position: 100% 0, 0 0; } to { background-position: 0% 0, 0 0; } }
+  #health.low #hp { color: var(--foe); } #health.low .lbl svg { fill: var(--foe); }
+  #health.low #hpbar .fill { background-color: var(--foe); animation: throb .8s ease-in-out infinite alternate; }
+
+  /* bottom right: weapon and selector, magazine over reserve, a mark per round (the strip refills round by round as a
+     magazine seats; an amber line runs under it through a reload), then frag and smoke with their keys */
+  #ammo { position: absolute; right: var(--sx); bottom: var(--m); display: grid; justify-items: end; isolation: isolate; }
+  #health::before, #ammo::before { content: ""; position: absolute; z-index: -1; inset: calc(-46 * var(--u)) calc(-60 * var(--u)); background: radial-gradient(closest-side, rgba(0, 0, 0, .34), rgba(0, 0, 0, .14) 62%, transparent); }
+  #ammo .rowtop { display: flex; align-items: center; gap: calc(12 * var(--u)); margin-bottom: calc(7 * var(--u)); color: var(--ink2); }
+  #fmode { display: flex; align-items: center; font: 700 calc(14 * var(--u)) / 1 var(--num); padding-top: calc(2 * var(--u)); letter-spacing: .14em; text-transform: uppercase; color: var(--ink); }
+  #fmode::before { content: ""; width: calc(3 * var(--u)); height: calc(10 * var(--u)); margin: calc(-2 * var(--u)) calc(16 * var(--u)) 0 0; border-radius: calc(1.5 * var(--u)) calc(1.5 * var(--u)) 0 0; background: currentColor; box-shadow: calc(5 * var(--u)) 0 currentColor, calc(10 * var(--u)) 0 currentColor; filter: var(--edge); }
+  #ammo.semi #fmode::before { margin-right: calc(6 * var(--u)); box-shadow: none; }
+  #ammo .count { display: flex; align-items: baseline; }
+  #mag { font: 700 calc(70 * var(--u)) / .8 var(--num); padding-top: calc(8 * var(--u)); transition: color .15s; }
+  #res { margin-left: calc(6 * var(--u)); font: 700 calc(28 * var(--u)) / .8 var(--num); font-style: normal; color: var(--ink2); }
+  #res::before { content: "/"; margin-right: calc(4 * var(--u)); color: var(--ink3); }
+  #resRefill:not(:empty) { margin-left: calc(8 * var(--u)); font-size: calc(13 * var(--u)); color: var(--amber); }
+  #abar { position: relative; display: flex; gap: calc(2 * var(--u)); margin-top: calc(11 * var(--u)); filter: var(--edge); }
+  #abar i { width: calc(4 * var(--u)); height: calc(15 * var(--u)); border-radius: calc(2 * var(--u)) calc(2 * var(--u)) 0 0; background: var(--ink3); transition: background-color .12s; }
+  #abar i.on { background: var(--ink); }
+  #abar.fill i.on { animation: seat .3s cubic-bezier(.2, .8, .3, 1) backwards; animation-delay: calc(var(--i) * 11ms); }
+  @keyframes seat { from { background: var(--amber); transform: translateY(calc(-5 * var(--u))); } }
+  #abar::after { content: ""; position: absolute; left: 0; bottom: calc(-6 * var(--u)); height: calc(2 * var(--u)); width: calc(var(--rl, 0) * 100%); background: var(--amber); opacity: 0; }
+  #ammo.reload #abar::after { opacity: 1; } #ammo.reload #abar i.on { background: var(--ink2); }
+  #ammo.low #mag { color: var(--amber); } #ammo.low #abar i.on { background: var(--amber); }
+  #ammo.low:not(.reload) #mag { animation: throb .7s ease-in-out infinite alternate; }
+  #nades { display: flex; gap: calc(18 * var(--u)); margin-top: calc(15 * var(--u)); font: 700 calc(20 * var(--u)) / .8 var(--num); }
+  #nades .n { position: relative; display: flex; align-items: center; gap: calc(6 * var(--u)); padding-bottom: calc(6 * var(--u)); transition: color .15s; }
+  #nades .n > span:not(.refill) { padding-top: calc(3 * var(--u)); }
+  #nades svg { height: calc(20 * var(--u)); width: auto; fill: currentColor; filter: var(--edge); }
+  #nades .n::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: calc(2 * var(--u)); background: var(--amber); transform: scaleX(0); transition: transform .14s; }
+  #nades .n.sel { color: var(--amber); } #nades .n.sel::after { transform: none; } #nades .n.sel kbd { background: var(--amber); border-color: var(--amber); color: #17140c; }
+  #nades .n.none > :not(.refill) { opacity: .32; }
+  #nades .refill:not(:empty) { font: 600 calc(13 * var(--u)) / 1 var(--txt); color: var(--amber); }
+  /* centre: crosshair opened by the spread, hit marker (white body, amber head, red kill, faint through cover), the arc
+     towards whoever hit you, the prompt under the sights (reload, throw, out of ammunition), the kill callout, death */
+  #cross { position: absolute; left: 50%; top: 50%; --g: 6px; --l: calc(9 * var(--u)); transition: opacity .1s; }
+  #cross i { position: absolute; background: var(--ink); box-shadow: 0 0 0 1px rgba(0, 0, 0, .5); }
+  #cross i:nth-child(1) { width: 2px; height: var(--l); left: -1px; top: calc(-1 * var(--l) - var(--g)); } #cross i:nth-child(2) { width: 2px; height: var(--l); left: -1px; top: var(--g); }
+  #cross i:nth-child(3) { height: 2px; width: var(--l); top: -1px; left: calc(-1 * var(--l) - var(--g)); } #cross i:nth-child(4) { height: 2px; width: var(--l); top: -1px; left: var(--g); }
+  #cross i:nth-child(5) { width: 2px; height: 2px; left: -1px; top: -1px; }
+  #hit { position: absolute; left: 50%; top: 50%; --s: calc(32 * var(--u)); width: var(--s); height: var(--s); margin: calc(var(--s) / -2); color: var(--ink); opacity: 0; transition: opacity .14s; filter: var(--edge); }
+  #hit.on { opacity: 1; transition: none; }
+  #hit::before, #hit::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, currentColor 0 30%, transparent 30% 70%, currentColor 70%) center / 100% calc(2 * var(--u)) no-repeat; }
   #hit::before { transform: rotate(45deg); } #hit::after { transform: rotate(-45deg); }
-  #hit.head::before, #hit.head::after { background-image: linear-gradient(90deg, #ffd27a 0 32%, transparent 32% 68%, #ffd27a 68%); } #hit.kill { transform: scale(1.35); }
-  #hit.kill::before, #hit.kill::after { background-image: linear-gradient(90deg, #ff5a45 0 36%, transparent 36% 64%, #ff5a45 64%); background-size: 100% 3px; } #hit.weak { opacity: .55; }
-  #dmg { position: absolute; left: 50%; top: 50%; width: 46vh; height: 46vh; opacity: 0; border-radius: 50%; background: conic-gradient(from -24deg, transparent 0deg, rgba(255, 60, 40, .85) 24deg, transparent 48deg); -webkit-mask: radial-gradient(closest-side, transparent 86%, #000 88%, #000 97%, transparent 100%); mask: radial-gradient(closest-side, transparent 86%, #000 88%, #000 97%, transparent 100%); }
-  #banner { position: absolute; left: 50%; top: 27%; transform: translate(-50%, 6px); text-align: center; opacity: 0; transition: opacity .16s, transform .16s; }
-  #banner.on { opacity: 1; transform: translate(-50%, 0); } #banner .a { font-size: 22px; font-weight: 600; letter-spacing: .3em; padding: 0 26px 5px; border-bottom: 1px solid rgba(255, 255, 255, .5); } #bannerB { font-size: 14px; letter-spacing: .24em; margin-top: 6px; color: #ffd27a; }
-  #dead { position: absolute; left: 50%; top: 42%; transform: translateX(-50%); text-align: center; opacity: 0; transition: opacity .2s; } #dead.on { opacity: 1; }
-  #dead .a { font-size: 26px; letter-spacing: .34em; color: var(--foe); } #dead .b { font-size: 13px; letter-spacing: .22em; opacity: .8; margin-top: 6px; }
+  #hit.head { color: var(--amber); } #hit.weak { opacity: .55; }
+  #hit.kill { --s: calc(44 * var(--u)); color: var(--foe); } #hit.kill::before, #hit.kill::after { background-size: 100% calc(3 * var(--u)); }
+  #dmg { position: absolute; left: 50%; top: 50%; width: 38vh; height: 38vh; opacity: 0; }
+  #dmg::before { content: ""; position: absolute; inset: 0; border-radius: 50%; background: conic-gradient(from -28deg, rgba(255, 58, 40, 0), rgba(255, 58, 40, .95) 28deg, rgba(255, 58, 40, 0) 56deg, transparent 0); -webkit-mask: radial-gradient(closest-side, transparent 84%, #000 86%, #000 94%, transparent 96%); mask: radial-gradient(closest-side, transparent 84%, #000 86%, #000 94%, transparent 96%); }
+  #dmg::after { content: ""; position: absolute; left: 50%; top: -1.5vh; width: 2.2vh; height: 1.3vh; margin-left: -1.1vh; background: rgba(255, 58, 40, .95); clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+  #prompt { position: absolute; left: 50%; top: calc(50% + 8.5vh); transform: translateX(-50%); display: flex; align-items: center; gap: calc(7 * var(--u)); white-space: nowrap; opacity: 0; transition: opacity .15s; }
+  #prompt.on { opacity: 1; } #prompt.warn { color: var(--amber); } #prompt.out { color: var(--foe); }
+  #prompt kbd ~ kbd { margin-left: calc(8 * var(--u)); }
+  #prompt .bar { width: calc(90 * var(--u)); height: calc(3 * var(--u)); background: linear-gradient(90deg, var(--ink) calc(var(--rl, 0) * 100%), var(--ink3) 0); box-shadow: 0 0 0 1px rgba(0, 0, 0, .3); }
+  #banner { position: absolute; left: 50%; top: 60%; transform: translateX(-50%); display: grid; justify-items: center; gap: calc(6 * var(--u)); opacity: 0; transition: opacity .3s; }
+  #banner.on { opacity: 1; transition: none; }
+  #banner .a { font-size: calc(14 * var(--u)); letter-spacing: .1em; text-transform: uppercase; }
+  #bannerB { font: 700 calc(32 * var(--u)) / .8 var(--num); color: var(--amber); }
+  #dead { position: absolute; left: 50%; top: 40%; transform: translateX(-50%); display: grid; justify-items: center; gap: calc(10 * var(--u)); opacity: 0; transition: opacity .25s; }
+  #dead.on { opacity: 1; }
+  #dead .a { font: 700 calc(50 * var(--u)) / .8 var(--num); padding-top: calc(6 * var(--u)); letter-spacing: .16em; text-transform: uppercase; color: var(--foe); }
+  #dead .b { font-size: calc(15 * var(--u)); }
+  #dead::after { content: ""; width: calc(220 * var(--u)); height: calc(3 * var(--u)); background: linear-gradient(90deg, var(--ink) calc(var(--r, 0) * 100%), var(--ink3) 0); box-shadow: 0 0 0 1px rgba(0, 0, 0, .3); }
+  @media (prefers-reduced-motion: reduce) { #hud *, #hud *::before, #hud *::after { animation: none !important; transition: none !important; } }
 
   /* ---------- menus ---------- */
   #menu { position: fixed; inset: 0; display: none; place-items: center; background: radial-gradient(ellipse at 50% 40%, rgba(8, 9, 10, .35), rgba(8, 9, 10, .82)); }
@@ -118,21 +196,24 @@
   #touch [data-k=mode] { width: 54px; height: 26px; border-radius: 13px; right: calc(35px + env(safe-area-inset-right)); bottom: calc(224px + env(safe-area-inset-bottom)); font-size: 10px; }
   #touch [data-k=pause] { width: 40px; height: 40px; border-radius: 0; right: var(--sr); top: var(--st); }
   #touch [data-k=pause] svg { height: 13px; }
+  html.touch #hud { --u: .8px; }
   html.touch #minimap { left: var(--sl); top: var(--st); width: 92px; height: 92px; }
-  html.touch #health { left: var(--sl); top: calc(var(--st) + 98px); bottom: auto; width: 92px; min-width: 0; box-sizing: border-box; padding: 4px 7px 6px; }
-  html.touch #health .lbl, html.touch #ammo .rowtop, html.touch #nades, html.touch #mode { display: none; }
-  html.touch #hp { font-size: 22px; margin: 0 0 4px; } html.touch #hpbar { gap: 2px; } html.touch #hpbar i { height: 4px; }
-  html.touch #top { top: var(--st); gap: 3px; } html.touch #compass { width: 210px; height: 15px; }
-  html.touch #scorebar { gap: 8px; padding: 3px 10px; font-size: 10px; } html.touch #scorebar b { font-size: 16px; } html.touch #timer { font-size: 15px; min-width: 34px; }
-  html.touch #feed { top: var(--st); right: calc(var(--sr) + 48px); gap: 3px; font-size: 11px; } html.touch #feed .row { padding: 2px 7px; } html.touch #feed .gun { width: 26px; height: 8px; }
-  html.touch #ammo { left: 50%; right: auto; bottom: var(--sb); transform: translateX(-50%); min-width: 0; padding: 4px 10px 6px; }
-  html.touch #ammo .count { margin: 0 0 4px; } html.touch #mag { font-size: 24px; } html.touch #res { font-size: 13px; } html.touch #abar { width: 150px; gap: 1px; } html.touch #abar i { height: 5px; }
-  html.touch #banner .a { font-size: 16px; letter-spacing: .22em; padding: 0 14px 4px; } html.touch #bannerB { font-size: 12px; } html.touch #dead .a { font-size: 20px; }
+  html.touch #health { left: var(--sl); top: calc(var(--st) + 98px); bottom: auto; width: 92px; }
+  html.touch #health .lbl, html.touch #ammo .rowtop, html.touch #nades, html.touch #mode, html.touch #bearing, html.touch #prompt kbd, html.touch #prompt.nade { display: none; }
+  html.touch #health::before, html.touch #ammo::before { inset: -18px -26px; }
+  html.touch #hp { font-size: 24px; padding-top: 3px; } html.touch #hpbar { height: 4px; margin-top: 4px; }
+  html.touch #top { top: var(--st); } html.touch #compass { width: 210px; height: 15px; }
+  html.touch #scorebar { margin-top: 3px; column-gap: 6px; } html.touch #scorebar .team { gap: 5px; } html.touch #scorebar b { font-size: 18px; padding-top: 2px; }
+  html.touch #scorebar .pbar { width: 56px; height: 3px; } html.touch #scorebar .clock { padding: 4px 8px 3px; gap: 3px; } html.touch #timer { font-size: 16px; }
+  html.touch #feed { top: var(--st); right: calc(var(--sr) + 48px); font-size: 11px; } html.touch #feed .row { padding: 3px 7px 2px; } html.touch #feed .gun { width: 28px; height: 8px; }
+  html.touch #ammo { left: 50%; right: auto; bottom: var(--sb); transform: translateX(-50%); justify-items: center; }
+  html.touch #mag { font-size: 26px; padding-top: 3px; } html.touch #res { font-size: 14px; } html.touch #abar { gap: 1px; margin-top: 5px; } html.touch #abar i { width: 3px; height: 8px; }
+  html.touch #banner .a { font-size: 11px; } html.touch #bannerB { font-size: 22px; } html.touch #dead .a { font-size: 28px; }
   @media (orientation: portrait) {
     html.touch #minimap { width: 76px; height: 76px; } html.touch #health { top: calc(var(--st) + 82px); width: 76px; }
-    html.touch #compass { width: 160px; height: 11px; } html.touch #scorebar { gap: 6px; padding: 3px 8px; }
+    html.touch #compass { width: 160px; height: 11px; } html.touch #scorebar .pbar { width: 34px; }
     html.touch #feed { top: calc(var(--st) + 48px); right: var(--sr); }
-    html.touch #ammo { left: var(--sl); bottom: auto; top: calc(var(--st) + 130px); transform: none; } html.touch #abar { width: 120px; }
+    html.touch #ammo { left: var(--sl); bottom: auto; top: calc(var(--st) + 130px); transform: none; justify-items: start; } html.touch #abar i { width: 2px; }
   }
   /* menus: scroll when taller than the screen; the touch controls' help in place of the keys */
   html.touch #menu.on { display: flex; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
@@ -165,20 +246,30 @@
   <div id="teamMarks" aria-hidden="true"></div>
   <canvas id="minimap" width="360" height="360"></canvas>
   <div id="top">
-    <canvas id="compass" width="640" height="44"></canvas>
-    <div id="scorebar" class="panel"><span class="t0"><span aria-hidden="true">○</span> Allies<b id="s0">0</b></span><span class="sep"></span><span id="mode">Team Deathmatch</span><span id="timer">10:00</span><span class="sep"></span><span class="t1"><b id="s1">0</b>Enemies <span aria-hidden="true">◆</span></span></div>
+    <canvas id="compass" width="880" height="60"></canvas>
+    <div id="bearing">000</div>
+    <div id="scorebar">
+      <span class="team t0" aria-label="Allies"><i class="pbar"></i><b id="s0">0</b><i class="glyph"></i></span>
+      <span class="clock"><span id="timer">10:00</span><span id="mode">Team deathmatch</span></span>
+      <span class="team t1" aria-label="Enemies"><i class="glyph"></i><b id="s1">0</b><i class="pbar"></i></span>
+    </div>
   </div>
   <div id="feed"></div>
-  <div id="health" class="panel"><div class="lbl">Health</div><div id="hp">100</div><div id="hpbar"></div></div>
-  <div id="ammo" class="panel"><div class="rowtop"><span id="fmode">AUTO</span><span class="lbl" id="wlabel">MK4 Carbine</span></div><div class="count"><span id="mag">30</span><i id="res">120</i><span id="resRefill" title="Time until reserve ammo refills"></span></div><div id="abar"></div>
+  <div id="health" aria-label="Health"><div class="lbl" aria-hidden="true"><svg viewBox="0 0 12 12"><path d="M4 0h4v4h4v4H8v4H4V8H0V4h4z"/></svg></div><div id="hp">100</div><div id="hpbar"></div></div>
+  <div id="ammo">
+    <div class="rowtop"><span class="lbl" id="wlabel">MK4 Carbine</span><span id="fmode">Auto</span></div>
+    <div class="count"><span id="mag">30</span><i id="res">120</i><span id="resRefill" title="Time until reserve ammo refills"></span></div>
+    <div id="abar"></div>
     <div id="nades">
-      <span class="n" id="nFrag"><svg viewBox="0 0 16 19" aria-label="Fragmentation grenade"><path d="M5.6 0h5.2v2.1h3.4L15 6.4l-1.6.5-.5-2.7h-2.1v1.3a6.5 6.5 0 1 1-5.2 0V4.2H4.3V2.1h1.3z"/></svg><span id="nFragN">2</span><kbd>G</kbd><span class="refill" id="nFragRefill" title="Time until next frag refills"></span></span>
-      <span class="n" id="nSmoke"><svg viewBox="0 0 13 19" aria-label="Smoke canister"><path d="M4.4 0h4.4v2h3.1l.9 3.2-1.5.4-.5-1.8H9.9V5H12a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H1a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h2.3V3.8H2.2V2h2.2zM1.5 9v2.2h10V9z" fill-rule="evenodd"/></svg><span id="nSmokeN">2</span><kbd>Q</kbd><span class="refill" id="nSmokeRefill" title="Time until next smoke refills"></span></span>
-    </div></div>
+      <span class="n" id="nFrag"><kbd>G</kbd><svg viewBox="0 0 16 19" aria-label="Fragmentation grenade"><path d="M5.6 0h5.2v2.1h3.4L15 6.4l-1.6.5-.5-2.7h-2.1v1.3a6.5 6.5 0 1 1-5.2 0V4.2H4.3V2.1h1.3z"/></svg><span id="nFragN">2</span><span class="refill" id="nFragRefill" title="Time until next frag refills"></span></span>
+      <span class="n" id="nSmoke"><kbd>Q</kbd><svg viewBox="0 0 13 19" aria-label="Smoke canister"><path d="M4.4 0h4.4v2h3.1l.9 3.2-1.5.4-.5-1.8H9.9V5H12a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H1a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h2.3V3.8H2.2V2h2.2zM1.5 9v2.2h10V9z" fill-rule="evenodd"/></svg><span id="nSmokeN">2</span><span class="refill" id="nSmokeRefill" title="Time until next smoke refills"></span></span>
+    </div>
+  </div>
   <div id="cross"><i></i><i></i><i></i><i></i><i></i></div>
   <div id="hit"></div>
   <div id="dmg"></div>
-  <div id="banner"><div class="a">Enemy Eliminated</div><div id="bannerB">+100 XP</div></div>
+  <div id="prompt"></div>
+  <div id="banner"><div class="a">Enemy eliminated</div><div id="bannerB">+100</div></div>
   <div id="dead"><div class="a">Eliminated</div><div class="b">Redeploying in <span id="respawn">0.0</span></div></div>
 </div>
 

@@ -420,9 +420,15 @@ Key bindings live in the same saved settings object (`binds`, including `frag` a
   and directions are traced from the walls actually around you, three reverberant spaces (street, narrow passage, room)
   crossfaded by the same rays, hearing that dips for a moment after each of your own shots, humming air-conditioning units
   where they hang, birds, awnings, cicadas and distant fighting.
-- **HUD** — a blue circle identifies a visible ally and a red diamond identifies a visible enemy within 45 m. Aim at
-  a soldier to see **Ally** or **Enemy**. The minimap, scoreboard and kill feed use the same colors. The HUD also shows
-  the compass, clock, health, ammo, hit confirmation, damage direction and elimination banners.
+- **HUD** — a blue ring marks a visible ally and a red diamond a visible enemy within 45 m; aim at one to see his call
+  sign. DIN Condensed for numbers (one width for every figure, so counts never shuffle), Avenir Next Condensed for
+  words; white by default, amber for what asks for action (kit in hand, low ammunition, headshots), red for harm. No
+  boxes: soft shade and dark halos keep it legible in the sun and in the market hall. Top: minimap, compass and
+  bearing, the race to 30 either side of the clock, kill feed (yours on amber). Bottom left: health, with the chunk
+  just lost draining in red. Bottom right: selector, magazine and reserve, a mark per round that refills as a magazine
+  seats, frag and smoke with their keys. Under the sights: hit marker, damage arc, and a reload / throw prompt. Sizes
+  follow screen height; past 21:9 the corners stay inside 21:9. The look is all in `index.html`; `hud.js` only sets
+  text, classes and a few CSS variables.
 
 - **Air** — the sun's light scattered by dust on its way to the eye, with the buildings' shadows cut out of it
   (`src/atmos.js`): shafts under the market hall's skylights, between the shade cloths of the covered lane and down
@@ -755,6 +761,11 @@ In the browser console, with the dev server running:
   `?selftest=1` in the URL runs it by itself once loaded and saves the results to `captures/selftest.json`.
   `?nogi=1` skips the indirect light (no bake) for a quick look while the geometry changes; `?stalegi=1` uses the last
   bake even if the map has changed since (nothing is baked or saved).
+- `tools/hud-probe.js` — the HUD in each state, staged in a real match and saved with the HUD drawn over the frame:
+  a fight in the sun, low ammunition, a reload, a hit, damage, low health, the kill feed after a headshot, a frag in
+  the hand, death and the dark market hall (`hp.run(G, 'tag')` -> `captures/hud_<tag>_<view>.jpg`; `{ w, h, scale,
+  views }` for other sizes). `G.capture` saves the WebGL canvas alone; `tools/hud-shot.js` lays `#hud` out again at
+  the capture size inside an SVG `foreignObject` with the page's own style sheet and draws it on top.
 - `src/clipcheck.js` (also `tools/clip-probe.js`) — how far each loose prop sits inside the collision boxes and behind
   the drawn surfaces: `clip.scan(G)` for all of them, `clip.prop(G, item)` for one, `clip.shove(G, { z })` walks a
   soldier's pusher into a chair against a wall.
@@ -870,7 +881,7 @@ src/audio.js          audio engine: propagation, occlusion, reflections, reverbs
 src/hud.js            HUD and menus
 src/selftest.js       scripted checks and capture set
 tools/                asset downloader, static server, native window (tools/shell), audio-report.mjs, reload-probe.mjs, death-probe.js, build-voices.py,
-                      locomotion-probe.js, perf-probe.js, clip-probe.js, compare-shots.js, compare-montage.py, encode-ktx2.mjs,
+                      locomotion-probe.js, perf-probe.js, clip-probe.js, compare-shots.js, compare-montage.py, encode-ktx2.mjs, hud-probe.js, hud-shot.js,
                       blender/kit.py (the architectural kit), blender/props.py (the detail pass), blender/arch.py (the architecture pass), detail-check.js,
                       layout-fingerprint.js, compare-fingerprints.mjs
 assets/kit/kit.glb    the architectural kit, modelled by tools/blender/kit.py
