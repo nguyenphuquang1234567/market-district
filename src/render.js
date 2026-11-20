@@ -18,21 +18,25 @@ export const PRESETS = {
   medium: { maxPR: 1.0,  scale: 0.9, shadow: 2048, cascades: 3, shadowFar: 120, msaa: 2, ao: true,  bloom: true,  aoSamples: 8,  aoScale: 0.5, soft: false, lod: 0.85, air: 8 },
   high:   { maxPR: 1.25, scale: 1.0, shadow: 2048, cascades: 3, shadowFar: 140, msaa: 4, ao: true,  bloom: true,  aoSamples: 12, aoScale: 0.5, soft: false, lod: 1.0, air: 12 },
   ultra:  { maxPR: 1.4,  scale: 1.0, shadow: 4096, cascades: 4, shadowFar: 170, msaa: 4, ao: true,  bloom: true,  aoSamples: 16, aoScale: 0.5, soft: true, lod: 1.35, air: 16 },   // measured: full-res AO cost 6.5 ms for little gain; the 4k cascades are nearly free
-  // A phone (touch.js picks it there by default): Low's passes at about the screen's own CSS size, two short cascades,
-  // small things and the modelled kit pieces culled nearer (lod also scales kitNear), every texture without its top level
-  // (texDrop: a quarter of the video memory) and the sky at half size (skyHalf); lean: the copies of the district kept for
-  // the CPU shed what only the drawing needed (main.js), so the whole fits a phone browser's memory. thinShadows: the outer
-  // of its two cascades is drawn as High draws its outer ones, every other frame and without the small detail.
-  phone:  { maxPR: 1.25, scale: 0.8, shadow: 1024, cascades: 2, shadowFar: 60,  msaa: 0, ao: false, bloom: false, aoSamples: 8,  aoScale: 0.5, soft: false, lod: 0.6, air: 0, reflect: false, texDrop: 1, skyHalf: true, lean: true, thinShadows: true },
+  // A phone (touch.js picks it there by default). As sharp as High on a laptop: a phone's CSS pixel is two to three device
+  // pixels and is held closer, so it is drawn at up to two pixels to the CSS pixel (High: 1.25), with 2x MSAA and 2048
+  // shadows, and the adaptive resolution aims at 30 fps (frameMs) and never goes below 0.75 of that (minScale). What it
+  // leaves out is the cost that does not show on a small screen: AO, bloom, sunlit dust, wet-ground reflections, a third
+  // cascade (thinShadows: the outer of its two is drawn as High draws its outer ones, every other frame and without the
+  // small detail), small things culled at 0.6 of High's distances (lod also scales kitNear). For memory: every texture
+  // without its top level (texDrop: a quarter of the video memory), the sky's reflection map made from a half-size copy
+  // (envHalf; the sky itself is drawn full size), and after boot the copies the page keeps that only drawing needed are
+  // let go (lean, main.js).
+  phone:  { maxPR: 2.0,  scale: 1.0, shadow: 2048, cascades: 2, shadowFar: 60,  msaa: 2, ao: false, bloom: false, aoSamples: 8,  aoScale: 0.5, soft: false, lod: 0.6, air: 0, reflect: false, texDrop: 1, envHalf: true, lean: true, thinShadows: true, frameMs: 33.4, minScale: 0.75 },
 };
 
 const SUN_PHI = THREE.MathUtils.degToRad(-60);   // sun azimuth: from +x (east) towards -z (south) = late morning
 const SKY_CLAMP = 24;                            // radiance clamp: the sun's energy comes from the directional light instead
 
-// The phone preset's sky: half as wide and high, each texel the mean of four (a quarter of the memory, and of the reflection
-// map made from it). It runs after prepareSky has measured the full-size sky, so the sun and its strength stay exactly as
-// on any other preset, and with them the light bake's fingerprint (gi.js).
-function halveSky(tex) {
+// The phone preset's reflection map is made from this: the sky half as wide and high, each texel the mean of four (the map
+// is sized from its source, so it comes out a quarter the size: 1536 x 2048 instead of 3072 x 4096). The sky that is drawn
+// stays full size, and the sun is measured on it as on any other preset (the light bake's fingerprint, gi.js).
+function halfSky(tex) {
   const { data: d, width: w, height: h } = tex.image, W = w >> 1, H = h >> 1, out = new Uint16Array(W * H * 4);
   const F = new Float32Array(65536), toHalf = THREE.DataUtils.toHalfFloat;
   for (let i = 0; i < 65536; i++) F[i] = THREE.DataUtils.fromHalfFloat(i);
@@ -41,7 +45,9 @@ function halveSky(tex) {
     for (let c = 0; c < 3; c++) out[o + c] = toHalf((F[d[a + c]] + F[d[a + 4 + c]] + F[d[b + c]] + F[d[b + 4 + c]]) * 0.25);
     out[o + 3] = d[a + 3];
   }
-  tex.image = { data: out, width: W, height: H }; tex.needsUpdate = true;
+  const t = new THREE.DataTexture(out, W, H, THREE.RGBAFormat, THREE.HalfFloatType);
+  t.colorSpace = tex.colorSpace; t.flipY = tex.flipY; t.wrapS = tex.wrapS; t.minFilter = tex.minFilter; t.magFilter = tex.magFilter; t.generateMipmaps = false; t.needsUpdate = true;
+  return t;
 }
 
 // Rotates the equirect so the sun sits at SUN_PHI, clamps the solar disc, and measures the sky.
@@ -234,10 +240,9 @@ export function createRenderer(canvas, skyTex, presetName) {
 
   // --- sky -----------------------------------------------------------------------------------------------------
   const sky = prepareSky(skyTex);
-  if (Q.skyHalf) halveSky(skyTex);
-  const pmrem = new THREE.PMREMGenerator(renderer);
-  scene.environment = pmrem.fromEquirectangular(skyTex).texture;      // reflections; diffuse sky light comes from the baked volume
-  pmrem.dispose();
+  const pmrem = new THREE.PMREMGenerator(renderer), envSky = Q.envHalf ? halfSky(skyTex) : skyTex;
+  scene.environment = pmrem.fromEquirectangular(envSky).texture;      // reflections; diffuse sky light comes from the baked volume
+  pmrem.dispose(); if (envSky !== skyTex) envSky.dispose();
   const haze = sky.horizon.clone().multiplyScalar(0.92);
   const wind = new THREE.Vector2(0.86, 0.5);                           // cloud drift direction (x, z)
   const skyMat = new THREE.ShaderMaterial({
@@ -361,10 +366,12 @@ export function createRenderer(canvas, skyTex, presetName) {
 
   let lastFov = 0, exposure = renderer.toneMappingExposure, frameNo = 0, cullFrame = 0;
   // adaptive internal resolution: drop a step after sustained slow frames, creep back up cautiously
-  const STEPS = [1, 0.87, 0.75, 0.64, 0.55]; let step = 0, slowT = 0, fastT = 0, holdT = 0, ema = 16.7, sinceUp = 1e9, backoff = 1;
-  const stepKey = 'md.scale.' + presetName;                 // remember where this machine settled so the next run starts there
+  // (a preset may aim at a longer frame, Q.frameMs, and keep a floor, Q.minScale: the phone holds 30 fps and its sharpness)
+  const STEPS = [1, 0.87, 0.75, 0.64, 0.55], FR = (Q.frameMs || 16.7) / 16.7, LAST = Q.minScale ? STEPS.filter(k => k >= Q.minScale - 1e-6).length - 1 : STEPS.length - 1;
+  let step = 0, slowT = 0, fastT = 0, holdT = 0, ema = 16.7 * FR, sinceUp = 1e9, backoff = 1;
+  const stepKey = 'md.scale.' + presetName + (Q.frameMs ? '@' + Q.frameMs : '');    // remember where this machine settled so the next run starts there (a preset with its own frame target, its own record: the phone's old 60 fps one does not carry over)
   const saveStep = () => { try { localStorage.setItem(stepKey, step); } catch { /* private mode */ } };
-  try { const v = +localStorage.getItem(stepKey); if (v > 0 && v < STEPS.length) step = Math.floor(v); } catch { /* ignore */ }
+  try { const v = +localStorage.getItem(stepKey); if (v > 0 && v < STEPS.length) step = Math.min(Math.floor(v), LAST); } catch { /* ignore */ }
   const api = {
     renderer, scene, camera, composer, csm, setup, setupTree, gtao, bloom, atmos, history, sky, sunDir: sky.sunDir, sunColor, sunIntensity, haze, Q, final: final.uniforms, sceneRT, sceneDepth: sceneRT.depthTexture, wind,
     exposureTarget: 0.85, baseExposure: 0.85, renderScale: STEPS[step], adaptive: true, meter, autoExposure: true, keyLum: 0.125, exposure: 0.85,
@@ -384,11 +391,11 @@ export function createRenderer(canvas, skyTex, presetName) {
       if (!api.adaptive || rawMs > 120) return;
       ema += (rawMs - ema) * 0.08; holdT -= dt; sinceUp += dt;
       // at 60 Hz a mean above ~17.2 ms means a few percent of frames are being shown twice: treat that as too slow
-      if (ema > 17.2) { slowT += dt; fastT = 0; } else if (ema < 16.95) { fastT += dt; slowT = Math.max(0, slowT - dt * 0.5); } else { slowT = Math.max(0, slowT - dt * 0.25); fastT = 0; }
-      if (slowT > 1.5 && step < STEPS.length - 1) {
+      if (ema > 17.2 * FR) { slowT += dt; fastT = 0; } else if (ema < 16.95 * FR) { fastT += dt; slowT = Math.max(0, slowT - dt * 0.5); } else { slowT = Math.max(0, slowT - dt * 0.25); fastT = 0; }
+      if (slowT > 1.5 && step < LAST) {
         backoff = sinceUp < 40 ? Math.min(backoff * 2, 32) : 1;            // stepping back up just failed: wait longer before trying again
-        step++; slowT = 0; holdT = (12 + step * 6) * backoff; api.renderScale = STEPS[step]; api.resize(); ema = 16.7; saveStep();
-      } else if (fastT > 6 && holdT <= 0 && step > 0) { step--; fastT = 0; holdT = 20; sinceUp = 0; api.renderScale = STEPS[step]; api.resize(); ema = 16.7; saveStep(); }
+        step++; slowT = 0; holdT = (12 + step * 6) * backoff; api.renderScale = STEPS[step]; api.resize(); ema = 16.7 * FR; saveStep();
+      } else if (fastT > 6 && holdT <= 0 && step > 0) { step--; fastT = 0; holdT = 20; sinceUp = 0; api.renderScale = STEPS[step]; api.resize(); ema = 16.7 * FR; saveStep(); }
     },
     // Distance culling of small things (userData.lod, metres; see world.js) and the far cascade's layer: details are not
     // drawn into the outermost shadow cascade, whose texels are too coarse for them anyway.

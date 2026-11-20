@@ -63,19 +63,23 @@ ammo bottom centre between the thumbs (top left under the health in portrait). T
 controls instead of the keys. Landscape is the intended way to hold it; portrait works, and the start screen suggests
 turning the phone.
 
-The `phone` preset (`src/render.js`) leaves the desktop presets as they were and asks less of a phone's GPU and memory:
+The `phone` preset (`src/render.js`) leaves the desktop presets as they were. It is drawn as sharp as High is on a
+laptop and saves on what a small screen does not show, and on memory:
 
-- about the screen's own CSS resolution (pixel ratio capped at 1.25, scale 0.8; the adaptive resolution steps down from
-  there), with no AO, bloom, sunlit dust, wet-ground reflections or MSAA;
-- two shadow cascades of 1024 px to 60 m, the outer one drawn every other frame and without the small detail, as High
+- up to two render pixels per CSS pixel (High draws 1.25 on a laptop; a phone's CSS pixel is two to three device pixels
+  and is held closer, so two looks about as sharp), with 2x MSAA. The first version drew one per CSS pixel and was
+  plainly blurry on a phone. The adaptive resolution aims at 30 fps here and never goes below 0.75 of that;
+- no AO, bloom, sunlit dust or wet-ground reflections, and no motion blur by default (a thumb's flick turns fast enough
+  to smear every turn; the menu can turn it back on);
+- two shadow cascades of 2048 px to 60 m, the outer one drawn every other frame and without the small detail, as High
   draws its outer ones;
 - small things and the modelled kit pieces culled at 0.6 of High's distances (the kit swaps to its flat stand-ins at
   18 m instead of 30 m);
 - every compressed texture without its top level (2048 → 1024, 1024 → 512): about 110 MB of video memory instead of 440;
-- the sky at half size (2048 × 1024, and its reflection map 1536 × 2048 instead of 3072 × 4096). It is halved after the
-  sun has been measured on the full-size sky, so the light bake's fingerprint still matches and `gi.bin` loads;
+- the sky drawn full size as on desktop, but its reflection map made from a half-size copy (1536 × 2048 instead of
+  3072 × 4096);
 - after boot, the copies the page keeps that only drawing needed are let go: the district cells' normals, colours and
-  uvs (rounds and sight checks read only positions), the texture data once it is on the GPU, and the full-size sky.
+  uvs (rounds and sight checks read only positions), the texture data and the sky's pixels once they are on the GPU.
   About 460 MB together.
 
 Draw calls and triangles per frame, shadow passes included, in Chromium's phone emulation on the M4 Pro (740 × 360 CSS,
@@ -87,9 +91,10 @@ the perf probe's views, mean of four frames):
 | Plazuela | 303 calls, 2.9 M triangles | 245 calls, 2.1 M triangles |
 | Market lane | 354 calls, 4.1 M triangles | 279 calls, 2.7 M triangles |
 
-None of this has been run on a real phone yet. The largest remaining costs there are the district's vertex buffers
-(about 520 MB on the GPU, as on desktop) and the download, which is unchanged: the 2048 textures are fetched and their
-top level dropped on the phone.
+On the M4 Pro the step from one to two pixels per CSS pixel took the main street view from 6.1–6.4 ms to 7.3 ms a frame
+(`G.bench`, in a hidden pane). A phone's GPU pays mostly for pixels, so the step costs more there; that has not been
+measured on a phone yet. The other large costs on a phone are the district's vertex buffers (about 520 MB on the GPU,
+as on desktop) and the download, which is unchanged: the 2048 textures are fetched and their top level dropped there.
 
 ## Controls
 

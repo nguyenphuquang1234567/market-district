@@ -35,6 +35,7 @@ function loadSettings() {
   let s = {}; try { s = JSON.parse(localStorage.getItem('market.settings') || '{}'); } catch { /* fresh */ }
   const out = { ...DEFAULTS, ...s, binds: { ...DEFAULTS.binds, ...(s.binds || {}) } };
   if (PHONE && !s.qualityPicked) out.quality = 'phone';           // a phone starts on the phone preset until one is picked in the menu
+  if (PHONE && s.blur === undefined) out.blur = 'off';             // and without motion blur: a thumb's flick turns fast enough to smear every turn
   if (params.get('q') && PRESETS[params.get('q')]) out.quality = params.get('q');
   return out;
 }
@@ -380,12 +381,13 @@ start().catch(e => { $('bootText').textContent = 'Error: ' + e.message; console.
 // The phone preset, once everything is on the GPU and the renderer has listed its cells: the district's cells are data now
 // (batch.js), and rounds, thrown things, sight checks and the props' bounds read their positions alone, so their normals,
 // colours, uvs and the rest go (a cell drawn through a twin of its own, or whose geometry anything drawn shares, keeps them).
-// About 300 MB of the page's memory; with them goes the full-size sky kept for the light bake (64 MB: the phone draws the
-// half-size one, and the bake, if one was needed, is done). Returns the megabytes let go.
+// About 300 MB of the page's memory; with them goes the sky's own copy of its pixels (64 MB: it is on the GPU, and the
+// light bake that reads them, if one was needed, is done). Returns the megabytes let go.
 function lean(R, skyTex) {
   const drawn = new Set(); R.scene.traverse(o => { if (o.geometry) drawn.add(o.geometry); });
   let bytes = 0;
-  if (R.sky.data && R.sky.data !== skyTex.image.data) { bytes += R.sky.data.byteLength; R.sky.data = null; }
+  for (const a of new Set([R.sky.data, skyTex.image.data])) if (a) bytes += a.byteLength;
+  R.sky.data = null; skyTex.image.data = null;
   for (const m of R.detached || []) {
     const g = m.geometry; if (m.userData.twin || drawn.has(g)) continue;
     for (const k of Object.keys(g.attributes)) if (k !== 'position') { bytes += g.attributes[k].array.byteLength; g.deleteAttribute(k); }
