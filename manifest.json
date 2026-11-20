@@ -1,0 +1,10 @@
+{
+  "name": "Market District",
+  "short_name": "Market",
+  "description": "Tactical FPS slice: 4 v 4 team deathmatch in a sunlit market district",
+  "start_url": "./",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#0b0b0c",
+  "theme_color": "#0b0b0c"
+}

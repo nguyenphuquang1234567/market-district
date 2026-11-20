@@ -2,7 +2,12 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0b0b0c">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.json">
 <title>Market District</title>
 <style>
   :root { --ui: "Avenir Next Condensed", "DIN Condensed", "Roboto Condensed", "Arial Narrow", sans-serif; --pad: clamp(18px, 2.6vh, 34px); --ally: #6fb1ff; --foe: #ff6a55; --ink: #f2eee4; }
@@ -83,6 +88,65 @@
   #hint { position: fixed; left: 50%; bottom: 10px; transform: translateX(-50%); font-size: 11px; letter-spacing: .18em; text-transform: uppercase; opacity: 0; pointer-events: none; } #hint.on { opacity: .6; }
   #boot { position: fixed; inset: 0; display: grid; place-items: center; background: #0b0b0c; } #boot .in { width: min(360px, 70vw); text-align: center; text-transform: uppercase; letter-spacing: .3em; font-size: 12px; }
   #boot .bar { height: 2px; background: rgba(255, 255, 255, .15); margin-top: 14px; } #boot .bar i { display: block; height: 100%; width: 0; background: #efeadf; transition: width .15s; }
+
+  /* ---------- touch screens (touch.js puts .touch on <html>): on-screen controls, and a HUD that leaves the thumbs room ---------- */
+  #touch, .tkeys, .rotate, #settings .touch-only { display: none; }
+  html.touch { --sl: max(10px, env(safe-area-inset-left)); --sr: max(10px, env(safe-area-inset-right)); --st: max(8px, env(safe-area-inset-top)); --sb: max(8px, env(safe-area-inset-bottom)); }
+  html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+  html.touch, html.touch body { overscroll-behavior: none; touch-action: manipulation; -webkit-user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+  #touch { position: fixed; inset: 0; touch-action: none; box-sizing: border-box; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+  #touch.on { display: block; }
+  #tStick { position: absolute; left: 0; top: 0; width: 0; height: 0; opacity: .4; transition: opacity .15s; pointer-events: none; }
+  #tStick.live { opacity: 1; transition: none; }
+  #tStick i { position: absolute; box-sizing: border-box; border-radius: 50%; }
+  #tStick .ring { left: -56px; top: -56px; width: 112px; height: 112px; border: 1.5px solid rgba(255, 255, 255, .5); background: rgba(12, 14, 16, .22); }
+  #tStick .nub { left: -23px; top: -23px; width: 46px; height: 46px; border: 1.5px solid rgba(255, 255, 255, .75); background: rgba(239, 234, 223, .28); }
+  #tStick.run .ring, #tStick.run .nub { border-color: #ffd27a; } #tStick.run .nub { background: rgba(255, 210, 122, .35); }
+  #touch .tb { position: absolute; display: flex; align-items: center; justify-content: center; gap: 4px; box-sizing: border-box; border-radius: 50%; border: 1.5px solid rgba(255, 255, 255, .5); background: rgba(12, 14, 16, .36); color: var(--ink); font: 600 11px var(--ui); letter-spacing: .14em; text-transform: uppercase; text-shadow: 0 1px 2px rgba(0, 0, 0, .6); }
+  #touch .tb > * { pointer-events: none; } #touch .tb span { margin-right: -.14em; }
+  #touch .tb.held { background: rgba(239, 234, 223, .3); }
+  #touch .tb.lit { border-color: #ffd27a; color: #ffd27a; background: rgba(255, 210, 122, .18); }
+  #touch .tb.none { opacity: .38; }
+  #touch .tb svg { height: 17px; width: auto; fill: currentColor; } #touch .tb b { font-size: 14px; letter-spacing: 0; }
+  #touch [data-k=fire] { width: 84px; height: 84px; right: calc(20px + env(safe-area-inset-right)); bottom: calc(54px + env(safe-area-inset-bottom)); font-size: 13px; }
+  #touch [data-k=aim] { width: 60px; height: 60px; right: calc(118px + env(safe-area-inset-right)); bottom: calc(20px + env(safe-area-inset-bottom)); }
+  #touch [data-k=reload] { width: 54px; height: 54px; right: calc(114px + env(safe-area-inset-right)); bottom: calc(108px + env(safe-area-inset-bottom)); font-size: 9.5px; letter-spacing: .1em; }
+  #touch [data-k=jump] { width: 58px; height: 58px; right: calc(33px + env(safe-area-inset-right)); bottom: calc(150px + env(safe-area-inset-bottom)); }
+  #touch [data-k=crouch] { width: 54px; height: 54px; right: calc(196px + env(safe-area-inset-right)); bottom: calc(28px + env(safe-area-inset-bottom)); font-size: 9.5px; letter-spacing: .1em; }
+  #touch [data-k=frag] { width: 48px; height: 48px; right: calc(186px + env(safe-area-inset-right)); bottom: calc(104px + env(safe-area-inset-bottom)); }
+  #touch [data-k=smoke] { width: 48px; height: 48px; right: calc(112px + env(safe-area-inset-right)); bottom: calc(180px + env(safe-area-inset-bottom)); }
+  #touch [data-k=mode] { width: 54px; height: 26px; border-radius: 13px; right: calc(35px + env(safe-area-inset-right)); bottom: calc(224px + env(safe-area-inset-bottom)); font-size: 10px; }
+  #touch [data-k=pause] { width: 40px; height: 40px; border-radius: 0; right: var(--sr); top: var(--st); }
+  #touch [data-k=pause] svg { height: 13px; }
+  html.touch #minimap { left: var(--sl); top: var(--st); width: 92px; height: 92px; }
+  html.touch #health { left: var(--sl); top: calc(var(--st) + 98px); bottom: auto; width: 92px; min-width: 0; box-sizing: border-box; padding: 4px 7px 6px; }
+  html.touch #health .lbl, html.touch #ammo .rowtop, html.touch #nades, html.touch #mode { display: none; }
+  html.touch #hp { font-size: 22px; margin: 0 0 4px; } html.touch #hpbar { gap: 2px; } html.touch #hpbar i { height: 4px; }
+  html.touch #top { top: var(--st); gap: 3px; } html.touch #compass { width: 210px; height: 15px; }
+  html.touch #scorebar { gap: 8px; padding: 3px 10px; font-size: 10px; } html.touch #scorebar b { font-size: 16px; } html.touch #timer { font-size: 15px; min-width: 34px; }
+  html.touch #feed { top: var(--st); right: calc(var(--sr) + 48px); gap: 3px; font-size: 11px; } html.touch #feed .row { padding: 2px 7px; } html.touch #feed .gun { width: 26px; height: 8px; }
+  html.touch #ammo { left: 50%; right: auto; bottom: var(--sb); transform: translateX(-50%); min-width: 0; padding: 4px 10px 6px; }
+  html.touch #ammo .count { margin: 0 0 4px; } html.touch #mag { font-size: 24px; } html.touch #res { font-size: 13px; } html.touch #abar { width: 150px; gap: 1px; } html.touch #abar i { height: 5px; }
+  html.touch #banner .a { font-size: 16px; letter-spacing: .22em; padding: 0 14px 4px; } html.touch #bannerB { font-size: 12px; } html.touch #dead .a { font-size: 20px; }
+  @media (orientation: portrait) {
+    html.touch #minimap { width: 76px; height: 76px; } html.touch #health { top: calc(var(--st) + 82px); width: 76px; }
+    html.touch #compass { width: 160px; height: 11px; } html.touch #scorebar { gap: 6px; padding: 3px 8px; }
+    html.touch #feed { top: calc(var(--st) + 48px); right: var(--sr); }
+    html.touch #ammo { left: var(--sl); bottom: auto; top: calc(var(--st) + 130px); transform: none; } html.touch #abar { width: 120px; }
+  }
+  /* menus: scroll when taller than the screen; the touch controls' help in place of the keys */
+  html.touch #menu.on { display: flex; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+  html.touch #menu > div { margin: auto; box-sizing: border-box; width: min(680px, 100%); padding: var(--st) var(--sr) var(--sb) var(--sl); }
+  html.touch #menu section { width: auto; }
+  html.touch h1 { font-size: clamp(26px, 8vmin, 50px); } html.touch .sub { margin: 6px 0 14px; font-size: 11px; letter-spacing: .26em; }
+  html.touch .btns { flex-wrap: wrap; margin-bottom: 14px; } html.touch button { padding: 14px 30px; }
+  html.touch #settings { gap: 2px 22px; padding: 8px 14px; font-size: 12px; } html.touch #settings label { min-height: 34px; }
+  html.touch #settings select { font-size: 16px; } html.touch #settings input[type=checkbox] { width: 22px; height: 22px; } html.touch #settings input[type=range] { width: 130px; height: 28px; }
+  html.touch #settings label.touch-only { display: flex; }
+  html.touch .keys { display: none; } html.touch .keys.tkeys { display: block; margin-top: 12px; line-height: 2; }
+  html.touch #resTitle { font-size: 40px; } html.touch #resScore { font-size: 30px; }
+  @media (max-width: 600px) { html.touch #settings { grid-template-columns: 1fr; } }
+  @media (orientation: portrait) { html.touch .rotate { display: block; margin: -4px 0 16px; font-size: 11px; letter-spacing: .2em; text-transform: uppercase; color: #ffd27a; } }
 </style>
 <script type="importmap">
 { "imports": {
@@ -118,9 +182,22 @@
   <div id="dead"><div class="a">Eliminated</div><div class="b">Redeploying in <span id="respawn">0.0</span></div></div>
 </div>
 
+<div id="touch" aria-hidden="true">
+  <div id="tStick"><i class="ring"></i><i class="nub"></i></div>
+  <div class="tb" data-k="fire"><span>Fire</span></div>
+  <div class="tb" data-k="aim"><span>Aim</span></div>
+  <div class="tb" data-k="reload"><span>Reload</span></div>
+  <div class="tb" data-k="jump"><span>Jump</span></div>
+  <div class="tb" data-k="crouch"><span>Crouch</span></div>
+  <div class="tb" data-k="frag"><svg viewBox="0 0 16 19"><path d="M5.6 0h5.2v2.1h3.4L15 6.4l-1.6.5-.5-2.7h-2.1v1.3a6.5 6.5 0 1 1-5.2 0V4.2H4.3V2.1h1.3z"/></svg><b>2</b></div>
+  <div class="tb" data-k="smoke"><svg viewBox="0 0 13 19"><path d="M4.4 0h4.4v2h3.1l.9 3.2-1.5.4-.5-1.8H9.9V5H12a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H1a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h2.3V3.8H2.2V2h2.2zM1.5 9v2.2h10V9z" fill-rule="evenodd"/></svg><b>2</b></div>
+  <div class="tb" data-k="mode"><span>Auto</span></div>
+  <div class="tb" data-k="pause"><svg viewBox="0 0 10 12"><rect width="3.4" height="12"/><rect x="6.6" width="3.4" height="12"/></svg></div>
+</div>
+
 <div id="menu">
   <div>
-    <section id="start"><h1>Market District</h1><div class="sub">Team deathmatch · 4 v 4 · first to 30</div><div class="btns"><button id="deploy">Deploy</button></div></section>
+    <section id="start"><h1>Market District</h1><div class="sub">Team deathmatch · 4 v 4 · first to 30</div><div class="rotate">Turn the phone sideways for the full view</div><div class="btns"><button id="deploy">Deploy</button></div></section>
     <section id="pause"><h1>Paused</h1><div class="sub">Match in progress</div><div class="btns"><button id="resume">Resume</button><button id="restart" class="ghost">Restart match</button></div></section>
     <section id="results"><h1 id="resTitle">Victory</h1><div id="resScore"></div><div id="resStats"></div><div class="btns"><button id="again">Play again</button></div></section>
     <div id="settings" class="panel">
@@ -128,7 +205,7 @@
       <label>Field of view <span><input id="o_fov" type="range" min="50" max="78" step="1"><span class="v"></span></span></label>
       <label>ADS sensitivity <span><input id="o_adsSens" type="range" min="0.4" max="1.6" step="0.05"><span class="v"></span></span></label>
       <label>Invert Y <input id="o_invertY" type="checkbox"></label>
-      <label>Quality <select id="o_quality"><option>low</option><option>medium</option><option>high</option><option>ultra</option></select></label>
+      <label>Quality <select id="o_quality"><option>phone</option><option>low</option><option>medium</option><option>high</option><option>ultra</option></select></label>
       <label>Difficulty <select id="o_difficulty"><option>easy</option><option>normal</option><option>hard</option></select></label>
       <label>Motion blur <select id="o_blur"><option>off</option><option>low</option><option>high</option></select></label>
       <label>Camera shake <input id="o_shake" type="checkbox"></label>
@@ -137,8 +214,10 @@
       <label>Chromatic fringe <input id="o_chroma" type="checkbox"></label>
       <label>View bob <input id="o_bob" type="checkbox"></label>
       <label>Blood <input id="o_blood" type="checkbox"></label>
+      <label class="touch-only">Full screen <input id="o_fullscreen" type="checkbox"></label>
     </div>
     <div class="keys"><b>WASD</b>Move <b>Shift</b>Sprint <b>C</b>Crouch <b>Space</b>Jump / mantle <b>LMB</b>Fire <b>RMB</b>Aim <b>R</b>Reload <b>B</b>Fire mode <b>F</b>Inspect <b>G</b>Frag grenade <b>Q</b>Smoke <b>LMB / RMB</b>Throw / lob <b>Esc</b>Pause <b>F3</b>Frame stats</div>
+    <div class="keys tkeys"><b>Left thumb</b>Move, push to the rim to sprint <b>Right side</b>Drag to look <b>Fire</b>Hold, drag to keep aiming <b>Aim</b>Toggles <b>Crouch</b>Toggles <b>Jump</b>Jump / mantle <b>Frag · Smoke</b>Take one out, then Throw or Lob <b>Reload</b>Also puts a grenade away <b>Auto</b>Fire mode <b>II</b>Pause</div>
   </div>
 </div>
 

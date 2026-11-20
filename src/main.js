@@ -20,12 +20,13 @@ import { losClear, rayBoxes, ceilingAt, OVERHANG } from './physics.js';
 import { setupGI } from './gi.js';
 import { addStreetLife } from './streetlife.js';
 import { addArchDetail } from './archdetail.js';
+import { Touch, PHONE } from './touch.js';
 
 const params = new URLSearchParams(location.search);
 const $ = id => document.getElementById(id);
 const canvas = $('view');
 const DEFAULTS = {
-  sensitivity: 1, fov: 60, adsSens: 1, invertY: false, quality: 'high', difficulty: 'normal', blur: 'low', shake: true, vignette: true, grain: true, chroma: true, bob: true, blood: true,
+  sensitivity: 1, fov: 60, adsSens: 1, invertY: false, quality: 'high', difficulty: 'normal', blur: 'low', shake: true, vignette: true, grain: true, chroma: true, bob: true, blood: true, fullscreen: true,
   binds: { forward: 'KeyW', back: 'KeyS', left: 'KeyA', right: 'KeyD', sprint: 'ShiftLeft', crouch: 'KeyC', jump: 'Space', reload: 'KeyR', mode: 'KeyB', inspect: 'KeyF', frag: 'KeyG', smoke: 'KeyQ' },
 };
 const MATCH = { time: 600, score: 30 };
@@ -33,6 +34,7 @@ const MATCH = { time: 600, score: 30 };
 function loadSettings() {
   let s = {}; try { s = JSON.parse(localStorage.getItem('market.settings') || '{}'); } catch { /* fresh */ }
   const out = { ...DEFAULTS, ...s, binds: { ...DEFAULTS.binds, ...(s.binds || {}) } };
+  if (PHONE && !s.qualityPicked) out.quality = 'phone';           // a phone starts on the phone preset until one is picked in the menu
   if (params.get('q') && PRESETS[params.get('q')]) out.quality = params.get('q');
   return out;
 }
@@ -40,7 +42,7 @@ function loadSettings() {
 async function start() {
   const settings = loadSettings();
   const probe = new THREE.WebGLRenderer({ canvas: document.createElement('canvas') });
-  const assets = await loadAssets(probe, p => { $('bootBar').style.width = (p * 82).toFixed(0) + '%'; });
+  const assets = await loadAssets(probe, p => { $('bootBar').style.width = (p * 82).toFixed(0) + '%'; }, { drop: PRESETS[settings.quality]?.texDrop || 0 });
   probe.dispose(); performance.mark('boot:assets');
   $('bootText').textContent = 'Building district'; $('bootBar').style.width = '88%';
   await new Promise(r => setTimeout(r, 30));
@@ -71,6 +73,7 @@ async function start() {
   G.bots = new Bots(G, 4); G.carry = CARRY;
   for (const a of [G.player, ...G.bots.list]) G.rigid.addPusher(a);
   G.throw = new Throwables(G);
+  G.touch = new Touch(G);                                                   // on-screen controls on a touch screen (touch.js)
   G.rigid.onImpact = (it, speed, p, other, surf) => {
     const pos = { x: p.x, y: p.y, z: p.z };
     if (it.kind === 'nade') { G.throw.bounce(it, speed, p, other ? (other.kind === 'rag' ? 'fabric' : other.mat === 'wood' || other.mat === 'wicker' || other.mat === 'cardboard' ? 'wood' : other.mat === 'bag' || other.mat === 'rubber' ? 'fabric' : 'metal') : surf); return; }
@@ -136,7 +139,7 @@ async function start() {
     G.player.clearInput();
     setUnlockedLook(unlocked);
     G.playing = true;
-    G.hud.show(null);
+    G.hud.show(null); G.touch.show(true);
     G.audio.resume();
     last = performance.now();
   };
@@ -145,6 +148,7 @@ async function start() {
     G.player.clearInput();
     setUnlockedLook(false);
     G.playing = false;
+    G.touch.show(false);
   };
   const releaseMouse = () => {
     if (document.pointerLockElement === canvas) document.exitPointerLock();
@@ -186,9 +190,12 @@ async function start() {
       releaseMouse();
     }
   });
-  const begin = () => { G.audio.start(); G.audio.ui('click'); if (!G.matchLive) { resetMatch(); G.audio.ui('start'); } lock(); };
+  // On a touch screen there is no mouse to capture: play starts at once, full screen where the browser allows it.
+  const play = () => { if (G.touch.on) { G.touch.fullscreen(); startPlaying(false); } else lock(); };
+  const begin = () => { G.audio.start(); G.audio.ui('click'); if (!G.matchLive) { resetMatch(); G.audio.ui('start'); } play(); };
   $('deploy').onclick = begin; $('resume').onclick = begin;
-  $('restart').onclick = $('again').onclick = () => { G.audio.start(); resetMatch(); G.audio.ui('start'); lock(); };
+  $('restart').onclick = $('again').onclick = () => { G.audio.start(); resetMatch(); G.audio.ui('start'); play(); };
+  G.pause = () => { pause(); releaseMouse(); };                            // (the touch controls' pause button)
   for (const b of document.querySelectorAll('button')) b.addEventListener('mouseenter', () => G.audio.ui('hover'));
   document.addEventListener('pointerlockchange', () => {
     const locked = document.pointerLockElement === canvas;
@@ -212,7 +219,7 @@ async function start() {
     if (isBox) el.checked = !!G.settings[k]; else el.value = G.settings[k];
     show();
     el.addEventListener('input', () => {
-      G.settings[k] = isBox ? el.checked : el.type === 'range' ? +el.value : el.value; show(); applySettings(); save();
+      G.settings[k] = isBox ? el.checked : el.type === 'range' ? +el.value : el.value; if (k === 'quality') G.settings.qualityPicked = true; show(); applySettings(); save();
       if (k === 'quality') location.reload();
     });
   }
@@ -222,6 +229,7 @@ async function start() {
   function simulate(dt) {
     G.time += dt; G.timeLeft -= dt;
     if (G.demo) G.demo(dt);
+    G.touch.update();
     G.player.update(dt);
     G.bots.update(dt);
     G.throw.update(dt);
@@ -353,6 +361,7 @@ async function start() {
   R.render(0.016, 0);                                  // warm every pipeline before the first interactive frame
   G.weapon.root.visible = false; for (const b of G.bots.list) { b.root.visible = false; b.gun.visible = false; }
   G.throw.warm(false); G.throw.puffs.reset(); G.flashes.warm(false, [G.weapon.flashFx]); G.blood.warm(false);
+  if (R.Q.lean) G.leanMB = lean(R, assets.sky);
   $('boot').remove(); performance.mark('boot:ready');
   // Load-time phases in ms since navigation: assets fetched and decoded, district built, light loaded or baked, shaders and textures warmed.
   G.bootTimes = () => Object.fromEntries(['assets', 'world', 'gi', 'ready'].map(k => [k, Math.round(performance.getEntriesByName('boot:' + k)[0]?.startTime ?? -1)]));
@@ -367,6 +376,22 @@ async function start() {
   requestAnimationFrame(frame);
 }
 start().catch(e => { $('bootText').textContent = 'Error: ' + e.message; console.error(e); });
+
+// The phone preset, once everything is on the GPU and the renderer has listed its cells: the district's cells are data now
+// (batch.js), and rounds, thrown things, sight checks and the props' bounds read their positions alone, so their normals,
+// colours, uvs and the rest go (a cell drawn through a twin of its own, or whose geometry anything drawn shares, keeps them).
+// About 300 MB of the page's memory; with them goes the full-size sky kept for the light bake (64 MB: the phone draws the
+// half-size one, and the bake, if one was needed, is done). Returns the megabytes let go.
+function lean(R, skyTex) {
+  const drawn = new Set(); R.scene.traverse(o => { if (o.geometry) drawn.add(o.geometry); });
+  let bytes = 0;
+  if (R.sky.data && R.sky.data !== skyTex.image.data) { bytes += R.sky.data.byteLength; R.sky.data = null; }
+  for (const m of R.detached || []) {
+    const g = m.geometry; if (m.userData.twin || drawn.has(g)) continue;
+    for (const k of Object.keys(g.attributes)) if (k !== 'position') { bytes += g.attributes[k].array.byteLength; g.deleteAttribute(k); }
+  }
+  return Math.round(bytes / 1048576);
+}
 
 // ?bench=<tag>: once loaded, time the fixed views (tools/perf-probe.js, median of three), estimate GPU memory, note the
 // load-time phases, save the comparison captures (tools/compare-shots.js), and post it all to captures/ as bench_<tag>.

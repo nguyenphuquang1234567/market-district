@@ -18,6 +18,7 @@ await mkdir(dist);
 const html = await readFile(join(root, 'index.html'), 'utf8');
 await Promise.all([
   writeFile(join(dist, 'index.html'), html.replaceAll('./node_modules/', './vendor/')),
+  cp(join(root, 'manifest.json'), join(dist, 'manifest.json')),
   cp(join(root, 'src'), join(dist, 'src'), { recursive: true }),
   cp(join(root, 'assets'), join(dist, 'assets'), {
     recursive: true,

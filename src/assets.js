@@ -151,7 +151,20 @@ export const useKTX2 = new URLSearchParams(location.search).get('tex') !== 'jpg'
 // them again after this changes (the server now revalidates, so a plain reload picks up later edits by itself).
 const REV = '?r=2';
 
-export async function loadAssets(renderer, onProgress) {
+// opt.drop (the phone preset's texDrop): that many of the top levels of each compressed texture are left out, a quarter of
+// the video memory a level (a clone shares its original's image, so the levels kept are matched to the image's size), and
+// once a texture is on the GPU its copy here is let go, as batch.js does with the district's buffers (nothing re-uploads
+// these; should anything ask, the empty levels make it a GL error, not a crash).
+export async function loadAssets(renderer, onProgress, { drop = 0 } = {}) {
+  const shrunk = new WeakSet();
+  const letGo = t => { t.mipmaps = t.mipmaps.map(m => ({ width: m.width, height: m.height, data: new Uint8Array(0) })); t.onUpdate = null; };
+  const shrink = t => {
+    if (!drop || !t?.isCompressedTexture || !t.mipmaps?.length) return t;
+    if (!shrunk.has(t.source) && t.mipmaps.length > drop + 1) { shrunk.add(t.source); t.image.width = t.mipmaps[drop].width; t.image.height = t.mipmaps[drop].height; }
+    while (t.mipmaps.length > 1 && t.mipmaps[0].width > t.image.width) t.mipmaps.shift();
+    t.onUpdate = letGo;
+    return t;
+  };
   const manager = new THREE.LoadingManager();
   manager.onProgress = (_u, n, total) => onProgress(n / total);
   const tl = new THREE.TextureLoader(manager), gl = new GLTFLoader(manager), hl = new RGBELoader(manager);
@@ -163,6 +176,7 @@ export async function loadAssets(renderer, onProgress) {
     gl.setKTX2Loader(kl);
   }
   const tex = (stem, srgb) => (kl ? kl.loadAsync(stem + '.ktx2' + REV) : tl.loadAsync(stem + '.jpg' + REV)).then(t => {
+    shrink(t);
     t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = aniso;
     if (srgb) t.colorSpace = THREE.SRGBColorSpace;          // (a KTX2 file says so itself; the JPEGs need telling)
     t.userData.src = stem + '.jpg';
@@ -183,6 +197,7 @@ export async function loadAssets(renderer, onProgress) {
         if (!o.isMesh) return;
         for (const k of ['map', 'normalMap', 'roughnessMap']) if (o.material[k]) o.material[k].anisotropy = 4;
         for (const t of [o.material.map, o.material.normalMap, o.material.roughnessMap, o.material.aoMap, o.material.metalnessMap]) {
+          shrink(t);
           const ti = t && g.parser.associations.get(t)?.textures, src = ti != null ? json.textures[ti].source : null;
           if (src != null && json.images[src]?.uri) t.userData.src = dir + json.images[src].uri;     // (the extension's fallback is the original image)
         }

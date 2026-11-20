@@ -36,6 +36,61 @@ npm run shell
 open "build/Market District.app" --args "http://localhost:5173/"
 ```
 
+### Playing on a phone
+
+A phone or tablet gets on-screen controls by itself (a touch-first screen, or the first finger on any screen; `?touch=1`
+forces them on, `?touch=0` off), and a phone starts on the `phone` quality preset. There is no mouse to capture, so
+**Deploy** starts play at once. On Android it also asks for the full screen and turns it sideways (the menu's
+*Full screen* box turns that off). An iPhone allows a page neither: add the game to the home screen and open it from there
+to lose Safari's bars (`manifest.json` and the Apple meta tags ask for full screen and landscape).
+
+To try it from a phone on the same Wi-Fi, run `npm start` on the computer and open `http://<the computer's LAN address>:5173`
+(the server listens on every interface).
+
+| | |
+| --- | --- |
+| Move / sprint | left thumb anywhere on the left 42 % of the screen: the stick appears under it (12 % dead zone, analogue pace). Pushed to the rim, mostly forward, it sprints |
+| Look | drag anywhere else on the screen (0.005 rad per CSS pixel at sensitivity 1; the Sensitivity slider and aiming scale it as they do the mouse) |
+| Fire | hold **Fire**; drag it to keep aiming while it fires |
+| Aim / crouch | **Aim** and **Crouch** toggle (sprinting stands up) |
+| Jump, mantle | **Jump** |
+| Reload / fire mode | **Reload** (it also puts a grenade away) / **Auto**·**Semi** |
+| Grenade / smoke | **Frag** / **Smoke** (each with its count) takes one out; then **Throw** (the Fire button) throws it overhand when let go, and **Lob** (the Aim button), held and let go, lobs it underhand |
+| Pause | **II** |
+
+The HUD moves out of the thumbs' way: minimap and health top left, score and compass top centre, kill feed top right,
+ammo bottom centre between the thumbs (top left under the health in portrait). The menus scroll and list the touch
+controls instead of the keys. Landscape is the intended way to hold it; portrait works, and the start screen suggests
+turning the phone.
+
+The `phone` preset (`src/render.js`) leaves the desktop presets as they were and asks less of a phone's GPU and memory:
+
+- about the screen's own CSS resolution (pixel ratio capped at 1.25, scale 0.8; the adaptive resolution steps down from
+  there), with no AO, bloom, sunlit dust, wet-ground reflections or MSAA;
+- two shadow cascades of 1024 px to 60 m, the outer one drawn every other frame and without the small detail, as High
+  draws its outer ones;
+- small things and the modelled kit pieces culled at 0.6 of High's distances (the kit swaps to its flat stand-ins at
+  18 m instead of 30 m);
+- every compressed texture without its top level (2048 → 1024, 1024 → 512): about 110 MB of video memory instead of 440;
+- the sky at half size (2048 × 1024, and its reflection map 1536 × 2048 instead of 3072 × 4096). It is halved after the
+  sun has been measured on the full-size sky, so the light bake's fingerprint still matches and `gi.bin` loads;
+- after boot, the copies the page keeps that only drawing needed are let go: the district cells' normals, colours and
+  uvs (rounds and sight checks read only positions), the texture data once it is on the GPU, and the full-size sky.
+  About 460 MB together.
+
+Draw calls and triangles per frame, shadow passes included, in Chromium's phone emulation on the M4 Pro (740 × 360 CSS,
+the perf probe's views, mean of four frames):
+
+| View | High | Phone |
+| --- | --- | --- |
+| Main street | 426 calls, 5.4 M triangles | 301 calls, 2.9 M triangles |
+| Plazuela | 303 calls, 2.9 M triangles | 245 calls, 2.1 M triangles |
+| Market lane | 354 calls, 4.1 M triangles | 279 calls, 2.7 M triangles |
+
+None of this has been run on a real phone yet. The largest remaining costs there are the district's vertex buffers
+(about 520 MB on the GPU, as on desktop) and the download, which is unchanged: the 2048 textures are fetched and their
+top level dropped on the phone.
+
 ## Controls
 
 | | |
@@ -460,7 +515,8 @@ was matched against one. Bots do not throw grenades or smoke.
 
 ## Quality presets
 
-`low` · `medium` · `high` (default) · `ultra`, from the menu or `?q=ultra` in the URL. They change internal resolution,
+`low` · `medium` · `high` (default) · `ultra`, from the menu or `?q=ultra` in the URL; a phone starts on `phone`
+(see *Playing on a phone*). They change internal resolution,
 shadow resolution and cascade count, AO samples, MSAA and bloom. HUD and menus always render at native resolution.
 If the display's frame rate cannot be held, the internal resolution steps down (and back up when there is headroom); the
 step a machine settles on is remembered per preset.

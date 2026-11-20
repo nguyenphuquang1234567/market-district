@@ -22,7 +22,7 @@ export class Player {
     addEventListener('keydown', e => { if (e.repeat) return; this.inputCount.keys++; this.keys.add(e.code); this.onKey(e.code); if (['Space', 'Tab', 'ControlLeft'].includes(e.code)) e.preventDefault(); });
     addEventListener('keyup', e => this.keys.delete(e.code));
     addEventListener('blur', () => this.clearInput());
-    const captured = () => G.playing && (document.pointerLockElement === el || G.noLock);
+    const captured = () => G.playing && !G.touch?.on && (document.pointerLockElement === el || G.noLock);   // (with the touch controls on, they own the pointer: a tap's copied mouse events are not shots)
     addEventListener('mousemove', e => {
       if (!captured()) return;
       this.inputCount.moves++;
@@ -159,8 +159,8 @@ export class Player {
 
   update(dt) {
     const G = this.G, cam = G.R.camera, S = G.settings, cols = G.world.colliders, rails = G.world.rails || [], W = G.weapon, B = S.binds;
-    const sim = this.sim, key = c => this.keys.has(c);
-    const input = this.active ? (sim || { f: (key(B.forward) ? 1 : 0) - (key(B.back) ? 1 : 0), s: (key(B.right) ? 1 : 0) - (key(B.left) ? 1 : 0), sprint: key(B.sprint), crouch: key(B.crouch) || key('ControlLeft'), fire: this.mouse.l, ads: this.mouse.r }) : { f: 0, s: 0 };
+    const sim = this.sim, key = c => this.keys.has(c), tc = G.touch?.on ? G.touch.state : null;     // (the on-screen stick is analogue: part-way is slower)
+    const input = this.active ? (sim || { f: clamp((key(B.forward) ? 1 : 0) - (key(B.back) ? 1 : 0) + (tc ? tc.f : 0), -1, 1), s: clamp((key(B.right) ? 1 : 0) - (key(B.left) ? 1 : 0) + (tc ? tc.s : 0), -1, 1), sprint: key(B.sprint) || !!tc?.sprint, crouch: key(B.crouch) || key('ControlLeft') || !!tc?.crouch, fire: this.mouse.l || !!tc?.fire, ads: this.mouse.r || !!tc?.ads }) : { f: 0, s: 0 };
     // ---- death camera / respawn
     if (!this.alive) {
       this.deadT += dt; this.respawnT -= dt;

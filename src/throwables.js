@@ -402,7 +402,7 @@ export class Throwables {
       if (n.t < n.fuse) return;
       n.lit = true; n.burnT = 0;
       const fl = this.floor(p);
-      n.cloud = new SmokeCloud(this.puffs, fl, p.x, p.z, { low: 0.62, medium: 0.8, high: 1, ultra: 1.15 }[G.settings.quality] || 1); this.clouds.push(n.cloud);
+      n.cloud = new SmokeCloud(this.puffs, fl, p.x, p.z, { phone: 0.62, low: 0.62, medium: 0.8, high: 1, ultra: 1.15 }[G.settings.quality] || 1); this.clouds.push(n.cloud);
       G.audio.smokePop({ x: p.x, y: p.y, z: p.z }); n.hiss = G.audio.smokeHiss({ x: p.x, y: p.y, z: p.z });
       G.bots.hear(p, 24, -1);
       n.item.body.applyImpulse({ x: (R() - 0.5) * 0.5, y: 0.5 + R() * 0.3, z: (R() - 0.5) * 0.5 }, true);            // the fuze firing kicks it

@@ -18,10 +18,31 @@ export const PRESETS = {
   medium: { maxPR: 1.0,  scale: 0.9, shadow: 2048, cascades: 3, shadowFar: 120, msaa: 2, ao: true,  bloom: true,  aoSamples: 8,  aoScale: 0.5, soft: false, lod: 0.85, air: 8 },
   high:   { maxPR: 1.25, scale: 1.0, shadow: 2048, cascades: 3, shadowFar: 140, msaa: 4, ao: true,  bloom: true,  aoSamples: 12, aoScale: 0.5, soft: false, lod: 1.0, air: 12 },
   ultra:  { maxPR: 1.4,  scale: 1.0, shadow: 4096, cascades: 4, shadowFar: 170, msaa: 4, ao: true,  bloom: true,  aoSamples: 16, aoScale: 0.5, soft: true, lod: 1.35, air: 16 },   // measured: full-res AO cost 6.5 ms for little gain; the 4k cascades are nearly free
+  // A phone (touch.js picks it there by default): Low's passes at about the screen's own CSS size, two short cascades,
+  // small things and the modelled kit pieces culled nearer (lod also scales kitNear), every texture without its top level
+  // (texDrop: a quarter of the video memory) and the sky at half size (skyHalf); lean: the copies of the district kept for
+  // the CPU shed what only the drawing needed (main.js), so the whole fits a phone browser's memory. thinShadows: the outer
+  // of its two cascades is drawn as High draws its outer ones, every other frame and without the small detail.
+  phone:  { maxPR: 1.25, scale: 0.8, shadow: 1024, cascades: 2, shadowFar: 60,  msaa: 0, ao: false, bloom: false, aoSamples: 8,  aoScale: 0.5, soft: false, lod: 0.6, air: 0, reflect: false, texDrop: 1, skyHalf: true, lean: true, thinShadows: true },
 };
 
 const SUN_PHI = THREE.MathUtils.degToRad(-60);   // sun azimuth: from +x (east) towards -z (south) = late morning
 const SKY_CLAMP = 24;                            // radiance clamp: the sun's energy comes from the directional light instead
+
+// The phone preset's sky: half as wide and high, each texel the mean of four (a quarter of the memory, and of the reflection
+// map made from it). It runs after prepareSky has measured the full-size sky, so the sun and its strength stay exactly as
+// on any other preset, and with them the light bake's fingerprint (gi.js).
+function halveSky(tex) {
+  const { data: d, width: w, height: h } = tex.image, W = w >> 1, H = h >> 1, out = new Uint16Array(W * H * 4);
+  const F = new Float32Array(65536), toHalf = THREE.DataUtils.toHalfFloat;
+  for (let i = 0; i < 65536; i++) F[i] = THREE.DataUtils.fromHalfFloat(i);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const o = (y * W + x) * 4, a = (2 * y * w + 2 * x) * 4, b = a + w * 4;
+    for (let c = 0; c < 3; c++) out[o + c] = toHalf((F[d[a + c]] + F[d[a + 4 + c]] + F[d[b + c]] + F[d[b + 4 + c]]) * 0.25);
+    out[o + 3] = d[a + 3];
+  }
+  tex.image = { data: out, width: W, height: H }; tex.needsUpdate = true;
+}
 
 // Rotates the equirect so the sun sits at SUN_PHI, clamps the solar disc, and measures the sky.
 function prepareSky(tex) {
@@ -213,6 +234,7 @@ export function createRenderer(canvas, skyTex, presetName) {
 
   // --- sky -----------------------------------------------------------------------------------------------------
   const sky = prepareSky(skyTex);
+  if (Q.skyHalf) halveSky(skyTex);
   const pmrem = new THREE.PMREMGenerator(renderer);
   scene.environment = pmrem.fromEquirectangular(skyTex).texture;      // reflections; diffuse sky light comes from the baked volume
   pmrem.dispose();
@@ -462,7 +484,7 @@ export function createRenderer(canvas, skyTex, presetName) {
       // cascade's) stays out as well: at the far cascade's ten centimetres a texel its shadows are not resolved.
       scene.traverse(o => { if (o.isBatchedMesh ? !(o.userData.lod && o.userData.lod < 80) && !String(o.userData.kitLod).startsWith('near') && o.name !== 'batch:cantera' && o.name !== 'batch:sillar' : !o.userData.lod && !String(o.userData.kitLod).startsWith('near')) o.layers.enable(2); });
       const far = csm.lights[csm.lights.length - 1];
-      if (csm.lights.length > 2) far.shadow.camera.layers.set(2);
+      if (csm.lights.length > 2 || Q.thinShadows) far.shadow.camera.layers.set(2);
     },
     render(dt, time) {
       if (Math.abs(camera.fov - lastFov) > 0.05) { camera.updateProjectionMatrix(); csm.updateFrustums(); lastFov = camera.fov; }
@@ -481,7 +503,7 @@ export function createRenderer(canvas, skyTex, presetName) {
         // The second cascade on every other frame; the ones beyond it share the frames between, so the farthest is
         // redrawn every fourth. (A cascade keeps the matrix it was drawn with, so a late one is still right for the
         // ground it covers; what it misses is the strip that has turned into view since, 50 m and more away.)
-        for (let i = 0; i < n; i++) if (i === 0 || n < 3 || frameNo < 8 || (i === 1 ? frameNo % 2 === 0 : frameNo % 2 === 1 && (frameNo >> 1) % Math.max(2, n - 2) === i - 2)) csm.lights[i].shadow.needsUpdate = true;
+        for (let i = 0; i < n; i++) if (i === 0 || (n < 3 && !Q.thinShadows) || frameNo < 8 || (i === 1 ? frameNo % 2 === 0 : frameNo % 2 === 1 && (frameNo >> 1) % Math.max(2, n - 2) === i - 2)) csm.lights[i].shadow.needsUpdate = true;
         renderer.shadowMap.needsUpdate = true;
       }
       if (gtao) { gtao.gtaoMaterial.uniforms.tDepth.value = sceneRT.depthTexture; gtao.pdMaterial.uniforms.tDepth.value = sceneRT.depthTexture; }
