@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { canvasTexture, rng } from './util.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
-const MAXP = 2600, MAX_DECALS = 180, MAX_CASINGS = 40, MAX_TRACERS = 28;
+const MAXP = 6000, MAX_DECALS = 180, MAX_CASINGS = 40, MAX_TRACERS = 28;
 
 const pointShader = additive => new THREE.ShaderMaterial({
   transparent: true, depthWrite: false, blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending,

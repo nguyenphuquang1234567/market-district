@@ -278,14 +278,16 @@ Key bindings live in the same saved settings object (`binds`, including `frag` a
   blur over the target; smaller from the hip than a bot's, smaller again through the optic. The bots' rifles draw
   from a pool of the same flashes, and the one nearest the eye carries a light, as the player's does. Reloads bring the rifle up, the hand strips and seats the magazine,
   and the bolt closes as the support hand returns after an empty reload.
-- **Blood** — a round into a body (`src/blood.js`) throws a short red mist at the wound, back towards the shooter and
-  more of it out of the far side, and drops along the round's flight that fall under gravity. What they reach is
+- **Blood** — a round into a body (`src/blood.js`) throws a ragged burst and a cloud of red mist at the wound, back
+  towards the shooter and more of it out of the far side, a cone of fine spatter flung fast out of both wounds, and
+  drops along the round's flight that fall under gravity; then the wound pumps, a jet with each beat of the heart for a
+  second or two, weaker each time, following the bone it is in as the man runs on or falls. What they reach is
   stained: rays from the exit wound against the drawn geometry find the wall or ground behind, and after the time the
   drops take to get there a spray drawn out along the surface, a splat, or a patch with runs down a wall is laid on
   it, with smaller drops on the ground under the flight; a headshot throws more, a hit on a limb less, a grenade's
   fragments in every direction, and a body already down still bleeds when shot. A stain goes only where the surface
   carries all of it (eight points round it are looked for within a few centimetres of its plane), so none hangs over
-  a kerb, past a corner or across a window's reveal. The wounded leave a trail of single drops for some seconds; the
+  a kerb, past a corner or across a window's reveal. The wounded leave a trail of drops for some seconds; the
   fallen bleed out into a pool that spreads from the wound over eight to thirteen seconds, as large as the ground
   there allows. Hit yourself, you get it on the lens: soft splats towards the side the round came from, off the middle
   of the screen, gone in three or four seconds. Stains are wet (a low roughness, so the sky shows in them), instanced

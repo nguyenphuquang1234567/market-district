@@ -1,6 +1,7 @@
 // Blood: what a round does to a body, which a puff of cloth dust did not show.
-//   - at the wound a short red mist, back towards the shooter and (more of it) out of the far side, and drops thrown
-//     along the round's flight that fall under gravity;
+//   - at the wound a burst of red mist, back towards the shooter and (more of it) a cloud out of the far side, and a
+//     spray of drops thrown along the round's flight that fall under gravity; then the wound pumps, a jet with each beat
+//     of the heart for a second or two, weaker each time, following the bone it is in as the man runs on or falls;
 //   - what the drops reach is stained: rays from the exit wound against the drawn geometry (the district's ray meshes,
 //     the version on screen) find the wall or ground behind, and after the time the drops take to get there a spray
 //     drawn out along the surface, a splat, or a patch with runs down a wall is laid on it; nearer drops spot the ground;
@@ -17,8 +18,8 @@ import { rng } from './util.js';
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 const DOWN = V(0, -1, 0);
 const SEEN = 48, FELT = 75;            // metres from the camera within which a hit stains surfaces / throws mist and drops
-const KINDS = [['splat', 11, 90], ['splat2', 23, 90], ['spray', 31, 70], ['drip', 43, 60], ['drops', 57, 110], ['dot', 61, 170], ['pool', 77, 28]];
-const _x = V(), _y = V(), _t = V(), _a = V(), _b = V(), _d = V(), _p = V(), _u = V(), _e = V(), _c = V(), _f = V(), _g = V(), _q = V();
+const KINDS = [['splat', 11, 160], ['splat2', 23, 160], ['spray', 31, 140], ['drip', 43, 100], ['drops', 57, 260], ['dot', 61, 360], ['pool', 77, 40]];
+const _x = V(), _y = V(), _t = V(), _a = V(), _b = V(), _d = V(), _p = V(), _u = V(), _e = V(), _c = V(), _f = V(), _g = V(), _q = V(), _m = new THREE.Matrix4();
 
 // ---- the stains, drawn once each: red on clear, darker where it lies thick ---------------------------------------------
 function paint(kind, seed) {
@@ -211,24 +212,54 @@ export class Blood {
     const exit = _e.copy(p).addScaledVector(dir, zone === 'head' ? 0.2 : zone === 'limb' ? 0.12 : 0.3);       // where it comes out
     if (!self) {
       const red = [0.3 * L, 0.014 * L, 0.016 * L], dark = [0.17 * L, 0.008 * L, 0.01 * L], fy = (victim ? victim.pos.y : p.y - 0.4) + 0.012;
-      for (let i = 0; i < 4; i++) fx.dust.add(p, V(-dir.x * (0.6 + R()) + (R() - 0.5) * 0.6, 0.2 + (R() - 0.5) * 0.6, -dir.z * (0.6 + R()) + (R() - 0.5) * 0.6), red, 0.68, 0.09 + R() * 0.05 * k, 0.17 + R() * 0.09, 0.3, 5, 1.9 * k);   // the burst at the wound: brief and dense, so a hit reads from where the shot came
-      for (let i = 0; i < 9 * k; i++) fx.dust.add(p, V(-dir.x * (0.5 + R() * 1.6) + (R() - 0.5) * 1.6, (R() - 0.3) * 1.5, -dir.z * (0.5 + R() * 1.6) + (R() - 0.5) * 1.6), red, 0.2 + R() * 0.14, 0.03 + R() * 0.05, 0.2 + R() * 0.25, 0.5, 4, 0.9);
-      for (let i = 0; i < 16 * k; i++) fx.dust.add(exit, V(dir.x * (1.5 + R() * 4.5) + (R() - 0.5) * 2.6, dir.y * 2 + (R() - 0.35) * 2.2, dir.z * (1.5 + R() * 4.5) + (R() - 0.5) * 2.6), red, 0.2 + R() * 0.16, 0.03 + R() * 0.07, 0.26 + R() * 0.36, 0.9, 3.4, 1.3);
-      for (let i = 0; i < 16 * k; i++) {
-        const out = zone === 'blast' ? R() < 0.5 : R() < 0.78, s = out ? 2 + R() * 6 : -(1 + R() * 2.5), w = out ? 2.6 : 1.8;
-        fx.dust.add(out ? exit : p, V(dir.x * s + (R() - 0.5) * w, dir.y * s + R() * 1.8 + (out ? 0 : 0.3), dir.z * s + (R() - 0.5) * w), dark, 1, 0.014 + R() * R() * 0.03, 0.55 + R() * 0.6, 9.8, 0.5, 0, fy);
+      for (let i = 0; i < 18; i++) { const s = 0.4 + R() * R() * 2.6; fx.dust.add(p, V(-dir.x * s + (R() - 0.5) * 1.4, 0.15 + (R() - 0.5) * 1.4, -dir.z * s + (R() - 0.5) * 1.4), red, 0.4 + R() * 0.3, 0.045 + R() * 0.075 * k, 0.18 + R() * 0.18, 0.3, 5, (0.5 + R()) * k); }   // the burst at the wound: dense and ragged, so a hit reads from where the shot came
+      for (let i = 0; i < 36 * k; i++) {                                     // spatter: fine droplets flung fast in a cone out of each wound, more out of the far side
+        const out = R() < 0.55, s = (out ? 4 : 2.5) + R() * 5, sx = (R() - 0.5) * 0.7 * s, sy = (R() - 0.4) * 0.6 * s, sz = (R() - 0.5) * 0.7 * s, f = out ? 1 : -1;
+        fx.dust.add(out ? exit : p, V(dir.x * s * f + sx, dir.y * s * f + sy, dir.z * s * f + sz), [0.24 * L, 0.011 * L, 0.013 * L], 1, 0.008 + R() * 0.016, 0.22 + R() * 0.3, 9.8, 1.2, 0, fy);
       }
+      for (let i = 0; i < 30 * k; i++) fx.dust.add(p, V(-dir.x * (0.5 + R() * 2.2) + (R() - 0.5) * 2, (R() - 0.3) * 1.9, -dir.z * (0.5 + R() * 2.2) + (R() - 0.5) * 2), red, 0.28 + R() * 0.2, 0.04 + R() * 0.07, 0.3 + R() * 0.35, 0.5, 4, 1);   // back towards the shooter
+      for (let i = 0; i < 44 * k; i++) fx.dust.add(exit, V(dir.x * (1.5 + R() * 5.5) + (R() - 0.5) * 3.2, dir.y * 2 + (R() - 0.35) * 2.8, dir.z * (1.5 + R() * 5.5) + (R() - 0.5) * 3.2), red, 0.26 + R() * 0.22, 0.03 + R() * 0.08, 0.32 + R() * 0.55, 0.9, 3.2, 0.5 + R() * 0.9);   // the cloud out of the far side
+      for (let i = 0; i < 46 * k; i++) {
+        const out = zone === 'blast' ? R() < 0.5 : R() < 0.65, s = out ? 2 + R() * 6.5 : -(1 + R() * 2.8), w = out ? 2.9 : 2;
+        fx.dust.add(out ? exit : p, V(dir.x * s + (R() - 0.5) * w, dir.y * s + R() * 2 + (out ? 0 : 0.3), dir.z * s + (R() - 0.5) * w), dark, 1, 0.016 + R() * R() * 0.045, 0.6 + R() * 0.7, 9.8, 0.5, 0, fy);
+      }
+      if (victim?.b && zone !== 'corpse') this.spurts(victim, p, exit, dir, zone, k, L);
     }
     if (victim && zone !== 'corpse') { victim.bleedT = Math.max(victim.bleedT || 0, 3.5 + k * 4); if (!(victim.bleedN > 0)) victim.bleedN = 0.25; victim.woundAt = zone; }
     if (dc > SEEN) return;
-    const near = this.nearMeshes(exit, 4.8), blast = zone === 'blast', rays = zone === 'head' ? 5 : zone === 'limb' ? 2 : zone === 'corpse' ? 1 : blast ? 4 : 3, sp = blast ? 1.5 : 0.6;
+    const near = this.nearMeshes(exit, 4.8), blast = zone === 'blast', rays = zone === 'head' ? 8 : zone === 'limb' ? 3 : zone === 'corpse' ? 2 : blast ? 6 : 5, sp = blast ? 1.5 : 0.7;
     for (let i = 0; i < rays; i++) {
       const d = V(dir.x + (R() - 0.5) * sp, dir.y + (R() - 0.5) * sp * 0.75 - 0.1 - R() * 0.22, dir.z + (R() - 0.5) * sp).normalize(), h = this.cast(exit, d, 4.4, near);
       if (h) { const kk = k * (0.8 + R() * 0.4); this.later(0.03 + h.t / 13, () => this.stain(h, d, kk, h.t)); }
     }
-    for (let i = 0, nd = zone === 'corpse' || zone === 'limb' ? 1 : blast ? 4 : 2; i < nd; i++) {     // what falls short spots the ground under the flight
+    for (let i = 0, nd = zone === 'corpse' || zone === 'limb' ? 2 : blast ? 6 : 4; i < nd; i++) {     // what falls short spots the ground under the flight
       const f = 0.2 + R() * 1.5, o = V(exit.x + dir.x * f + (R() - 0.5) * 0.7, exit.y, exit.z + dir.z * f + (R() - 0.5) * 0.7), h = this.cast(o, DOWN, 2.8, near);
       if (h && h.n.y > 0.5) { const s = (0.28 + R() * 0.4) * Math.min(1.3, k); this.later(0.28 + R() * 0.25, () => { if (this.place('drops', h.p, h.n, s, s, null, true) < 0) this.place('drops', h.p, h.n, s * 0.5, s * 0.5, null, true); }); }
+    }
+  }
+
+  // The wound pumps after the hit: a jet with each beat of the heart, a quarter to a third of a second apart and weaker
+  // each time, out of the exit wound and a little out of the entry, from the bone nearest the wound (kept in its frame,
+  // so the jets follow the man as he runs on, and the ragdoll as he falls).
+  spurts(victim, p, exit, dir, zone, k, L) {
+    const R = this.rnd; let bone = null, best = 1e9;
+    for (const o of Object.values(victim.b)) { if (!o?.isObject3D) continue; o.getWorldPosition(_c); const d = _c.distanceToSquared(p); if (d < best) { best = d; bone = o; } }
+    if (!bone) return;
+    const inv = _m.copy(bone.matrixWorld).invert(), w = { bone, who: victim, L, out: exit.clone().applyMatrix4(inv), back: p.clone().applyMatrix4(inv), d: dir.clone().transformDirection(inv) };
+    const n = zone === 'head' ? 5 : zone === 'limb' ? 3 : zone === 'blast' ? 4 : 4 + (R() * 3 | 0), beat = 0.24 + R() * 0.1;
+    for (let j = 0; j < n; j++) this.later(0.07 + j * beat * (0.9 + R() * 0.2), () => this.jet(w, k * 0.8 ** j));
+  }
+  jet(w, k) {
+    const G = this.G, R = this.rnd, fx = G.fx, m = w.bone.matrixWorld, o = V().copy(w.out).applyMatrix4(m), dc = G.R.camera.position.distanceTo(o);
+    if (!this.on || dc > FELT) return;
+    const back = V().copy(w.back).applyMatrix4(m), d = V().copy(w.d).transformDirection(m), L = w.L, fy = w.who.pos.y + 0.012;
+    const dark = [0.19 * L, 0.009 * L, 0.011 * L], red = [0.28 * L, 0.013 * L, 0.015 * L];
+    for (let i = 0; i < 20 * k; i++) { const s = 1 + R() * 2.6; fx.dust.add(o, V(d.x * s + (R() - 0.5) * 0.7, d.y * s + 0.5 + R() * 1.1, d.z * s + (R() - 0.5) * 0.7), dark, 1, 0.02 + R() * R() * 0.045, 0.5 + R() * 0.6, 9.8, 0.4, 0, fy); }
+    for (let i = 0; i < 9 * k; i++) fx.dust.add(o, V(d.x * (0.6 + R() * 1.4) + (R() - 0.5) * 0.6, d.y + 0.2 + R() * 0.6, d.z * (0.6 + R() * 1.4) + (R() - 0.5) * 0.6), red, 0.32 + R() * 0.18, 0.04 + R() * 0.05, 0.25 + R() * 0.3, 0.6, 3, 0.7);
+    for (let i = 0; i < 6 * k; i++) { const s = 0.6 + R() * 1.4; fx.dust.add(back, V(-d.x * s + (R() - 0.5) * 0.5, -d.y * s + 0.3 + R() * 0.6, -d.z * s + (R() - 0.5) * 0.5), dark, 1, 0.014 + R() * 0.02, 0.45 + R() * 0.4, 9.8, 0.4, 0, fy); }
+    if (dc < SEEN && R() < 0.8) {                                            // where the jet comes down
+      const f = 0.25 + R() * 0.8, x = o.x + d.x * f + (R() - 0.5) * 0.3, z = o.z + d.z * f + (R() - 0.5) * 0.3, s = (0.22 + R() * 0.3) * Math.min(1.3, k + 0.3);
+      this.later(0.3 + R() * 0.2, () => { const h = this.cast(_p.set(x, o.y + 0.3, z), DOWN, 2.6, this.nearMeshes(_p, 2.2)); if (h && h.n.y > 0.5) this.place(R() < 0.6 ? 'drops' : 'dot', h.p, h.n, s, s, null, true); });
     }
   }
 
@@ -271,24 +302,24 @@ export class Blood {
       const head = rag.bot?.woundAt === 'head' && rag.parts.find(q => q.key === 'head');     // from the wound: under the head, or out from under the chest (a pool the size of the body it lies under is not seen)
       if (head) { const t = head.body.translation(); c.set(t.x, t.y, t.z); } else { const a = R() * 6.2832; c.x += Math.cos(a) * 0.22; c.z += Math.sin(a) * 0.22; }
       const h = this.cast(_p.set(c.x, c.y + 0.3, c.z), DOWN, 1.9, this.nearMeshes(c, 2.2));
-      if (h && h.n.y > 0.5) this.pool(h.p, h.n, 0.95 + R() * 0.5);
+      if (h && h.n.y > 0.5) this.pool(h.p, h.n, 1.25 + R() * 0.6);
     }
     const P = G.player;
     if (P.alive) this.selfDead = 0;
     else if (this.selfDead >= 0) {
       this.selfDead += dt;
-      if (this.selfDead > 0.8) { this.selfDead = -1; const h = this.cast(_p.set(P.pos.x, P.pos.y + 0.6, P.pos.z), DOWN, 2.2, this.nearMeshes(P.pos, 2.5)); if (h && h.n.y > 0.5) this.pool(h.p, h.n, 0.9 + R() * 0.4); }
+      if (this.selfDead > 0.8) { this.selfDead = -1; const h = this.cast(_p.set(P.pos.x, P.pos.y + 0.6, P.pos.z), DOWN, 2.2, this.nearMeshes(P.pos, 2.5)); if (h && h.n.y > 0.5) this.pool(h.p, h.n, 1.15 + R() * 0.5); }
     }
-    // the wounded leave a trail: a drop every half second or so, from the height of the wound
+    // the wounded leave a trail: a few drops every quarter second or so, from the height of the wound
     for (const a of this.actors()) {
       if (!a.alive) { a.bleedT = 0; continue; }
       if (!(a.bleedT > 0)) continue;
       a.bleedT -= dt; a.bleedN -= dt;
       if (a.bleedN > 0) continue;
-      a.bleedN = 0.3 + R() * 0.6;
+      a.bleedN = 0.14 + R() * 0.3;
       if (cam.distanceToSquared(a.pos) > SEEN * SEEN) continue;
-      const x = a.pos.x + (R() - 0.5) * 0.3, z = a.pos.z + (R() - 0.5) * 0.3, y = a.pos.y, s = 0.05 + R() * 0.07;
-      if (!a.isPlayer) G.fx.dust.add(V(x, y + 0.95 + R() * 0.3, z), V(0, -0.5, 0), [0.26, 0.012, 0.014], 1, 0.022, 0.45, 9.8, 0, 0, y + 0.012);
+      const x = a.pos.x + (R() - 0.5) * 0.3, z = a.pos.z + (R() - 0.5) * 0.3, y = a.pos.y, s = 0.06 + R() * 0.1;
+      if (!a.isPlayer) for (let i = 0, n = 2 + (R() * 2 | 0); i < n; i++) G.fx.dust.add(V(x + (R() - 0.5) * 0.06, y + 0.95 + R() * 0.3, z + (R() - 0.5) * 0.06), V((R() - 0.5) * 0.2, -0.5 - R() * 0.4, (R() - 0.5) * 0.2), [0.26, 0.012, 0.014], 1, 0.02 + R() * 0.012, 0.5, 9.8, 0, 0, y + 0.012);
       this.later(0.42, () => { const h = this.cast(_p.set(x, y + 0.5, z), DOWN, 1.4, this.nearMeshes(_p, 1.2)); if (h && h.n.y > 0.5) this.place('dot', h.p, h.n, s); });
     }
   }
