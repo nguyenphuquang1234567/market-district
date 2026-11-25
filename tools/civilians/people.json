@@ -1,0 +1,2273 @@
+{
+ "clips": "civ_ref",
+ "note": "Each person is made with the Ara 3D Gen MCP server: create_character { character: { kind, version, params: ara.params }, height_cm, carry, detail, animations: [], formats: ['glb'], name: id, out_dir: build/ara }. See tools/civilians/README.md.",
+ "people": [
+  {
+   "id": "f01",
+   "name": "Camila",
+   "voice": "f1",
+   "shoes": "slap",
+   "temper": {
+    "brave": 0.35,
+    "curious": 0.6,
+    "social": 0.8,
+    "calm": 0.5,
+    "pace": 1.0
+   },
+   "ara": {
+    "height_cm": 166,
+    "carry": "phone",
+    "detail": "medium",
+    "params": {
+     "name": "f01",
+     "gender": 0,
+     "seed": 1101,
+     "ageYears": 24,
+     "muscle": 0.42,
+     "weight": 0.36,
+     "proportions": 0.9,
+     "caucasian": 0.6,
+     "asian": 0.15,
+     "african": 0.25,
+     "hair": "long01",
+     "hairTint": "#5a3d2c",
+     "eyes": "darkbrown",
+     "eyebrows": "eyebrow001",
+     "eyelashes": "eyelashes03",
+     "skinTint": "#f0d6c0",
+     "top": "tank_top",
+     "bottom": "resort_shorts",
+     "shoes": "sandals",
+     "earrings": "small_hoops",
+     "earringMetal": "gold",
+     "accessories": [
+      "fine_pendant",
+      "bangles"
+     ],
+     "garmentStyles": {
+      "tank_top": {
+       "pattern": "solid",
+       "color": "#f1ece2"
+      },
+      "resort_shorts": {
+       "pattern": "linen",
+       "color": "#b9643f"
+      }
+     },
+     "modifiers": {
+      "eyes/eye-scale": 0.2,
+      "nose/nose-scale-horiz": -0.18,
+      "mouth/mouth-lowerlip-volume": 0.22,
+      "mouth/mouth-upperlip-volume": 0.16,
+      "cheek/cheek-bones": 0.22,
+      "chin/chin-width": -0.22,
+      "head/head-oval": 0.45
+     },
+     "outfit": "none",
+     "rig": "game",
+     "faceBones": true,
+     "faceShapes": true,
+     "speechShapes": true,
+     "teeth": "teeth_base",
+     "tongue": true,
+     "detail": "medium",
+     "restPose": "T",
+     "animations": false,
+     "expression": "neutral",
+     "breastSize": 0.48
+    }
+   }
+  },
+  {
+   "id": "f02",
+   "name": "Mei",
+   "voice": "f2",
+   "shoes": "soft",
+   "temper": {
+    "brave": 0.25,
+    "curious": 0.5,
+    "social": 0.6,
+    "calm": 0.6,
+    "pace": 0.96
+   },
+   "ara": {
+    "height_cm": 161,
+    "carry": "handbag",
+    "detail": "medium",
+    "params": {
+     "name": "f02",
+     "gender": 0,
+     "seed": 3303,
+     "ageYears": 23,
+     "muscle": 0.4,
+     "weight": 0.34,
+     "proportions": 0.9,
+     "caucasian": 0.2,
+     "asian": 0.7,
+     "african": 0.1,
+     "hair": "bob02",
+     "hairTint": "#2b2420",
+     "eyes": "blackbrown",
+     "eyebrows": "eyebrow005",
+     "eyelashes": "eyelashes02",
+     "top": "silk_blouse",
+     "bottom": "fitted_mini_skirt",
+     "shoes": "sneakers",
+     "earrings": "studs",
+     "earringMetal": "silver",
+     "accessories": [
+      "watch_silver"
+     ],
+     "garmentStyles": {
+      "silk_blouse": {
+       "pattern": "satin",
+       "color": "#e9dcc6"
+      },
+      "fitted_mini_skirt": {
+       "pattern": "linen",
+       "color": "#2f4a3c"
+      }
+     },
+     "modifiers": {
+      "eyes/eye-scale": 0.2,
+      "nose/nose-scale-horiz": -0.18,
+      "mouth/mouth-lowerlip-volume": 0.22,
+      "mouth/mouth-upperlip-volume": 0.16,
+      "cheek/cheek-bones": 0.22,
+      "chin/chin-width": -0.22,
+      "head/head-oval": 0.45
+     },
+     "outfit": "none",
+     "rig": "game",
+     "faceBones": true,
+     "faceShapes": true,
+     "speechShapes": true,
+     "teeth": "teeth_base",
+     "tongue": true,
+     "detail": "medium",
+     "restPose": "T",
+     "animations": false,
+     "expression": "neutral",
+     "breastSize": 0.48
+    }
+   }
+  },
+  {
+   "id": "f03",
+   "name": "Nia",
+   "voice": "f3",
+   "shoes": "soft",
+   "temper": {
+    "brave": 0.6,
+    "curious": 0.7,
+    "social": 0.85,
+    "calm": 0.55,
+    "pace": 1.05
+   },
+   "ara": {
+    "height_cm": 170,
+    "carry": "phone",
+    "detail": "medium",
+    "params": {
+     "name": "f03",
+     "gender": 0,
+     "seed": 5105,
+     "ageYears": 26,
+     "muscle": 0.48,
+     "weight": 0.4,
+     "proportions": 0.9,
+     "caucasian": 0.1,
+     "asian": 0.05,
+     "african": 0.85,
+     "hair": "box_braids",
+     "hairColor": "#1c1512",
+     "eyes": "darkbrown",
+     "eyebrows": "eyebrow002",
+     "eyelashes": "eyelashes03",
+     "top": "oversized_tee",
+     "bottom": "baggy_jeans",
+     "shoes": "sneakers",
+     "earrings": "small_hoops",
+     "earringMetal": "gold",
+     "accessories": [
+      "gold_necklace"
+     ],
+     "garmentStyles": {
+      "oversized_tee": {
+       "pattern": "jersey",
+       "color": "#f2efe6"
+      },
+      "baggy_jeans": {
+       "pattern": "denim",
+       "color": "#6d8db3"
+      }
+     },
+     "modifiers": {
+      "eyes/eye-scale": 0.2,
+      "nose/nose-scale-horiz": -0.18,
+      "mouth/mouth-lowerlip-volume": 0.22,
+      "mouth/mouth-upperlip-volume": 0.16,
+      "cheek/cheek-bones": 0.22,
+      "chin/chin-width": -0.22,
+      "head/head-oval": 0.45
+     },
+     "outfit": "none",
+     "rig": "game",
+     "faceBones": true,
+     "faceShapes": true,
+     "speechShapes": true,
+     "teeth": "teeth_base",
+     "tongue": true,
+     "detail": "medium",
+     "restPose": "T",
+     "animations": false,
+     "expression": "neutral",
+     "breastSize": 0.48
+    }
+   }
+  },
+  {
+   "id": "f04",
+   "name": "Sofia",
+   "voice": "f4",
+   "shoes": "slap",
+   "temper": {
+    "brave": 0.3,
+    "curious": 0.45,
+    "social": 0.7,
+    "calm": 0.4,
+    "pace": 1.0
+   },
+   "ara": {
+    "height_cm": 168,
+    "carry": "straw_tote",
+    "detail": "medium",
+    "params": {
+     "name": "f04",
+     "gender": 0,
+     "seed": 1204,
+     "ageYears": 22,
+     "muscle": 0.4,
+     "weight": 0.35,
+     "proportions": 0.92,
+     "caucasian": 0.9,
+     "asian": 0.05,
+     "african": 0.05,
+     "hair": "ponytail01",
+     "hairTint": "#a8824f",
+     "eyes": "bluegreen",
+     "eyebrows": "eyebrow004",
+     "eyelashes": "eyelashes02",
+     "top": "cocktail_dress",
+     "bottom": "none",
+     "shoes": "sandals",
+     "earrings": "pearl_drops",
+     "accessories": [
+      "fine_pendant"
+     ],
+     "garmentStyles": {
+      "cocktail_dress": {
+       "pattern": "solid",
+       "color": "#d2694c"
+      }
+     },
+     "modifiers": {
+      "eyes/eye-scale": 0.2,
+      "nose/nose-scale-horiz": -0.18,
+      "mouth/mouth-lowerlip-volume": 0.22,
+      "mouth/mouth-upperlip-volume": 0.16,
+      "cheek/cheek-bones": 0.22,
+      "chin/chin-width": -0.22,
+      "head/head-oval": 0.45
+     },
+     "outfit": "none",
+     "rig": "game",
+     "faceBones": true,
+     "faceShapes": true,
+     "speechShapes": true,
+     "teeth": "teeth_base",
+     "tongue": true,
+     "detail": "medium",
+     "restPose": "T",
+     "animations": false,
+     "expression": "neutral",
+     "breastSize": 0.48
+    }
+   }
+  },
+  {
+   "id": "f05",
+   "name": "Aiko",
+   "voice": "f2",
+   "shoes": "slap",
+   "temper": {
+    "brave": 0.5,
+    "curious": 0.8,
+    "social": 0.6,
+    "calm": 0.7,
+    "pace": 1.04
+   },
+   "ara": {
+    "height_cm": 158,
+    "carry": "phone",
+    "detail": "medium",
+    "params": {
+     "name": "f05",
+     "gender": 0,
+     "seed": 2305,
+     "ageYears": 25,
+     "muscle": 0.42,
+     "weight": 0.33,
+     "proportions": 0.88,
+     "caucasian": 0.1,
+     "asian": 0.85,
+     "african": 0.05,
+     "hair": "bob01",
+     "hairTint": "#241d1a",
+     "eyes": "blackbrown",
+     "eyebrows": "eyebrow006",
+     "eyelashes": "eyelashes01",
+     "top": "tropical_short_shirt",
+     "bottom": "resort_shorts",
+     "shoes": "slides",
+     "earrings": "studs",
+     "earringMetal": "gold",
+     "garmentStyles": {
+      "tropical_short_shirt": {
+       "pattern": "tropical",
+       "color": "#f4efe2",
+       "color2": "#3f6b5a"
+      },
+      "resort_shorts": {
+       "pattern": "solid",
+       "color": "#2e3a4a"
+      }
+     },
+     "modifiers": {
+      "eyes/eye-scale": 0.2,
+      "nose/nose-scale-horiz": -0.18,
+      "mouth/mouth-lowerlip-volume": 0.22,
+      "mouth/mouth-upperlip-volume": 0.16,
+      "cheek/cheek-bones": 0.22,
+      "chin/chin-width": -0.22,
+      "head/head-oval": 0.45
+     },
+     "outfit": "none",
+     "rig": "game",
+     "faceBones": true,
+     "faceShapes": true,
+     "speechShapes": true,
+     "teeth": "teeth_base",
+     "tongue": true,
+     "detail": "medium",
+     "restPose": "T",
+     "animations": false,
+     "expression": "neutral",
+     "breastSize": 0.48
+    }
+   }
+  },
+  {
+   "id": "f06",
+   "name": "Amara",
+   "voice": "f3",
+   "shoes": "slap",
+   "temper": {
+    "brave": 0.7,
+    "curious": 0.4,
+    "social": 0.75,
+    "calm": 0.7,
+    "pace": 0.98
+   },
+   "ara": {
+    "height_cm": 172,
+    "carry": "handbag",
+    "detail": "medium",
+    "params": {
+     "name": "f06",
+     "gender": 0,
+     "seed": 5206,
+     "ageYears": 28,
+     "muscle": 0.46,
+     "weight": 0.44,
+     "proportions": 0.9,
+     "caucasian": 0.05,
+     "asian": 0.05,
+     "african": 0.9,
+     "hair": "afro01",
+     "hairTint": "#231a16",
+     "eyes": "darkbrown",
+     "eyebrows": "eyebrow002",
+     "eyelashes": "eyelashes03",
+     "top": "tank_top",
+     "bottom": "pencil_skirt_midi",
+     "shoes": "sandals",
+     "earrings": "big_hoops",
+     "earringMetal": "gold",
+     "accessories": [
+      "bangles",
+      "gold_necklace"
+     ],
+     "garmentStyles": {
+      "tank_top": {
+       "pattern": "solid",
+       "color": "#d99a3b"
+      },
+      "pencil_skirt_midi": {
+       "pattern": "solid",
+       "color": "#23404a"
+      }
+     },
+     "modifiers": {
+      "eyes/eye-scale": 0.2,
+      "nose/nose-scale-horiz": -0.18,
+      "mouth/mouth-lowerlip-volume": 0.22,
+      "mouth/mouth-upperlip-volume": 0.16,
+      "cheek/cheek-bones": 0.22,
+      "chin/chin-width": -0.22,
+      "head/head-oval": 0.45
+     },
+     "outfit": "none",
+     "rig": "game",
+     "faceBones": true,
+     "faceShapes": true,
+     "speechShapes": true,
+     "teeth": "teeth_base",
+     "tongue": true,
+     "detail": "medium",
+     "restPose": "T",
+     "animations": false,
+     "expression": "neutral",
+     "breastSize": 0.48
+    }
+   }
+  },
+  {
+   "id": "f07",
+   "name": "Lucia",
+   "voice": "f1",
+   "shoes": "soft",
+   "temper": {
+    "brave": 0.4,
+    "curious": 0.55,
+    "social": 0.65,
+    "calm": 0.45,
+    "pace": 1.02
+   },
+   "ara": {
+    "height_cm": 164,
+    "carry": "phone",
+    "detail": "medium",
+    "params": {
+     "name": "f07",
+     "gender": 0,
+     "seed": 1307,
+     "ageYears": 27,
+     "muscle": 0.42,
+     "weight": 0.38,
+     "proportions": 0.9,
+     "caucasian": 0.55,
+     "asian": 0.25,
+     "african": 0.2,
+     "hair": "long01",
+     "hairTint": "#2e221b",
+     "eyes": "brownlight",
+     "eyebrows": "eyebrow001",
+     "eyelashes": "eyelashes03",
+     "skinTint": "#e8c9ae",
+     "top": "camp_shirt",
+     "bottom": "trousers",
+     "shoes": "sneakers",
+     "earrings": "studs",
+     "earringMetal": "gold",
+     "garmentStyles": {
+      "camp_shirt": {
+       "pattern": "linen",
+       "color": "#f3ede0"
+      },
+      "trousers": {
+       "pattern": "solid",
+       "color": "#3d5d86"
+      }
+     },
+     "modifiers": {
+      "eyes/eye-scale": 0.2,
+      "nose/nose-scale-horiz": -0.18,
+      "mouth/mouth-lowerlip-volume": 0.22,
+      "mouth/mouth-upperlip-volume": 0.16,
+      "cheek/cheek-bones": 0.22,
+      "chin/chin-width": -0.22,
+      "head/head-oval": 0.45
+     },
+     "outfit": "none",
+     "rig": "game",
+     "faceBones": true,
+     "faceShapes": true,
+     "speechShapes": true,
+     "teeth": "teeth_base",
+     "tongue": true,
+     "detail": "medium",
+     "restPose": "T",
+     "animations": false,
+     "expression": "neutral",
+     "breastSize": 0.48
+    }
+   }
+  },
+  {
+   "id": "f08",
+   "name": "Zoe",
+   "voice": "f4",
+   "shoes": "soft",
+   "temper": {
+    "brave": 0.75,
+    "curious": 0.85,
+    "social": 0.5,
+    "calm": 0.65,
+    "pace": 1.1
+   },
+   "ara": {
+    "height_cm": 171,
+    "carry": "backpack",
+    "detail": "medium",
+    "params": {
+     "name": "f08",
+     "gender": 0,
+     "seed": 1408,
+     "ageYears": 21,
+     "muscle": 0.5,
+     "weight": 0.37,
+     "proportions": 0.88,
+     "caucasian": 0.85,
+     "asian": 0.1,
+     "african": 0.05,
+     "hair": "ponytail01",
+     "hairTint": "#8a4b2a",
+     "eyes": "green",
+     "eyebrows": "eyebrow003",
+     "eyelashes": "eyelashes02",
+     "top": "racer_casual_shirt",
+     "bottom": "resort_shorts",
+     "shoes": "sneakers",
+     "accessories": [
+      "watch"
+     ],
+     "garmentStyles": {
+      "resort_shorts": {
+       "pattern": "linen",
+       "color": "#c9b48a"
+      }
+     },
+     "modifiers": {
+      "eyes/eye-scale": 0.2,
+      "nose/nose-scale-horiz": -0.18,
+      "mouth/mouth-lowerlip-volume": 0.22,
+      "mouth/mouth-upperlip-volume": 0.16,
+      "cheek/cheek-bones": 0.22,
+      "chin/chin-width": -0.22,
+      "head/head-oval": 0.45
+     },
+     "outfit": "none",
+     "rig": "game",
+     "faceBones": true,
+     "faceShapes": true,
+     "speechShapes": true,
+     "teeth": "teeth_base",
+     "tongue": true,
+     "detail": "medium",
+     "restPose": "T",
+     "animations": false,
+     "expression": "neutral",
+     "breastSize": 0.48
+    }
+   }
+  },
+  {
+   "id": "f09",
+   "name": "Valentina",
+   "voice": "f1",
+   "shoes": "heel",
+   "temper": {
+    "brave": 0.2,
+    "curious": 0.4,
+    "social": 0.8,
+    "calm": 0.3,
+    "pace": 0.97
+   },
+   "ara": {
+    "height_cm": 165,
+    "carry": "phone",
+    "detail": "medium",
+    "params": {
+     "name": "f09",
+     "gender": 0,
+     "seed": 1509,
+     "ageYears": 25,
+     "muscle": 0.4,
+     "weight": 0.36,
+     "proportions": 0.93,
+     "caucasian": 0.7,
+     "asian": 0.1,
+     "african": 0.2,
+     "hair": "long01",
+     "hairTint": "#6e4630",
+     "eyes": "darkbrown",
+     "eyebrows": "eyebrow004",
+     "eyelashes": "eyelashes04",
+     "skinTint": "#ecccb2",
+     "top": "lace_top",
+     "bottom": "fitted_mini_skirt",
+     "shoes": "heels",
+     "earrings": "small_hoops",
+     "earringMetal": "gold",
+     "accessories": [
+      "bangles"
+     ],
+     "garmentStyles": {
+      "lace_top": {
+       "pattern": "solid",
+       "color": "#f5f1ea"
+      },
+      "fitted_mini_skirt": {
+       "pattern": "solid",
+       "color": "#a8503a"
+      },
+      "heels": {
+       "pattern": "nappa",
+       "color": "#c9a07a"
+      }
+     },
+     "modifiers": {
+      "eyes/eye-scale": 0.2,
+      "nose/nose-scale-horiz": -0.18,
+      "mouth/mouth-lowerlip-volume": 0.22,
+      "mouth/mouth-upperlip-volume": 0.16,
+      "cheek/cheek-bones": 0.22,
+      "chin/chin-width": -0.22,
+      "head/head-oval": 0.45
+     },
+     "outfit": "none",
+     "rig": "game",
+     "faceBones": true,
+     "faceShapes": true,
+     "speechShapes": true,
+     "teeth": "teeth_base",
+     "tongue": true,
+     "detail": "medium",
+     "restPose": "T",
+     "animations": false,
+     "expression": "neutral",
+     "breastSize": 0.48
+    }
+   }
+  },
+  {
+   "id": "f10",
+   "name": "Priya",
+   "voice": "f2",
+   "shoes": "hard",
+   "temper": {
+    "brave": 0.45,
+    "curious": 0.5,
+    "social": 0.55,
+    "calm": 0.75,
+    "pace": 0.95
+   },
+   "ara": {
+    "height_cm": 160,
+    "carry": "handbag",
+    "detail": "medium",
+    "params": {
+     "name": "f10",
+     "gender": 0,
+     "seed": 2410,
+     "ageYears": 29,
+     "muscle": 0.4,
+     "weight": 0.4,
+     "proportions": 0.9,
+     "caucasian": 0.45,
+     "asian": 0.45,
+     "african": 0.1,
+     "hair": "braid01",
+     "hairTint": "#1f1814",
+     "eyes": "blackbrown",
+     "eyebrows": "eyebrow005",
+     "eyelashes": "eyelashes03",
+     "skinTint": "#dcb894",
+     "top": "silk_blouse",
+     "bottom": "suit_trousers",
+     "shoes": "loafers",
+     "earrings": "pearl_drops",
+     "accessories": [
+      "watch_gold"
+     ],
+     "garmentStyles": {
+      "silk_blouse": {
+       "pattern": "satin",
+       "color": "#bf5a3c"
+      },
+      "suit_trousers": {
+       "pattern": "linen",
+       "color": "#e8dfcc"
+      }
+     },
+     "modifiers": {
+      "eyes/eye-scale": 0.2,
+      "nose/nose-scale-horiz": -0.18,
+      "mouth/mouth-lowerlip-volume": 0.22,
+      "mouth/mouth-upperlip-volume": 0.16,
+      "cheek/cheek-bones": 0.22,
+      "chin/chin-width": -0.22,
+      "head/head-oval": 0.45
+     },
+     "outfit": "none",
+     "rig": "game",
+     "faceBones": true,
+     "faceShapes": true,
+     "speechShapes": true,
+     "teeth": "teeth_base",
+     "tongue": true,
+     "detail": "medium",
+     "restPose": "T",
+     "animations": false,
+     "expression": "neutral",
+     "breastSize": 0.48
+    }
+   }
+  },
+  {
+   "id": "f11",
+   "name": "Hana",
+   "voice": "f2",
+   "shoes": "soft",
+   "temper": {
+    "brave": 0.3,
+    "curious": 0.65,
+    "social": 0.45,
+    "calm": 0.55,
+    "pace": 1.0
+   },
+   "ara": {
+    "height_cm": 157,
+    "carry": "phone",
+    "detail": "medium",
+    "params": {
+     "name": "f11",
+     "gender": 0,
+     "seed": 2511,
+     "ageYears": 20,
+     "muscle": 0.38,
+     "weight": 0.32,
+     "proportions": 0.88,
+     "caucasian": 0.15,
+     "asian": 0.8,
+     "african": 0.05,
+     "hair": "bob01",
+     "hairTint": "#3a2a22",
+     "eyes": "darkbrown",
+     "eyebrows": "eyebrow006",
+     "eyelashes": "eyelashes02",
+     "top": "oversized_tee",
+     "bottom": "fitted_mini_skirt",
+     "shoes": "sneakers",
+     "accessories": [
+      "headphones"
+     ],
+     "garmentStyles": {
+      "oversized_tee": {
+       "pattern": "jersey",
+       "color": "#9fb59a"
+      },
+      "fitted_mini_skirt": {
+       "pattern": "linen",
+       "color": "#d8ccb4"
+      }
+     },
+     "modifiers": {
+      "eyes/eye-scale": 0.2,
+      "nose/nose-scale-horiz": -0.18,
+      "mouth/mouth-lowerlip-volume": 0.22,
+      "mouth/mouth-upperlip-volume": 0.16,
+      "cheek/cheek-bones": 0.22,
+      "chin/chin-width": -0.22,
+      "head/head-oval": 0.45
+     },
+     "outfit": "none",
+     "rig": "game",
+     "faceBones": true,
+     "faceShapes": true,
+     "speechShapes": true,
+     "teeth": "teeth_base",
+     "tongue": true,
+     "detail": "medium",
+     "restPose": "T",
+     "animations": false,
+     "expression": "neutral",
+     "breastSize": 0.48
+    }
+   }
+  },
+  {
+   "id": "f12",
+   "name": "Chloe",
+   "voice": "f4",
+   "shoes": "slap",
+   "temper": {
+    "brave": 0.55,
+    "curious": 0.6,
+    "social": 0.9,
+    "calm": 0.6,
+    "pace": 1.03
+   },
+   "ara": {
+    "height_cm": 173,
+    "carry": "straw_tote",
+    "detail": "medium",
+    "params": {
+     "name": "f12",
+     "gender": 0,
+     "seed": 1612,
+     "ageYears": 26,
+     "muscle": 0.45,
+     "weight": 0.36,
+     "proportions": 0.93,
+     "caucasian": 0.95,
+     "asian": 0.03,
+     "african": 0.02,
+     "hair": "ponytail01",
+     "hairTint": "#c9a56a",
+     "eyes": "blue",
+     "eyebrows": "eyebrow003",
+     "eyelashes": "eyelashes02",
+     "top": "tank_top",
+     "bottom": "resort_shorts",
+     "shoes": "flipflops",
+     "earrings": "studs",
+     "earringMetal": "silver",
+     "accessories": [
+      "sunglasses_sleek",
+      "wrist_beads"
+     ],
+     "garmentStyles": {
+      "tank_top": {
+       "pattern": "solid",
+       "color": "#2f3b4f"
+      },
+      "resort_shorts": {
+       "pattern": "tropical",
+       "color": "#f1e9d8",
+       "color2": "#c97b4a"
+      }
+     },
+     "modifiers": {
+      "eyes/eye-scale": 0.2,
+      "nose/nose-scale-horiz": -0.18,
+      "mouth/mouth-lowerlip-volume": 0.22,
+      "mouth/mouth-upperlip-volume": 0.16,
+      "cheek/cheek-bones": 0.22,
+      "chin/chin-width": -0.22,
+      "head/head-oval": 0.45
+     },
+     "outfit": "none",
+     "rig": "game",
+     "faceBones": true,
+     "faceShapes": true,
+     "speechShapes": true,
+     "teeth": "teeth_base",
+     "tongue": true,
+     "detail": "medium",
+     "restPose": "T",
+     "animations": false,
+     "expression": "neutral",
+     "breastSize": 0.48
+    }
+   }
+  },
+  {
+   "id": "f13",
+   "name": "Renata",
+   "voice": "f1",
+   "shoes": "heel",
+   "temper": {
+    "brave": 0.5,
+    "curious": 0.3,
+    "social": 0.6,
+    "calm": 0.8,
+    "pace": 0.94
+   },
+   "ara": {
+    "height_cm": 169,
+    "carry": "handbag",
+    "detail": "medium",
+    "params": {
+     "name": "f13",
+     "gender": 0,
+     "seed": 1713,
+     "ageYears": 30,
+     "muscle": 0.42,
+     "weight": 0.4,
+     "proportions": 0.92,
+     "caucasian": 0.5,
+     "asian": 0.2,
+     "african": 0.3,
+     "hair": "long01",
+     "hairTint": "#1e1714",
+     "eyes": "darkbrown",
+     "eyebrows": "eyebrow001",
+     "eyelashes": "eyelashes04",
+     "skinTint": "#e2bf9f",
+     "top": "cocktail_dress",
+     "bottom": "none",
+     "shoes": "heels",
+     "earrings": "pearl_drops",
+     "accessories": [
+      "gold_necklace",
+      "watch_gold"
+     ],
+     "garmentStyles": {
+      "cocktail_dress": {
+       "pattern": "solid",
+       "color": "#2f5d50"
+      },
+      "heels": {
+       "pattern": "nappa",
+       "color": "#1c1a18"
+      }
+     },
+     "modifiers": {
+      "eyes/eye-scale": 0.2,
+      "nose/nose-scale-horiz": -0.18,
+      "mouth/mouth-lowerlip-volume": 0.22,
+      "mouth/mouth-upperlip-volume": 0.16,
+      "cheek/cheek-bones": 0.22,
+      "chin/chin-width": -0.22,
+      "head/head-oval": 0.45
+     },
+     "outfit": "none",
+     "rig": "game",
+     "faceBones": true,
+     "faceShapes": true,
+     "speechShapes": true,
+     "teeth": "teeth_base",
+     "tongue": true,
+     "detail": "medium",
+     "restPose": "T",
+     "animations": false,
+     "expression": "neutral",
+     "breastSize": 0.48
+    }
+   }
+  },
+  {
+   "id": "f14",
+   "name": "Leila",
+   "voice": "f3",
+   "shoes": "slap",
+   "temper": {
+    "brave": 0.4,
+    "curious": 0.7,
+    "social": 0.7,
+    "calm": 0.5,
+    "pace": 1.0
+   },
+   "ara": {
+    "height_cm": 163,
+    "carry": "phone",
+    "detail": "medium",
+    "params": {
+     "name": "f14",
+     "gender": 0,
+     "seed": 1814,
+     "ageYears": 24,
+     "muscle": 0.4,
+     "weight": 0.37,
+     "proportions": 0.9,
+     "caucasian": 0.5,
+     "asian": 0.15,
+     "african": 0.35,
+     "hair": "braid01",
+     "hairTint": "#3b2a20",
+     "eyes": "green",
+     "eyebrows": "eyebrow004",
+     "eyelashes": "eyelashes03",
+     "skinTint": "#e6c4a4",
+     "top": "camp_shirt",
+     "bottom": "trousers",
+     "shoes": "sandals",
+     "earrings": "small_hoops",
+     "earringMetal": "silver",
+     "accessories": [
+      "wrist_beads"
+     ],
+     "garmentStyles": {
+      "camp_shirt": {
+       "pattern": "tropical",
+       "color": "#f2ead8",
+       "color2": "#b9643f"
+      },
+      "trousers": {
+       "pattern": "solid",
+       "color": "#d9cdb8"
+      }
+     },
+     "modifiers": {
+      "eyes/eye-scale": 0.2,
+      "nose/nose-scale-horiz": -0.18,
+      "mouth/mouth-lowerlip-volume": 0.22,
+      "mouth/mouth-upperlip-volume": 0.16,
+      "cheek/cheek-bones": 0.22,
+      "chin/chin-width": -0.22,
+      "head/head-oval": 0.45
+     },
+     "outfit": "none",
+     "rig": "game",
+     "faceBones": true,
+     "faceShapes": true,
+     "speechShapes": true,
+     "teeth": "teeth_base",
+     "tongue": true,
+     "detail": "medium",
+     "restPose": "T",
+     "animations": false,
+     "expression": "neutral",
+     "breastSize": 0.48
+    }
+   }
+  },
+  {
+   "id": "f15",
+   "name": "Imani",
+   "voice": "f3",
+   "shoes": "heel",
+   "temper": {
+    "brave": 0.65,
+    "curious": 0.5,
+    "social": 0.8,
+    "calm": 0.65,
+    "pace": 1.0
+   },
+   "ara": {
+    "height_cm": 174,
+    "carry": "handbag",
+    "detail": "medium",
+    "params": {
+     "name": "f15",
+     "gender": 0,
+     "seed": 5315,
+     "ageYears": 27,
+     "muscle": 0.46,
+     "weight": 0.42,
+     "proportions": 0.92,
+     "caucasian": 0.1,
+     "asian": 0.1,
+     "african": 0.8,
+     "hair": "cornrows",
+     "hairColor": "#17110e",
+     "eyes": "darkbrown",
+     "eyebrows": "eyebrow002",
+     "eyelashes": "eyelashes04",
+     "top": "peplum_top",
+     "bottom": "pencil_skirt_midi",
+     "shoes": "heels",
+     "earrings": "big_hoops",
+     "earringMetal": "gold",
+     "accessories": [
+      "bangles"
+     ],
+     "garmentStyles": {
+      "peplum_top": {
+       "pattern": "solid",
+       "color": "#ece3d2"
+      },
+      "pencil_skirt_midi": {
+       "pattern": "solid",
+       "color": "#a44a3f"
+      },
+      "heels": {
+       "pattern": "nappa",
+       "color": "#3a2a22"
+      }
+     },
+     "modifiers": {
+      "eyes/eye-scale": 0.2,
+      "nose/nose-scale-horiz": -0.18,
+      "mouth/mouth-lowerlip-volume": 0.22,
+      "mouth/mouth-upperlip-volume": 0.16,
+      "cheek/cheek-bones": 0.22,
+      "chin/chin-width": -0.22,
+      "head/head-oval": 0.45
+     },
+     "outfit": "none",
+     "rig": "game",
+     "faceBones": true,
+     "faceShapes": true,
+     "speechShapes": true,
+     "teeth": "teeth_base",
+     "tongue": true,
+     "detail": "medium",
+     "restPose": "T",
+     "animations": false,
+     "expression": "neutral",
+     "breastSize": 0.48
+    }
+   }
+  },
+  {
+   "id": "f16",
+   "name": "Daniela",
+   "voice": "f4",
+   "shoes": "soft",
+   "temper": {
+    "brave": 0.6,
+    "curious": 0.9,
+    "social": 0.55,
+    "calm": 0.7,
+    "pace": 1.08
+   },
+   "ara": {
+    "height_cm": 167,
+    "carry": "backpack",
+    "detail": "medium",
+    "params": {
+     "name": "f16",
+     "gender": 0,
+     "seed": 1916,
+     "ageYears": 23,
+     "muscle": 0.48,
+     "weight": 0.38,
+     "proportions": 0.88,
+     "caucasian": 0.65,
+     "asian": 0.2,
+     "african": 0.15,
+     "hair": "short04",
+     "hairTint": "#4a3526",
+     "eyes": "grey",
+     "eyebrows": "eyebrow003",
+     "eyelashes": "eyelashes01",
+     "top": "uniform_camp_shirt",
+     "bottom": "resort_shorts",
+     "shoes": "sneakers",
+     "accessories": [
+      "camera",
+      "watch"
+     ],
+     "garmentStyles": {
+      "uniform_camp_shirt": {
+       "pattern": "linen",
+       "color": "#f1e8d6"
+      },
+      "resort_shorts": {
+       "pattern": "solid",
+       "color": "#6b7a56"
+      }
+     },
+     "modifiers": {
+      "eyes/eye-scale": 0.2,
+      "nose/nose-scale-horiz": -0.18,
+      "mouth/mouth-lowerlip-volume": 0.22,
+      "mouth/mouth-upperlip-volume": 0.16,
+      "cheek/cheek-bones": 0.22,
+      "chin/chin-width": -0.22,
+      "head/head-oval": 0.45
+     },
+     "outfit": "none",
+     "rig": "game",
+     "faceBones": true,
+     "faceShapes": true,
+     "speechShapes": true,
+     "teeth": "teeth_base",
+     "tongue": true,
+     "detail": "medium",
+     "restPose": "T",
+     "animations": false,
+     "expression": "neutral",
+     "breastSize": 0.48
+    }
+   }
+  },
+  {
+   "id": "f17",
+   "name": "Yuki",
+   "voice": "f2",
+   "shoes": "soft",
+   "temper": {
+    "brave": 0.2,
+    "curious": 0.55,
+    "social": 0.5,
+    "calm": 0.35,
+    "pace": 0.98
+   },
+   "ara": {
+    "height_cm": 159,
+    "carry": "phone",
+    "detail": "medium",
+    "params": {
+     "name": "f17",
+     "gender": 0,
+     "seed": 2617,
+     "ageYears": 22,
+     "muscle": 0.38,
+     "weight": 0.33,
+     "proportions": 0.9,
+     "caucasian": 0.1,
+     "asian": 0.88,
+     "african": 0.02,
+     "hair": "bob02",
+     "hairTint": "#2a211d",
+     "eyes": "darkbrown",
+     "eyebrows": "eyebrow006",
+     "eyelashes": "eyelashes02",
+     "top": "tropical_short_shirt",
+     "bottom": "fitted_mini_skirt",
+     "shoes": "sneakers",
+     "earrings": "studs",
+     "earringMetal": "silver",
+     "garmentStyles": {
+      "tropical_short_shirt": {
+       "pattern": "resort_geo",
+       "color": "#f8f7f1",
+       "color2": "#31506b"
+      },
+      "fitted_mini_skirt": {
+       "pattern": "solid",
+       "color": "#31506b"
+      }
+     },
+     "modifiers": {
+      "eyes/eye-scale": 0.2,
+      "nose/nose-scale-horiz": -0.18,
+      "mouth/mouth-lowerlip-volume": 0.22,
+      "mouth/mouth-upperlip-volume": 0.16,
+      "cheek/cheek-bones": 0.22,
+      "chin/chin-width": -0.22,
+      "head/head-oval": 0.45
+     },
+     "outfit": "none",
+     "rig": "game",
+     "faceBones": true,
+     "faceShapes": true,
+     "speechShapes": true,
+     "teeth": "teeth_base",
+     "tongue": true,
+     "detail": "medium",
+     "restPose": "T",
+     "animations": false,
+     "expression": "neutral",
+     "breastSize": 0.48
+    }
+   }
+  },
+  {
+   "id": "f18",
+   "name": "Elena",
+   "voice": "f1",
+   "shoes": "slap",
+   "temper": {
+    "brave": 0.45,
+    "curious": 0.6,
+    "social": 0.75,
+    "calm": 0.5,
+    "pace": 1.02
+   },
+   "ara": {
+    "height_cm": 170,
+    "carry": "phone",
+    "detail": "medium",
+    "params": {
+     "name": "f18",
+     "gender": 0,
+     "seed": 2018,
+     "ageYears": 28,
+     "muscle": 0.42,
+     "weight": 0.39,
+     "proportions": 0.92,
+     "caucasian": 0.9,
+     "asian": 0.05,
+     "african": 0.05,
+     "hair": "long01",
+     "hairTint": "#8a6a48",
+     "eyes": "lightblue",
+     "eyebrows": "eyebrow004",
+     "eyelashes": "eyelashes03",
+     "top": "tank_top",
+     "bottom": "fitted_mini_skirt",
+     "shoes": "sandals",
+     "earrings": "small_hoops",
+     "earringMetal": "gold",
+     "accessories": [
+      "fine_pendant"
+     ],
+     "garmentStyles": {
+      "tank_top": {
+       "pattern": "solid",
+       "color": "#b5533c"
+      },
+      "fitted_mini_skirt": {
+       "pattern": "solid",
+       "color": "#7d97b8"
+      }
+     },
+     "modifiers": {
+      "eyes/eye-scale": 0.2,
+      "nose/nose-scale-horiz": -0.18,
+      "mouth/mouth-lowerlip-volume": 0.22,
+      "mouth/mouth-upperlip-volume": 0.16,
+      "cheek/cheek-bones": 0.22,
+      "chin/chin-width": -0.22,
+      "head/head-oval": 0.45
+     },
+     "outfit": "none",
+     "rig": "game",
+     "faceBones": true,
+     "faceShapes": true,
+     "speechShapes": true,
+     "teeth": "teeth_base",
+     "tongue": true,
+     "detail": "medium",
+     "restPose": "T",
+     "animations": false,
+     "expression": "neutral",
+     "breastSize": 0.48
+    }
+   }
+  },
+  {
+   "id": "f19",
+   "name": "Maya",
+   "voice": "f3",
+   "shoes": "slap",
+   "temper": {
+    "brave": 0.55,
+    "curious": 0.75,
+    "social": 0.85,
+    "calm": 0.45,
+    "pace": 1.06
+   },
+   "ara": {
+    "height_cm": 162,
+    "carry": "phone",
+    "detail": "medium",
+    "params": {
+     "name": "f19",
+     "gender": 0,
+     "seed": 5419,
+     "ageYears": 21,
+     "muscle": 0.44,
+     "weight": 0.4,
+     "proportions": 0.9,
+     "caucasian": 0.35,
+     "asian": 0.1,
+     "african": 0.55,
+     "hair": "ponytail01",
+     "hairTint": "#2a1f19",
+     "eyes": "darkbrown",
+     "eyebrows": "eyebrow002",
+     "eyelashes": "eyelashes03",
+     "top": "oversized_tee",
+     "bottom": "resort_shorts",
+     "shoes": "slides",
+     "earrings": "small_hoops",
+     "earringMetal": "gold",
+     "accessories": [
+      "wrist_beads"
+     ],
+     "garmentStyles": {
+      "oversized_tee": {
+       "pattern": "jersey",
+       "color": "#d9a441"
+      },
+      "resort_shorts": {
+       "pattern": "linen",
+       "color": "#efe6d4"
+      }
+     },
+     "modifiers": {
+      "eyes/eye-scale": 0.2,
+      "nose/nose-scale-horiz": -0.18,
+      "mouth/mouth-lowerlip-volume": 0.22,
+      "mouth/mouth-upperlip-volume": 0.16,
+      "cheek/cheek-bones": 0.22,
+      "chin/chin-width": -0.22,
+      "head/head-oval": 0.45
+     },
+     "outfit": "none",
+     "rig": "game",
+     "faceBones": true,
+     "faceShapes": true,
+     "speechShapes": true,
+     "teeth": "teeth_base",
+     "tongue": true,
+     "detail": "medium",
+     "restPose": "T",
+     "animations": false,
+     "expression": "neutral",
+     "breastSize": 0.48
+    }
+   }
+  },
+  {
+   "id": "f20",
+   "name": "Isabel",
+   "voice": "f4",
+   "shoes": "hard",
+   "temper": {
+    "brave": 0.35,
+    "curious": 0.35,
+    "social": 0.6,
+    "calm": 0.7,
+    "pace": 0.95
+   },
+   "ara": {
+    "height_cm": 165,
+    "carry": "handbag",
+    "detail": "medium",
+    "params": {
+     "name": "f20",
+     "gender": 0,
+     "seed": 2120,
+     "ageYears": 29,
+     "muscle": 0.4,
+     "weight": 0.41,
+     "proportions": 0.9,
+     "caucasian": 0.7,
+     "asian": 0.15,
+     "african": 0.15,
+     "hair": "bob01",
+     "hairTint": "#6b4a36",
+     "eyes": "brownlight",
+     "eyebrows": "eyebrow001",
+     "eyelashes": "eyelashes02",
+     "skinTint": "#eccfb8",
+     "top": "silk_blouse",
+     "bottom": "pencil_skirt_midi",
+     "shoes": "loafers",
+     "earrings": "pearl_drops",
+     "accessories": [
+      "pearl_necklace"
+     ],
+     "garmentStyles": {
+      "silk_blouse": {
+       "pattern": "solid",
+       "color": "#f4f0e8"
+      },
+      "pencil_skirt_midi": {
+       "pattern": "solid",
+       "color": "#3f4f3a"
+      }
+     },
+     "modifiers": {
+      "eyes/eye-scale": 0.2,
+      "nose/nose-scale-horiz": -0.18,
+      "mouth/mouth-lowerlip-volume": 0.22,
+      "mouth/mouth-upperlip-volume": 0.16,
+      "cheek/cheek-bones": 0.22,
+      "chin/chin-width": -0.22,
+      "head/head-oval": 0.45
+     },
+     "outfit": "none",
+     "rig": "game",
+     "faceBones": true,
+     "faceShapes": true,
+     "speechShapes": true,
+     "teeth": "teeth_base",
+     "tongue": true,
+     "detail": "medium",
+     "restPose": "T",
+     "animations": false,
+     "expression": "neutral",
+     "breastSize": 0.48
+    }
+   }
+  },
+  {
+   "id": "m01",
+   "name": "Kofi",
+   "voice": "m1",
+   "shoes": "soft",
+   "temper": {
+    "brave": 0.6,
+    "curious": 0.5,
+    "social": 0.6,
+    "calm": 0.6,
+    "pace": 1.05
+   },
+   "ara": {
+    "height_cm": 179,
+    "carry": "phone",
+    "detail": "medium",
+    "params": {
+     "name": "m01",
+     "gender": 1,
+     "seed": 2202,
+     "ageYears": 27,
+     "muscle": 0.6,
+     "weight": 0.48,
+     "proportions": 0.85,
+     "caucasian": 0.25,
+     "asian": 0.1,
+     "african": 0.65,
+     "hair": "short02",
+     "hairTint": "#1d1613",
+     "eyes": "darkbrown",
+     "facialHair": "stubble",
+     "beardColor": "#1d1613",
+     "top": "camp_shirt",
+     "bottom": "resort_shorts",
+     "shoes": "sneakers",
+     "accessories": [
+      "watch"
+     ],
+     "garmentStyles": {
+      "camp_shirt": {
+       "pattern": "linen",
+       "color": "#e9e2d0"
+      },
+      "resort_shorts": {
+       "pattern": "solid",
+       "color": "#5f6b4a"
+      }
+     },
+     "modifiers": {
+      "chin/chin-bones": 0.2,
+      "cheek/cheek-bones": 0.15,
+      "eyes/eye-scale": 0.08
+     },
+     "outfit": "none",
+     "rig": "game",
+     "faceBones": true,
+     "faceShapes": true,
+     "speechShapes": true,
+     "teeth": "teeth_base",
+     "tongue": true,
+     "detail": "medium",
+     "restPose": "T",
+     "animations": false,
+     "expression": "neutral"
+    }
+   }
+  },
+  {
+   "id": "m02",
+   "name": "Mateo",
+   "voice": "m2",
+   "shoes": "soft",
+   "temper": {
+    "brave": 0.5,
+    "curious": 0.6,
+    "social": 0.8,
+    "calm": 0.5,
+    "pace": 1.04
+   },
+   "ara": {
+    "height_cm": 176,
+    "carry": "phone",
+    "detail": "medium",
+    "params": {
+     "name": "m02",
+     "gender": 1,
+     "seed": 6102,
+     "ageYears": 24,
+     "muscle": 0.55,
+     "weight": 0.45,
+     "proportions": 0.86,
+     "caucasian": 0.6,
+     "asian": 0.15,
+     "african": 0.25,
+     "hair": "short01",
+     "hairTint": "#231b17",
+     "eyes": "darkbrown",
+     "skinTint": "#e4c2a2",
+     "top": "oversized_tee",
+     "bottom": "baggy_jeans",
+     "shoes": "sneakers",
+     "accessories": [
+      "watch_silver"
+     ],
+     "garmentStyles": {
+      "oversized_tee": {
+       "pattern": "jersey",
+       "color": "#f1eee6"
+      },
+      "baggy_jeans": {
+       "pattern": "denim",
+       "color": "#37557f"
+      }
+     },
+     "modifiers": {
+      "chin/chin-bones": 0.2,
+      "cheek/cheek-bones": 0.15,
+      "eyes/eye-scale": 0.08
+     },
+     "outfit": "none",
+     "rig": "game",
+     "faceBones": true,
+     "faceShapes": true,
+     "speechShapes": true,
+     "teeth": "teeth_base",
+     "tongue": true,
+     "detail": "medium",
+     "restPose": "T",
+     "animations": false,
+     "expression": "neutral"
+    }
+   }
+  },
+  {
+   "id": "m03",
+   "name": "Kenji",
+   "voice": "m3",
+   "shoes": "slap",
+   "temper": {
+    "brave": 0.4,
+    "curious": 0.7,
+    "social": 0.5,
+    "calm": 0.75,
+    "pace": 1.0
+   },
+   "ara": {
+    "height_cm": 172,
+    "carry": "phone",
+    "detail": "medium",
+    "params": {
+     "name": "m03",
+     "gender": 1,
+     "seed": 6203,
+     "ageYears": 26,
+     "muscle": 0.5,
+     "weight": 0.42,
+     "proportions": 0.86,
+     "caucasian": 0.1,
+     "asian": 0.85,
+     "african": 0.05,
+     "hair": "short03",
+     "hairTint": "#1f1915",
+     "eyes": "blackbrown",
+     "top": "tropical_short_shirt",
+     "bottom": "resort_shorts",
+     "shoes": "slides",
+     "garmentStyles": {
+      "tropical_short_shirt": {
+       "pattern": "tropical",
+       "color": "#f8f7f1",
+       "color2": "#3c4d2a"
+      },
+      "resort_shorts": {
+       "pattern": "linen",
+       "color": "#b9a37c"
+      }
+     },
+     "modifiers": {
+      "chin/chin-bones": 0.2,
+      "cheek/cheek-bones": 0.15,
+      "eyes/eye-scale": 0.08
+     },
+     "outfit": "none",
+     "rig": "game",
+     "faceBones": true,
+     "faceShapes": true,
+     "speechShapes": true,
+     "teeth": "teeth_base",
+     "tongue": true,
+     "detail": "medium",
+     "restPose": "T",
+     "animations": false,
+     "expression": "neutral"
+    }
+   }
+  },
+  {
+   "id": "m04",
+   "name": "Luca",
+   "voice": "m2",
+   "shoes": "slap",
+   "temper": {
+    "brave": 0.7,
+    "curious": 0.8,
+    "social": 0.7,
+    "calm": 0.55,
+    "pace": 1.1
+   },
+   "ara": {
+    "height_cm": 183,
+    "carry": "backpack",
+    "detail": "medium",
+    "params": {
+     "name": "m04",
+     "gender": 1,
+     "seed": 6304,
+     "ageYears": 22,
+     "muscle": 0.62,
+     "weight": 0.44,
+     "proportions": 0.88,
+     "caucasian": 0.9,
+     "asian": 0.05,
+     "african": 0.05,
+     "hair": "short04",
+     "hairTint": "#5a4230",
+     "eyes": "bluegreen",
+     "facialHair": "stubble",
+     "beardColor": "#5a4230",
+     "top": "racer_casual_shirt",
+     "bottom": "resort_shorts",
+     "shoes": "flipflops",
+     "accessories": [
+      "aviators"
+     ],
+     "garmentStyles": {
+      "resort_shorts": {
+       "pattern": "solid",
+       "color": "#2e3a4a"
+      }
+     },
+     "modifiers": {
+      "chin/chin-bones": 0.2,
+      "cheek/cheek-bones": 0.15,
+      "eyes/eye-scale": 0.08
+     },
+     "outfit": "none",
+     "rig": "game",
+     "faceBones": true,
+     "faceShapes": true,
+     "speechShapes": true,
+     "teeth": "teeth_base",
+     "tongue": true,
+     "detail": "medium",
+     "restPose": "T",
+     "animations": false,
+     "expression": "neutral"
+    }
+   }
+  },
+  {
+   "id": "m05",
+   "name": "Omar",
+   "voice": "m1",
+   "shoes": "hard",
+   "temper": {
+    "brave": 0.65,
+    "curious": 0.4,
+    "social": 0.55,
+    "calm": 0.8,
+    "pace": 0.97
+   },
+   "ara": {
+    "height_cm": 180,
+    "carry": "phone",
+    "detail": "medium",
+    "params": {
+     "name": "m05",
+     "gender": 1,
+     "seed": 6405,
+     "ageYears": 30,
+     "muscle": 0.58,
+     "weight": 0.52,
+     "proportions": 0.85,
+     "caucasian": 0.6,
+     "asian": 0.2,
+     "african": 0.2,
+     "hair": "short02",
+     "hairTint": "#17120f",
+     "eyes": "darkbrown",
+     "facialHair": "short_beard",
+     "beardColor": "#17120f",
+     "skinTint": "#dab693",
+     "top": "camp_shirt",
+     "bottom": "suit_trousers",
+     "shoes": "loafers",
+     "accessories": [
+      "watch_silver"
+     ],
+     "garmentStyles": {
+      "camp_shirt": {
+       "pattern": "solid",
+       "color": "#31506b"
+      },
+      "suit_trousers": {
+       "pattern": "linen",
+       "color": "#d8ccb4"
+      }
+     },
+     "modifiers": {
+      "chin/chin-bones": 0.2,
+      "cheek/cheek-bones": 0.15,
+      "eyes/eye-scale": 0.08
+     },
+     "outfit": "none",
+     "rig": "game",
+     "faceBones": true,
+     "faceShapes": true,
+     "speechShapes": true,
+     "teeth": "teeth_base",
+     "tongue": true,
+     "detail": "medium",
+     "restPose": "T",
+     "animations": false,
+     "expression": "neutral"
+    }
+   }
+  },
+  {
+   "id": "m06",
+   "name": "Andre",
+   "voice": "m1",
+   "shoes": "soft",
+   "temper": {
+    "brave": 0.8,
+    "curious": 0.6,
+    "social": 0.65,
+    "calm": 0.6,
+    "pace": 1.08
+   },
+   "ara": {
+    "height_cm": 186,
+    "carry": "phone",
+    "detail": "medium",
+    "params": {
+     "name": "m06",
+     "gender": 1,
+     "seed": 6506,
+     "ageYears": 23,
+     "muscle": 0.68,
+     "weight": 0.5,
+     "proportions": 0.86,
+     "caucasian": 0.05,
+     "asian": 0.05,
+     "african": 0.9,
+     "hair": "buzz",
+     "hairColor": "#17110e",
+     "eyes": "darkbrown",
+     "top": "basketball_jersey",
+     "bottom": "resort_shorts",
+     "shoes": "sneakers",
+     "accessories": [
+      "headphones"
+     ],
+     "garmentStyles": {
+      "basketball_jersey": {
+       "pattern": "solid",
+       "color": "#b5533c",
+       "color2": "#f2f2ef",
+       "number": 7
+      },
+      "resort_shorts": {
+       "pattern": "solid",
+       "color": "#2a2a2e"
+      }
+     },
+     "modifiers": {
+      "chin/chin-bones": 0.2,
+      "cheek/cheek-bones": 0.15,
+      "eyes/eye-scale": 0.08
+     },
+     "outfit": "none",
+     "rig": "game",
+     "faceBones": true,
+     "faceShapes": true,
+     "speechShapes": true,
+     "teeth": "teeth_base",
+     "tongue": true,
+     "detail": "medium",
+     "restPose": "T",
+     "animations": false,
+     "expression": "neutral"
+    }
+   }
+  },
+  {
+   "id": "m07",
+   "name": "Javier",
+   "voice": "m2",
+   "shoes": "soft",
+   "temper": {
+    "brave": 0.45,
+    "curious": 0.5,
+    "social": 0.85,
+    "calm": 0.45,
+    "pace": 1.0
+   },
+   "ara": {
+    "height_cm": 174,
+    "carry": "phone",
+    "detail": "medium",
+    "params": {
+     "name": "m07",
+     "gender": 1,
+     "seed": 6607,
+     "ageYears": 28,
+     "muscle": 0.54,
+     "weight": 0.5,
+     "proportions": 0.85,
+     "caucasian": 0.55,
+     "asian": 0.2,
+     "african": 0.25,
+     "hair": "short01",
+     "hairTint": "#2a1f18",
+     "eyes": "darkbrown",
+     "facialHair": "mustache_stubble",
+     "beardColor": "#2a1f18",
+     "skinTint": "#deb991",
+     "top": "tropical_short_shirt",
+     "bottom": "resort_shorts",
+     "shoes": "sneakers",
+     "garmentStyles": {
+      "tropical_short_shirt": {
+       "pattern": "resort_geo",
+       "color": "#efe6d4",
+       "color2": "#b9643f"
+      },
+      "resort_shorts": {
+       "pattern": "solid",
+       "color": "#4f6485"
+      }
+     },
+     "modifiers": {
+      "chin/chin-bones": 0.2,
+      "cheek/cheek-bones": 0.15,
+      "eyes/eye-scale": 0.08
+     },
+     "outfit": "none",
+     "rig": "game",
+     "faceBones": true,
+     "faceShapes": true,
+     "speechShapes": true,
+     "teeth": "teeth_base",
+     "tongue": true,
+     "detail": "medium",
+     "restPose": "T",
+     "animations": false,
+     "expression": "neutral"
+    }
+   }
+  },
+  {
+   "id": "m08",
+   "name": "Noah",
+   "voice": "m3",
+   "shoes": "slap",
+   "temper": {
+    "brave": 0.35,
+    "curious": 0.9,
+    "social": 0.6,
+    "calm": 0.65,
+    "pace": 1.03
+   },
+   "ara": {
+    "height_cm": 181,
+    "carry": "backpack",
+    "detail": "medium",
+    "params": {
+     "name": "m08",
+     "gender": 1,
+     "seed": 6708,
+     "ageYears": 21,
+     "muscle": 0.5,
+     "weight": 0.43,
+     "proportions": 0.86,
+     "caucasian": 0.95,
+     "asian": 0.03,
+     "african": 0.02,
+     "hair": "short03",
+     "hairTint": "#b99a5f",
+     "eyes": "blue",
+     "top": "oversized_tee",
+     "bottom": "resort_shorts",
+     "shoes": "sandals",
+     "accessories": [
+      "camera"
+     ],
+     "garmentStyles": {
+      "oversized_tee": {
+       "pattern": "jersey",
+       "color": "#9fb59a"
+      },
+      "resort_shorts": {
+       "pattern": "linen",
+       "color": "#c9b48a"
+      }
+     },
+     "modifiers": {
+      "chin/chin-bones": 0.2,
+      "cheek/cheek-bones": 0.15,
+      "eyes/eye-scale": 0.08
+     },
+     "outfit": "none",
+     "rig": "game",
+     "faceBones": true,
+     "faceShapes": true,
+     "speechShapes": true,
+     "teeth": "teeth_base",
+     "tongue": true,
+     "detail": "medium",
+     "restPose": "T",
+     "animations": false,
+     "expression": "neutral"
+    }
+   }
+  },
+  {
+   "id": "m09",
+   "name": "Tariq",
+   "voice": "m1",
+   "shoes": "slap",
+   "temper": {
+    "brave": 0.55,
+    "curious": 0.35,
+    "social": 0.5,
+    "calm": 0.85,
+    "pace": 0.95
+   },
+   "ara": {
+    "height_cm": 177,
+    "carry": "phone",
+    "detail": "medium",
+    "params": {
+     "name": "m09",
+     "gender": 1,
+     "seed": 6809,
+     "ageYears": 29,
+     "muscle": 0.55,
+     "weight": 0.55,
+     "proportions": 0.84,
+     "caucasian": 0.55,
+     "asian": 0.25,
+     "african": 0.2,
+     "hair": "short04",
+     "hairTint": "#15110e",
+     "eyes": "blackbrown",
+     "facialHair": "full_beard",
+     "beardColor": "#15110e",
+     "skinTint": "#d6ae88",
+     "top": "uniform_camp_shirt",
+     "bottom": "trousers",
+     "shoes": "sandals",
+     "garmentStyles": {
+      "uniform_camp_shirt": {
+       "pattern": "linen",
+       "color": "#f1e8d6"
+      },
+      "trousers": {
+       "pattern": "solid",
+       "color": "#4a4f45"
+      }
+     },
+     "modifiers": {
+      "chin/chin-bones": 0.2,
+      "cheek/cheek-bones": 0.15,
+      "eyes/eye-scale": 0.08
+     },
+     "outfit": "none",
+     "rig": "game",
+     "faceBones": true,
+     "faceShapes": true,
+     "speechShapes": true,
+     "teeth": "teeth_base",
+     "tongue": true,
+     "detail": "medium",
+     "restPose": "T",
+     "animations": false,
+     "expression": "neutral"
+    }
+   }
+  },
+  {
+   "id": "m10",
+   "name": "Emeka",
+   "voice": "m3",
+   "shoes": "soft",
+   "temper": {
+    "brave": 0.75,
+    "curious": 0.65,
+    "social": 0.9,
+    "calm": 0.5,
+    "pace": 1.07
+   },
+   "ara": {
+    "height_cm": 184,
+    "carry": "phone",
+    "detail": "medium",
+    "params": {
+     "name": "m10",
+     "gender": 1,
+     "seed": 6910,
+     "ageYears": 25,
+     "muscle": 0.64,
+     "weight": 0.47,
+     "proportions": 0.87,
+     "caucasian": 0.03,
+     "asian": 0.02,
+     "african": 0.95,
+     "hair": "cornrows",
+     "hairColor": "#15100d",
+     "eyes": "darkbrown",
+     "facialHair": "goatee",
+     "beardColor": "#15100d",
+     "top": "football_shirt",
+     "bottom": "resort_shorts",
+     "shoes": "sneakers",
+     "accessories": [
+      "gold_chains"
+     ],
+     "garmentStyles": {
+      "football_shirt": {
+       "pattern": "stripes",
+       "color": "#f2f2ef",
+       "color2": "#2f5d50",
+       "number": 10
+      },
+      "resort_shorts": {
+       "pattern": "solid",
+       "color": "#23262b"
+      }
+     },
+     "modifiers": {
+      "chin/chin-bones": 0.2,
+      "cheek/cheek-bones": 0.15,
+      "eyes/eye-scale": 0.08
+     },
+     "outfit": "none",
+     "rig": "game",
+     "faceBones": true,
+     "faceShapes": true,
+     "speechShapes": true,
+     "teeth": "teeth_base",
+     "tongue": true,
+     "detail": "medium",
+     "restPose": "T",
+     "animations": false,
+     "expression": "neutral"
+    }
+   }
+  },
+  {
+   "id": "m11",
+   "name": "Minh",
+   "voice": "m3",
+   "shoes": "slap",
+   "temper": {
+    "brave": 0.3,
+    "curious": 0.6,
+    "social": 0.55,
+    "calm": 0.6,
+    "pace": 1.0
+   },
+   "ara": {
+    "height_cm": 170,
+    "carry": "phone",
+    "detail": "medium",
+    "params": {
+     "name": "m11",
+     "gender": 1,
+     "seed": 7011,
+     "ageYears": 20,
+     "muscle": 0.48,
+     "weight": 0.4,
+     "proportions": 0.86,
+     "caucasian": 0.08,
+     "asian": 0.9,
+     "african": 0.02,
+     "hair": "short02",
+     "hairTint": "#1c1613",
+     "eyes": "darkbrown",
+     "top": "camp_shirt",
+     "bottom": "resort_shorts",
+     "shoes": "slides",
+     "accessories": [
+      "watch"
+     ],
+     "garmentStyles": {
+      "camp_shirt": {
+       "pattern": "tropical",
+       "color": "#efe6d4",
+       "color2": "#3f6b5a"
+      },
+      "resort_shorts": {
+       "pattern": "solid",
+       "color": "#3b4a5c"
+      }
+     },
+     "modifiers": {
+      "chin/chin-bones": 0.2,
+      "cheek/cheek-bones": 0.15,
+      "eyes/eye-scale": 0.08
+     },
+     "outfit": "none",
+     "rig": "game",
+     "faceBones": true,
+     "faceShapes": true,
+     "speechShapes": true,
+     "teeth": "teeth_base",
+     "tongue": true,
+     "detail": "medium",
+     "restPose": "T",
+     "animations": false,
+     "expression": "neutral"
+    }
+   }
+  },
+  {
+   "id": "m12",
+   "name": "Diego",
+   "voice": "m2",
+   "shoes": "soft",
+   "temper": {
+    "brave": 0.85,
+    "curious": 0.45,
+    "social": 0.7,
+    "calm": 0.4,
+    "pace": 1.06
+   },
+   "ara": {
+    "height_cm": 178,
+    "carry": "phone",
+    "detail": "medium",
+    "params": {
+     "name": "m12",
+     "gender": 1,
+     "seed": 7112,
+     "ageYears": 26,
+     "muscle": 0.66,
+     "weight": 0.5,
+     "proportions": 0.86,
+     "caucasian": 0.5,
+     "asian": 0.15,
+     "african": 0.35,
+     "hair": "short01",
+     "hairTint": "#1e1713",
+     "eyes": "darkbrown",
+     "facialHair": "goatee",
+     "beardColor": "#1e1713",
+     "skinTint": "#d9b48f",
+     "top": "singlet",
+     "bottom": "cargo_pants",
+     "shoes": "sneakers",
+     "accessories": [
+      "cuban_chain",
+      "watch_gold"
+     ],
+     "garmentStyles": {
+      "cargo_pants": {
+       "pattern": "solid",
+       "color": "#3a3f38"
+      }
+     },
+     "modifiers": {
+      "chin/chin-bones": 0.2,
+      "cheek/cheek-bones": 0.15,
+      "eyes/eye-scale": 0.08
+     },
+     "outfit": "none",
+     "rig": "game",
+     "faceBones": true,
+     "faceShapes": true,
+     "speechShapes": true,
+     "teeth": "teeth_base",
+     "tongue": true,
+     "detail": "medium",
+     "restPose": "T",
+     "animations": false,
+     "expression": "neutral"
+    }
+   }
+  }
+ ]
+}

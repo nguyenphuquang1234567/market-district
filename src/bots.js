@@ -176,6 +176,7 @@ class Bot {
       rul: bone('RightUpLeg'), rl: bone('RightLeg'), rft: bone('RightFoot'), lul: bone('LeftUpLeg'), ll: bone('LeftLeg'), lft: bone('LeftFoot'),
       ltoe: bone('LeftToeBase'), rtoe: bone('RightToeBase') };
     this.legLength = (this.b.ll.position.length() + this.b.lft.position.length()) * 0.01;      // hip joint to ankle, straight
+    this.ragRef = ragRef(model, this.b);
     this.gun = worldGunMesh(shared.gunMats); G.R.scene.add(this.gun);
     setUpBotRifle(this);
     this.mixer = new THREE.AnimationMixer(model);
@@ -554,7 +555,7 @@ class Bot {
     const G = this.G;
     if (!this.alive) {
       this.deadT += dt; this.respawnT -= dt;
-      if (this.fall && this.root.visible) { this.rag = G.rigid.ragdoll(this, this.fall.dir, this.fall.zone, this.fall.launch || 0); this.dropped = G.rigid.dropGun(this); this.fall = null; }
+      if (this.fall && this.root.visible) { this.ragTone = this.fall.zone === 'head' ? 0.25 : 0.75 + this.rnd() * 0.3; this.ragPush = 0.6; this.rag = G.rigid.ragdoll(this, this.fall.dir, this.fall.zone, this.fall.launch || 0); this.dropped = G.rigid.dropGun(this); this.fall = null; }
       if (this.respawnT <= 0 && G.matchLive) { const sp = G.bots.pickSpawn(this.team); if (sp) { this.leaveBody(); this.spawn(sp); } }
       return;
     }
@@ -1219,6 +1220,23 @@ class Bot {
   muzzle(out) { return this.gun.localToWorld(out.copy(MUZZLE)); }
 }
 
+// How the soldier's bones lie in a neutral stand with the arms hanging (made from the pose the mesh was bound in, arms
+// straight out to the sides), in the body's own axes: what a fallen body's joints are measured from (rigid.js).
+let RAG_BIND = null;
+const RAG_HANG = { L: new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(1, 0, 0), new THREE.Vector3(0.16, -0.985, 0.03).normalize()), R: new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(-1, 0, 0), new THREE.Vector3(-0.16, -0.985, 0.03).normalize()) };
+function ragRef(model, b) {
+  if (!RAG_BIND) {
+    RAG_BIND = {}; let sk = null; model.traverse(o => { if (o.isSkinnedMesh && !sk) sk = o.skeleton; });
+    const m = new THREE.Matrix4(), s = new THREE.Vector3(), at = {};
+    sk.bones.forEach((bone, i) => { const q = new THREE.Quaternion(), p = new THREE.Vector3(); m.copy(sk.boneInverses[i]).invert().decompose(p, q, s); RAG_BIND[bone.name] = q; at[bone.name] = p; });
+    // the space the mesh was bound in has its own idea of up and forward: turn it to the body's (x left, y up, z forward)
+    const left = at[b.lf.name].clone().sub(at[b.la.name]).normalize(), up = at[b.head.name].clone().sub(at[b.hips.name]).normalize(), fwd = left.clone().cross(up).normalize();
+    const own = new THREE.Quaternion().setFromRotationMatrix(m.makeBasis(left, fwd.clone().cross(left), fwd)).invert();
+    for (const n in RAG_BIND) RAG_BIND[n].premultiply(own);
+  }
+  const k = (bone, hang) => ({ bone, q: hang ? hang.clone().multiply(RAG_BIND[bone.name]) : RAG_BIND[bone.name].clone() });
+  return { pelvis: k(b.hips), torso: k(b.spine2), head: k(b.head), ual: k(b.la, RAG_HANG.L), fal: k(b.lf, RAG_HANG.L), uar: k(b.ra, RAG_HANG.R), far: k(b.rf, RAG_HANG.R), thl: k(b.lul), shl: k(b.ll), thr: k(b.rul), shr: k(b.rl) };
+}
 export class Bots {
   constructor(G, perTeam = 4) {
     this.G = G; this.rnd = rng(555);
@@ -1305,6 +1323,7 @@ export class Bots {
       if (a === b || !a.alive || a.team === b.team) continue;
       const h = rayActor(eye, dir, a, tMax); if (h) { tMax = h.t; victim = a; zone = h.zone; }
     }
+    if (G.civs) for (const c of G.civs.list) { if (!c.alive) continue; const h = rayActor(eye, dir, c, tMax); if (h) { tMax = h.t; victim = c; zone = h.zone; } }      // nobody aims at a bystander, but a round does not choose
     const ph = G.rigid.ray(eye, dir, tMax);                                 // loose clutter and the fallen in the line of fire
     if (ph && G.rigid.bulletHit(ph, eye, dir, false)) { tMax = ph.t; victim = null; hitInfo.b = null; }
     const end = eye.clone().addScaledVector(dir, tMax), cam = G.R.camera.position, dCam = cam.distanceTo(m);
@@ -1312,7 +1331,9 @@ export class Bots {
     if (R() < 0.6) G.fx.tracer(m, end, 300);
     G.audio.shotAt({ x: m.x, y: m.y, z: m.z });
     this.hear(b.pos, 55, b.team); if (b.team !== G.player.team) G.hud.ping(b, 2.2);
-    if (victim) {
+    G.civs?.shot(eye, dir, end, b);
+    if (victim && victim.isCivilian) { victim.stain(eye, dir, zone); victim.damage(zone === 'head' ? 100 : zone === 'limb' ? 24 : 32, b.pos, b, zone); G.blood.hit(victim, end, dir, zone, 0.8); G.audio.bodyHit({ x: end.x, y: end.y, z: end.z }, 'limb', false); }
+    else if (victim) {
       const dmg = (zone === 'head' ? 42 : zone === 'limb' ? 13 : 18) * D.dmg * (victim.isPlayer ? 1 : 1.25);
       victim.damage(dmg, b.pos, b, zone);
       G.blood.hit(victim, end, dir, zone, 0.8);

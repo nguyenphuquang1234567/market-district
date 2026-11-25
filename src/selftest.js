@@ -2,6 +2,7 @@
 // Uses fixed time steps and the seeded RNGs, so results are repeatable.
 import { BOT_RELOAD_DURATION } from './weapon.js';
 import { scan as clipScan, shove as clipShove } from './clipcheck.js';
+import { rayBoxes } from './physics.js';
 
 export function selfTest(G) {
   const P = G.player, W = G.weapon, out = [], $ = id => document.getElementById(id), clamp1 = v => Math.max(-1, Math.min(1, v));
@@ -10,6 +11,7 @@ export function selfTest(G) {
   const park = () => { for (const b of G.bots.list) { b.alive = false; b.root.visible = false; b.gun.visible = false; b.respawnT = 1e9; } };
   const dummy = (i, x, z, yaw = Math.PI) => { const b = G.bots.list[i]; b.spawn({ x, z, yaw }); b.think = 1e9; b.wishDir = null; b.wishSpeed = 0; return b; };
   G.manual = true; G.auto = true; G.frozen = true;
+  G.civs?.park(true);                                  // (the checks below stage soldiers on empty streets; the civilians have their own at the end)
   G.resetMatch(); G.playing = true; G.hud.show(null);
 
   // --- startup
@@ -399,6 +401,54 @@ export function selfTest(G) {
   A.start(); A._surroundings({ x: 0, y: 1.6, z: -50 }, 0, A.now);
   const street = A.stats().echoesMs.filter(v => v != null); A._surroundings({ x: -29, y: 1.6, z: -50 }, 0, A.now); const alley = A.stats().echoesMs.filter(v => v != null);
   check('echo delays follow the surrounding walls (tighter in the alley than the street)', street.length >= 2 && alley.length >= 2 && Math.min(...alley) < Math.min(...street) && Math.min(...street) < 150, `street ${street.join('/')} ms, alley ${alley.join('/')} ms`);
+  // --- the civilians (civilians.js): a quiet morning, a fright, a rifle held on them, a death that is nobody's score, calm again
+  if (G.civs) {
+    const C = G.civs, L = C.list, quick = secs => { const r = G.R.render; G.R.render = () => {}; try { run(secs); } finally { G.R.render = r; } }, far = (c, x, z) => Math.hypot(c.pos.x - x, c.pos.z - z);
+    const away = () => { P.alive = false; P.respawnT = 1e9; }, probe = new G.THREE.Vector3();      // (the player out of the way: nobody armed in the streets)
+    C.park(false); G.resetMatch(); G.playing = true; park(); away(); quick(30);
+    const states = new Set(L.map(c => c.state)), moving = L.filter(c => c.speed > 0.5).length, inWall = L.filter(c => rayBoxes(c.pos.x, c.pos.y + 1, c.pos.z, 0, 1, 0, 0.3, G.world.colliders, null) < 0.01).length;      // (a point at chest height inside a solid)
+    check('civilians fill the district and go about their morning', L.length >= 8 && L.every(c => c.alive && c.calm) && states.size >= 3 && moving >= 3 && inWall === 0, `${L.length} people, ${[...states].join(' ')}, ${moving} walking, ${inWall} in a wall`);
+    const seatedNow = () => L.find(c => c.state === 'sit' && c.phase === 2)?.name, talkingNow = () => { const c = L.find(c => c.state === 'chat' && c.conv && c.conv.phase === 1); return c ? `${c.name} talking with ${(c.conv.a === c ? c.conv.b : c.conv.a).name}` : null; };
+    let sat = seatedNow(), talked = talkingNow();
+    for (let k = 0; k < 5 && !(sat && talked); k++) { quick(8); sat ||= seatedNow(); talked ||= talkingNow(); }
+    check('they sit where there is a seat and stop to talk in pairs', !!sat || !!talked, `${sat ? sat + ' seated' : 'nobody seated'}, ${talked || 'nobody talking'}`);
+    // a burst fired into the ground a few metres from someone
+    const A = L.filter(c => c.calm && c.state !== 'sit').sort((a, b) => L.filter(o => far(o, a.pos.x, a.pos.z) < 20).length - L.filter(o => far(o, b.pos.x, b.pos.z) < 20).length).pop();
+    const ax = A.pos.x, az = A.pos.z, o = new G.THREE.Vector3(ax + 6, 1.5, az), d = new G.THREE.Vector3(0.2, -0.3, 1).normalize(), e = o.clone().addScaledVector(d, 4);
+    const nearby = L.filter(c => far(c, ax, az) < 16), distant = L.filter(c => far(c, ax, az) > 75);
+    for (let i = 0; i < 4; i++) { C.shot(o, d, e, P); quick(0.1); }
+    quick(0.6);
+    const ran = nearby.filter(c => ['flee', 'freeze', 'cower', 'surrender'].includes(c.state)).length, farCalm = distant.filter(c => c.state !== 'flee' && c.state !== 'freeze' && c.fear < 0.5).length;
+    check('gunfire close by sends them running, hiding or frozen; far-off fire does not', ran === nearby.length && nearby.length > 0 && farCalm === distant.length, `${ran}/${nearby.length} within 16 m reacting (${nearby.map(c => c.state).join(' ')}), ${farCalm}/${distant.length} beyond 75 m not in flight`);
+    // a face, close to: someone whose own textures are in since boot (the warm-up's people), given a fright with the camera on them
+    const scared = C.warmSet.find(c => c.alive) || L[0]; let blink = 0, wide0 = Math.max(scared.inst.face[2], scared.inst.face[3]);
+    const onFace = () => { P.pos.set(scared.pos.x + Math.sin(scared.yaw) * 1.2, scared.pos.y, scared.pos.z + Math.cos(scared.yaw) * 1.2); };      // (the fallen player's eyes are the camera: a pace in front of them)
+    scared.scare(0.95, scared.pos.x + 4, scared.pos.z, 'near', true);
+    for (let i = 0; i < 40; i++) { onFace(); quick(1 / 60); blink = Math.max(blink, scared.face.blink); }
+    const fw = scared.inst.face, wide = Math.max(fw[2], fw[3]), brow = fw[8];
+    check('fear shows on the face as it happens (a blink at the fright, then eyes wide and inner brows up)', scared.tier === 0 && blink > 0.9 && wide > 0.35 && wide > wide0 + 0.3 && brow > 0.35, `${scared.name}: tier ${scared.tier}, blink ${blink.toFixed(2)}, eyeWide ${wide0.toFixed(2)} -> ${wide.toFixed(2)}, browInnerUp ${brow.toFixed(2)}, fear ${scared.fear.toFixed(2)}`);
+    const line = { dur: 1.2, kind: 'talk' }; scared.face.speak(line); let mouth = 0; for (let i = 0; i < 50; i++) { onFace(); quick(1 / 60); for (let k = 20; k < 34; k++) mouth = Math.max(mouth, fw[k]); mouth = Math.max(mouth, fw[11]); }
+    check('a voice moves the mouth (jaw and visemes)', mouth > 0.25, `largest mouth shape while speaking ${mouth.toFixed(2)}`);
+    // a rifle held on a timid one
+    // a rifle held on the timid (most give up; a few run instead, so up to four are tried)
+    away(); quick(40); let T = null, up = false; const ranOff = [];
+    for (const c of L.filter(c => c.alive && c !== scared && c.fear < 0.1 && c.state !== 'sit').sort((a, b) => a.temper.brave - b.temper.brave).slice(0, 4)) {
+      T = c; P.alive = true; G.goto(c.pos.x + Math.sin(c.yaw) * 4, c.pos.z + Math.cos(c.yaw) * 4, 0, -4);
+      for (let i = 0; i < 10 && !up && c.state !== 'flee'; i++) { P.yaw = P.sim.yaw = Math.atan2(c.pos.x - P.pos.x, c.pos.z - P.pos.z); quick(0.25); up = c.state === 'surrender'; }
+      if (up) break; ranOff.push(c.name); away(); quick(20);
+    }
+    if (up) for (let i = 0; i < 4; i++) { P.yaw = P.sim.yaw = Math.atan2(T.pos.x - P.pos.x, T.pos.z - P.pos.z); quick(0.2); }
+    check('a rifle held on a civilian brings their hands up', up && T.anim.pose.handsUp.L > 0.6, `${T.name}: ${T.state}, hands ${T.anim.pose.handsUp.L.toFixed(2)}, fear ${T.fear.toFixed(2)}${ranOff.length ? '; ran instead: ' + ranOff.join(', ') : ''}`);
+    // a death
+    const score = G.score.join(), kills = P.kills, before = C.stats.killed, victim = T;
+    victim.damage(200, P.pos, P, 'body'); quick(1.2);
+    check('a civilian killed is nobody\'s score, falls as a body, and is counted apart', !victim.alive && G.score.join() === score && P.kills === kills && C.stats.killed === before + 1 && (!!victim.rag || victim.dying > 0), `score ${G.score.join('-')}, player kills ${P.kills}, casualties ${C.stats.killed}, ragdoll ${!!victim.rag}`);
+    // and afterwards
+    away(); quick(110);
+    const calmAgain = L.filter(c => c.alive && c.calm).length, alive = L.filter(c => c.alive).length, worst = Math.max(...L.filter(c => c.alive).map(c => c.fear));
+    check('with the danger gone they come out and go back to their morning', calmAgain >= alive * 0.8 && worst < 0.2, `${calmAgain}/${alive} calm again, highest fear ${worst.toFixed(2)}`);
+    P.alive = true; P.respawnT = 0;
+  }
   G.resetMatch(); G.playing = false; G.manual = false; G.auto = false; G.frozen = false; G.matchLive = false; G.hud.show('start');
   return out;
 }

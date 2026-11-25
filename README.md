@@ -521,6 +521,65 @@ Key bindings live in the same saved settings object (`binds`, including `frag` a
   1900-1950, cortinas metálicas and rejas de cajón as built today); for the method, the mid-poly, bevelled,
   weighted-normal modular kits that current environment art is built from.
 
+- **The people of the district** (`src/civilians.js`, `civ-anim.js`, `civ-face.js`, `civ-voice.js`, `civ-assets.js`;
+  `?civ=0` for empty streets, `?civ=12` for a head count). Thirty-two adults in their twenties, twenty women and
+  twelve men, made with Ara 3D Gen (its MCP server; the cast is `tools/civilians/people.json`, and
+  `tools/civilians/README.md` says how they are generated and packed). They are bystanders: nobody targets them,
+  rounds and blasts hurt them as they hurt anyone, and their deaths are counted apart (`G.civs.stats`) and never
+  touch the score, the kill feed or the player's kills.
+  - *A quiet morning.* Each has a temperament (brave, curious, sociable, composed, brisk) and three running
+    feelings: fear, which passes in seconds; stress, which takes minutes; and how alert they are. Left alone they
+    stroll the district on the soldiers' navigation grid with lanes of their own, sit on the loose chairs and
+    stools while those stand where they were put (and get up if one is kicked from under them), stop to talk in
+    pairs taking turns, text and phone (the phone is Ara's, in the hand its clips put it in, also while walking),
+    photograph, lean on a wall, and look over shop fronts. They step round each other and make room for anyone
+    with a rifle.
+  - *The fight.* It reaches them as events weighed by distance and by sight: a shot heard, a shot seen, a round
+    passing within two metres of the head or striking close by, a blast, a grenade landing in view, an armed man
+    coming at them, a rifle held on them, someone near them screaming, hit or down. Far-off fire turns heads; the
+    curious edge closer to look and most walk away from it. Close fire gives a start (a blink, a duck, forearms
+    up), and then by temperament they run for somewhere far from it and out of its sight (never along a route that
+    passes the muzzle), get down behind cover with their hands over their head, or freeze where they stand. A
+    rifle held on someone within twelve metres brings their hands up for as long as it stays on them. A hit
+    throws them into Ara's hit reaction for where it landed, then they limp for cover clutching the wound and stay
+    down crying; a nearby blast knocks them off their feet. The dead fall as the soldiers' ragdoll does (Ara's own
+    fall clip beyond 90 m), with no blood, and after a time, out of sight, someone new walks in. When nothing
+    has happened for a while they come out, look round, breathe out and go back to their morning, wary for a time.
+  - *Bodies.* Ara's clips (58 of them: walking, running, sitting, talking, phones, laughing, crying, hit reactions,
+    knockdown and getting up) are stored once as each bone's turn in the world away from the rest pose, which is
+    how Ara itself fits a clip to a body (the same clip exported for two bodies agrees to within 0.1° a bone
+    outside the legs), and refitted to each skeleton as they play. Standing, walking and running are one blend
+    with the stride's phase carried across, played at the rate that puts the ground under a planted foot at the
+    speed the body moves; a planted foot is then held where and as it was planted, steps when it is left behind
+    or twisted, follows the ground, and the pelvis comes down when a leg cannot reach (it is the ball of the foot
+    that is held, so the ankle still rolls over it; the hold fades out at a run, where a stance is a few frames).
+    Measured with `tools/civ-probe.js` `gait`: at a 1.4 m/s walk the ball of a planted foot travels 0–0.2 cm per
+    stance near the camera and about 5 cm in the far pose (clips alone, beyond 22 m), and the held feet add no
+    jolt to the knees over what the clip itself has. The look goes through the
+    spine, neck, head and eyes. What Ara has no clip for is made here as arm attitudes blended over its clips, not
+    motion capture: hands raised, hands over the head, a guard thrown up, a hand pressed to a wound.
+  - *Faces.* Every person carries Ara's 34 face shapes and its jaw and eye bones, and the face is never a fixed
+    pose: it is a blend of expressions (happy, amused, wary, surprised, afraid, panicking, in pain, crying,
+    relieved, out of breath) weighted by the feelings above, each shape with its own rise and fall so fright is
+    sudden and a face lets go slowly. On top: blinking (more when anxious, held off when the eyes are wide, at once
+    at a bang or a large shift of the gaze), eyes that reach what is looked at before the head does, rest in small
+    jumps and dart in panic, lids that follow the eyes, a jaw that trembles with fear, lips that tremble before
+    tears, sobs in bursts, and a mouth that follows the voice (visemes and loudness; Ara's own acting for its
+    laugh, cry and talk clips when no voice drives it).
+  - *Sound.* Through the game's audio engine, so late by distance, dulled by air and walls, in the street's echo:
+    footfalls by surface and shoe, breath when out of puff or frightened (modelled noise, no voice in it), and
+    voices from recordings (`assets/audio/civ-voices.*`), each clip with a lip-sync timeline and each person at
+    a pitch of their own. Without that pack the men use the soldiers' recorded screams and the women are silent:
+    nobody is given a synthesized voice.
+  - *Cost.* The nearest four are drawn in full (their own textures shared across the cast and fetched the first
+    time they come close, face shapes on the face alone, 40–110 thousand triangles); everyone else is one draw on
+    a 1024 px atlas of their own at 9,000, 4,500 or 1,800 triangles. Poses are made every frame near the camera,
+    every second or fourth further off, not at all out of view; each person thinks five times a second; paths are
+    found two a frame. Measured on High at 1920×1080: a street with ten people in view 13.4–13.7 ms a frame
+    against 13.1–13.2 ms without them; all thirty-two packed within 15 m of the camera 16.2 ms (62 fps) against
+    12.1 ms. Their own update is 0.3 ms. Loading them adds about half a second to boot and 200 MB to the page's heap;
+    `assets/civilians` is 138 MB (88 MB of meshes, 49 MB of textures, 1.7 MB of clips).
+
 ## Left out on purpose
 
 A key-rebinding screen, heat shimmer, and a recorded gameplay clip. No reference video was supplied, so nothing
@@ -756,7 +815,13 @@ In the browser console, with the dev server running:
   into the market hall and back, clutter left by 90 s of fighting not inside any wall, no loose prop starting inside
   anything solid, a chair shoved into walls at four places staying out of them, a soldier dropped onto a balcony with
   a railing and onto one with a parapet standing on it and being stopped at its front and side, and the balcony floor
-  and parapet stopping sight while the open railing does not. (One check fails and did before the
+  and parapet stopping sight while the open railing does not. For the civilians (the soldiers' checks run with the
+  streets empty, then the people are let back): a quiet morning (everyone alive and calm, several activities, nobody
+  inside a solid), someone seated or a pair talking, a burst close by setting everyone within 16 m running, hiding or
+  frozen while nobody beyond 75 m takes flight, a fright showing on a face as it happens (the blink, then eyes wide
+  and inner brows up) and a voice moving the mouth, a rifle held on a timid person bringing the hands up, a civilian's
+  death changing neither score nor the player's kills while the casualty count goes up and the body falls, and
+  everyone calm again two minutes after the last of it. (One check fails and did before the
   throwables were added, on `main` as well: the empty-magazine reload is sampled 0.13 s before the reload finishes.)
   `?selftest=1` in the URL runs it by itself once loaded and saves the results to `captures/selftest.json`.
   `?nogi=1` skips the indirect light (no bake) for a quick look while the geometry changes; `?stalegi=1` uses the last
@@ -843,6 +908,12 @@ respawning in both districts. Screenshots are in `captures/playtest/`. That wind
 follows the cursor and a turn is limited to one sweep across the window (pause and resume to go further); no kill was
 scored by hand.
 
+- `tools/civ-probe.js` — the civilians, looked at: `stage` and `shot` put members of the cast in front of a free camera
+  (a clip, an arm pose, a far version), `faces` saves every expression of one face, `peace`, `run`, `states`, `watch`
+  and `near` follow the live simulation, `face`, `fire` and `view` stage trouble through the player's own rifle,
+  `gait` measures how far a planted foot slides and the largest jolt in a knee, and `film` saves frames of the
+  running game for a clip (`ffmpeg -framerate 15 -i captures/<name>_%03d.jpg ...`).
+
 ## Layout
 
 ```
@@ -868,6 +939,11 @@ src/bots.js           soldier movement, perception, decisions, fire
 src/soldier-gait.js   directional gait keyframes and blend
 src/bot-rifle.js      low-ready, aim and hand placement on the bot rifle
 src/physics.js        box collision, rays, navigation grid + A* with wall clearance and lanes
+src/civilians.js      the civilians: temperament, feelings, what they do with a quiet morning and with a fight
+src/civ-anim.js       their bodies: Ara's clips refitted per skeleton, the look, arm poses, planted feet
+src/civ-face.js       their faces: expression blend, blinking, eyes, lip-sync, trembling and sobs
+src/civ-voice.js      their voices, breath and footfalls through the audio engine
+src/civ-assets.js     loading the cast: draw groups, face shapes, far versions, shared textures
 src/rigid.js          rigid-body world: loose props, pushing, bullets, ragdolls, dropped rifles, corpses
 src/fx.js             particles, decals, tracers, casings, blast sparks and debris
 src/blood.js          blood: mist and drops at a wound, stains on walls and ground, trails, pools, the lens

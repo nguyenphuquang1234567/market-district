@@ -54,6 +54,30 @@ function hullPoints(proto) {
   return proto.hull = out;
 }
 
+// What a body's joints allow: radians about the body's own axes (x to its left, y up, z forward), each part turned from
+// where it is in a neutral stand with the arms hanging. Shoulders, hips, the waist and the neck: [x min, x max, y min, y max,
+// z min, z max]. A limb, hanging down, swings back with +x and forward with -x, out to the left with +z, and twists about y;
+// the trunk and the head, standing up from their joint, bend forward with +x. Elbows and knees: the way they fold (about x:
+// -1, the forearm comes forward; +1, the shin goes back) and how far.
+export const RAG_JOINTS = {
+  spine: ['pelvis', 'torso', [-0.3, 0.75, -0.45, 0.45, -0.4, 0.4]], neck: ['torso', 'head', [-0.7, 0.8, -1.0, 1.0, -0.55, 0.55]],
+  armL: ['torso', 'ual', [-2.8, 0.8, -1.2, 1.2, -0.3, 2.6]], armR: ['torso', 'uar', [-2.8, 0.8, -1.2, 1.2, -2.6, 0.3]],
+  legL: ['pelvis', 'thl', [-1.6, 0.3, -0.6, 0.6, -0.3, 0.8]], legR: ['pelvis', 'thr', [-1.6, 0.3, -0.6, 0.6, -0.8, 0.3]],
+  elbowL: ['ual', 'fal', -1, 2.4], elbowR: ['uar', 'far', -1, 2.4], kneeL: ['thl', 'shl', 1, 2.45], kneeR: ['thr', 'shr', 1, 2.45],
+};
+// A body at the instant of death is still held up: each joint by a spring to the pose it was in and a drag on its turning
+// (k, d: newton-metres a radian, and a radian a second: enough to carry the body's weight). That lets go over `ragTone`
+// seconds times `t` (the knees first, one before the other, and as they go they are drawn into a bend: a locked knee
+// would carry the body like a post; then the hips and the back), so the body comes down on its knees and goes over.
+// What is left is a limp limb: a drag on it (ld) and the slight spring of its own flesh (lk) towards where a slack joint
+// lies (different for every body). That spring cannot lift a limb off the ground; it opens out one left folded.
+export const RAG_TONE = {
+  spine: { k: 400, d: 40, t: 1.15, lk: 40, ld: 8 }, neck: { k: 60, d: 6, t: 0.8, lk: 5, ld: 1 },
+  armL: { k: 40, d: 5, t: 0.5, lk: 4, ld: 1.5 }, armR: { k: 40, d: 5, t: 0.5, lk: 4, ld: 1.5 },
+  legL: { k: 250, d: 25, t: 1, lk: 20, ld: 5 }, legR: { k: 250, d: 25, t: 1, lk: 20, ld: 5 },
+  elbowL: { k: 20, d: 3, t: 0.5, lk: 3, ld: 0.8 }, elbowR: { k: 20, d: 3, t: 0.5, lk: 3, ld: 0.8 },
+  kneeL: { k: 250, d: 25, t: 0.7, lk: 12, ld: 2, give: 0.9 }, kneeR: { k: 250, d: 25, t: 0.7, lk: 12, ld: 2, give: 0.9 },
+};
 export class Rigid {
   static async create(G, dynamic) { await RAPIER.init(); return new Rigid(G, dynamic); }
 
@@ -198,9 +222,10 @@ export class Rigid {
       }
       for (const it of this.items.values()) { if (it.body.isSleeping()) { it.pvx = it.pvy = it.pvz = 0; } else { const v = it.body.linvel(); it.pvx = v.x; it.pvy = v.y; it.pvz = v.z; } }
       for (const it of this.nades) this._nadeMesh(it);
+      this.world.numSolverIterations = this.rags.length ? 8 : 4;                // (a falling body's joints are held to what they can do: at 4 an arm caught under the weight is wrenched 30° past it)
       this.world.step(this.events);
       this.events.drainCollisionEvents((a, b, started) => { if (started) this._contact(a, b); });
-      for (const r of this.rags) r.t += H;
+      for (const r of this.rags) { r.t += H; r.tone?.(); }
     }
     if (n) { this._syncProps(false); for (const r of this.rags) r.sync(); for (const g of this.guns) g.sync(); }
     for (const it of this.nades) it.sync(this.acc);
@@ -341,7 +366,7 @@ export class Rigid {
     const J = it.kind === 'rag' ? Math.min(22, 4 + it.mass * 0.7) : Math.min(3.4, 1.2 + it.mass * 0.6);    // bodies get a helped shove so hits read
     it.body.applyImpulseAtPoint({ x: d.x * J, y: d.y * J + (it.kind === 'prop' ? 0.25 : 0), z: d.z * J }, p, true);
     const n = V(h.n.x, h.n.y, h.n.z);
-    if (it.kind === 'rag') G.blood.hit(null, p, d, 'corpse', 1); else G.fx.impact(M[2], p, n, 1, 0.8);
+    if (it.kind === 'rag') { G.blood.hit(null, p, d, 'corpse', 1); it.rag.bot.stain?.(o, d, 'body'); } else G.fx.impact(M[2], p, n, 1, 0.8);
     if (it.kind === 'rag') G.audio.bodyHit({ x: p.x, y: p.y, z: p.z }, it.key === 'head' ? 'head' : 'body', near);      // the fallen, shot again
     else G.audio.impact(it.mat === 'bin' || it.mat === 'can' || it.mat === 'tank' ? 'metal' : it.mat === 'clay' ? 'plaster' : it.mat === 'plastic' ? 'plastic' : M[2], { x: p.x, y: p.y, z: p.z }, near);
     return M[3];
@@ -381,7 +406,7 @@ export class Rigid {
     }
     const rel = (J, part) => ({ x: J.x - part.mid.x, y: J.y - part.mid.y, z: J.z - part.mid.z });
     // The JS wrapper only exposes motors and limits on hinges; the raw joint set has them for every axis.
-    const raw = w.impulseJoints.raw, AX = [RAPIER.JointAxis.AngX, RAPIER.JointAxis.AngY, RAPIER.JointAxis.AngZ], ACC = RAPIER.MotorModel.AccelerationBased;
+    const raw = w.impulseJoints.raw, AX = [RAPIER.JointAxis.AngX, RAPIER.JointAxis.AngY, RAPIER.JointAxis.AngZ], ACC = RAPIER.MotorModel.AccelerationBased, FRC = RAPIER.MotorModel.ForceBased;
     // ball joints: free within `range` radians of the pose at death about each axis, with a soft spring ("muscle tone") and damping
     const ball = (a, c, J, k, d, range) => {
       const j = w.createImpulseJoint(RAPIER.JointData.spherical(rel(J, a), rel(J, c)), a.body, c.body, true); j.setContactsEnabled(false);
@@ -396,18 +421,69 @@ export class Rigid {
       const j = w.createImpulseJoint(RAPIER.JointData.revolute(rel(J, a), rel(J, c), { x: axis.x, y: axis.y, z: axis.z }), a.body, c.body, true); j.setContactsEnabled(false);
       j.setLimits(-flex + 0.04, Math.max(0.1, maxFlex - flex)); j.configureMotorModel(ACC); j.configureMotorVelocity(0, 2.2);
     };
-    ball(pelvis, torso, p.spine, 60, 10, 0.55); ball(torso, head, p.neck, 50, 8, 0.7);
-    ball(torso, ual, p.la, 4, 3, 1.7); ball(torso, uar, p.ra, 4, 3, 1.7); ball(pelvis, thl, p.lul, 7, 4, 1.25); ball(pelvis, thr, p.rul, 7, 4, 1.25);
-    hinge(ual, fal, p.lf, p.lh, side, 2.5); hinge(uar, far, p.rf, p.rh, side, 2.5);
-    hinge(thl, shl, p.ll, p.lft, side.clone().negate(), 2.4); hinge(thr, shr, p.rl, p.rft, side.clone().negate(), 2.4);
+    const ref = bot.ragRef, F = {}, parts = { pelvis, torso, head, ual, fal, uar, far, thl, shl, thr, shr }, struck = bot.ragHit;      // (struck: the part the round went into, where the rig knows it)
+    if (ref) {
+      // A rig that knows how its bones lie in a neutral stand (ragRef) is jointed as a body is: every joint measured in the
+      // body's own axes, turning only the ways and as far as a body's can (RAG_JOINTS), elbows and knees folding in their own
+      // plane whatever the pose at death. What held that pose (the tone of a living body) lets go within half a second, and
+      // what is left is the drag of a limp one.
+      const tmp = new THREE.Quaternion();
+      for (const k in ref) F[k] = ref[k].bone.getWorldQuaternion(new THREE.Quaternion()).multiply(tmp.copy(ref[k].q).invert());
+      const at = { spine: p.spine, neck: p.neck, armL: p.la, armR: p.ra, legL: p.lul, legR: p.rul, elbowL: p.lf, elbowR: p.rf, kneeL: p.ll, kneeR: p.rl };
+      const frame = (n, h, a, q) => { const rv = RAPIER.VectorOps.intoRaw(a), rq = RAPIER.RotationOps.intoRaw(q); if (n === 1) raw.jointSetLocalFrame1(h, rv, rq); else raw.jointSetLocalFrame2(h, rv, rq); rv.free(); rq.free(); };
+      const live = [], hold = launch > 0 ? 0.15 : bot.ragTone ?? 0.9, first = struck === 'thl' || struck === 'shl' ? 'kneeL' : struck === 'thr' || struck === 'shr' ? 'kneeR' : bot.rnd() < 0.5 ? 'kneeL' : 'kneeR', R = () => bot.rnd();
+      // where each slack joint lies: no two bodies alike (an arm flung out or across, a leg drawn up or turned out)
+      const lie = { armL: [-0.6 + R() * 0.7, 0, 0.15 + R() * 0.7], armR: [-0.6 + R() * 0.7, 0, -0.15 - R() * 0.7], legL: [-0.1 - R() * 0.45, R() * 0.35, 0.04 + R() * 0.28], legR: [-0.1 - R() * 0.45, -R() * 0.35, -0.04 - R() * 0.28],
+        elbowL: 0.25 + R() * 1.1, elbowR: 0.25 + R() * 1.1, kneeL: 0.15 + R() * 0.85, kneeR: 0.15 + R() * 0.85, spine: [0.05 + R() * 0.15, (R() - 0.5) * 0.3, (R() - 0.5) * 0.2], neck: [R() * 0.2, (R() - 0.5) * 1.1, (R() - 0.5) * 0.3] };
+      for (const name in RAG_JOINTS) {
+        const [pa, ch, lim, max] = RAG_JOINTS[name], a = parts[pa], c = parts[ch], J = at[name], T = RAG_TONE[name], life = hold * T.t * (name === first ? 0.55 : 1);
+        const r = F[pa].clone().invert().multiply(F[ch]); if (r.w < 0) r.set(-r.x, -r.y, -r.z, -r.w);
+        if (Array.isArray(lim)) {
+          const j = w.createImpulseJoint(RAPIER.JointData.spherical(rel(J, a), rel(J, c)), a.body, c.body, true), h = j.handle; j.setContactsEnabled(false);
+          frame(1, h, rel(J, a), F[pa]); frame(2, h, rel(J, c), F[ch]);
+          const now = [r.x, r.y, r.z].map(v => 2 * Math.asin(Math.max(-1, Math.min(1, v))));          // (a pose already past a limit is let be, not wrenched back)
+          AX.forEach((ax, i) => { raw.jointConfigureMotorModel(h, ax, FRC); raw.jointConfigureMotorPosition(h, ax, now[i], T.k, T.d); raw.jointSetLimits(h, ax, Math.min(lim[i * 2], now[i] - 0.05), Math.max(lim[i * 2 + 1], now[i] + 0.05)); });
+          live.push(t => { const s = Math.max(0, 1 - t / life); AX.forEach((ax, i) => { if (s > 0) raw.jointConfigureMotorPosition(h, ax, now[i], T.k * s * s, T.d * s); else raw.jointConfigureMotorPosition(h, ax, lie[name][i], T.lk, T.ld); }); return s > 0; });
+        } else {
+          const axis = V(lim, 0, 0).applyQuaternion(F[pa]); let flex = 2 * Math.atan2(r.x * lim, r.w); if (flex > Math.PI) flex -= 2 * Math.PI;
+          flex = Math.max(0, Math.min(max - 0.1, flex));
+          const j = w.createImpulseJoint(RAPIER.JointData.revolute(rel(J, a), rel(J, c), { x: axis.x, y: axis.y, z: axis.z }), a.body, c.body, true); j.setContactsEnabled(false);
+          j.setLimits(-flex, max - flex); j.configureMotorModel(FRC); j.configureMotorPosition(0, T.k, T.d);
+          live.push((t, down) => {
+            const s = Math.max(0, 1 - t / life);
+            if (s > 0) j.configureMotorPosition((1 - s) * (T.give || 0), T.k * s * s, T.d * s);
+            else if (T.give && !down) j.configureMotorPosition(Math.max(0, 1.3 - flex), 40, T.ld);      // (a leg that carries nothing folds: nothing limp stays standing)
+            else j.configureMotorPosition(lie[name] - flex, T.lk, T.ld);
+            return s > 0;
+          });
+        }
+      }
+      const y0 = pelvis.body.translation().y, drop = Math.max(0.2, (y0 - bot.pos.y) * 0.55); let gone = false, down = false;
+      rag.tone = () => {
+        if (gone) return; let any = false;
+        down = down || rag.t > 3 || pelvis.body.translation().y < y0 - drop;      // (down: the hips have come most of the way to the ground)
+        for (const f of live) any = f(rag.t, down) || any;
+        gone = down && !any;
+      };
+    } else {
+      ball(pelvis, torso, p.spine, 60, 10, 0.55); ball(torso, head, p.neck, 50, 8, 0.7);
+      ball(torso, ual, p.la, 4, 3, 1.7); ball(torso, uar, p.ra, 4, 3, 1.7); ball(pelvis, thl, p.lul, 7, 4, 1.25); ball(pelvis, thr, p.rul, 7, 4, 1.25);
+      hinge(ual, fal, p.lf, p.lh, side, 2.5); hinge(uar, far, p.rf, p.rh, side, 2.5);
+      hinge(thl, shl, p.ll, p.lft, side.clone().negate(), 2.4); hinge(thr, shr, p.rl, p.rft, side.clone().negate(), 2.4);
+    }
     // the round that killed: a shove on the part it struck, plus the knees giving way
-    const hitPart = zone === 'head' ? head : zone === 'limb' ? (bot.rnd() < 0.5 ? thl : thr) : torso, J = zone === 'head' ? 10 : zone === 'limb' ? 16 : 36;
+    const hitPart = (struck && parts[struck]) || (zone === 'head' ? head : zone === 'limb' ? (bot.rnd() < 0.5 ? thl : thr) : torso), J = zone === 'head' ? 10 : zone === 'limb' ? 16 : 36;
     if (launch > 0 && dir) {                                                   // thrown by a blast: the whole figure goes, limbs trailing
       for (const pt of rag.parts) { const k = pt.mass * launch * (0.8 + bot.rnd() * 0.4); pt.body.applyImpulse({ x: dir.x * k, y: dir.y * k, z: dir.z * k }, true); }
       torso.body.applyTorqueImpulse({ x: (bot.rnd() - 0.5) * 9 * launch, y: (bot.rnd() - 0.5) * 4 * launch, z: (bot.rnd() - 0.5) * 9 * launch }, true);
     } else {
-      if (dir) hitPart.body.applyImpulse({ x: dir.x * J, y: dir.y * J + 2, z: dir.z * J }, true);
+      const push = bot.ragPush ?? 1;                                           // (a round goes through a body far more than it moves it)
+      if (dir) hitPart.body.applyImpulse({ x: dir.x * J * push, y: (dir.y * J + 2) * push, z: dir.z * J * push }, true);
       pelvis.body.applyImpulse({ x: 0, y: -14, z: 0 }, true);
+      if (ref) {                                                               // the knees go, one before the other: the body comes down on itself rather than toppling like a post
+        const fwd = V(0, 0, 1).applyQuaternion(F.pelvis); fwd.y = 0; fwd.normalize();
+        for (const [th, sh, K] of [[thl, shl, p.ll], [thr, shr, p.rl]]) { const k = 2 + bot.rnd() * 4, i = { x: fwd.x * k, y: 0, z: fwd.z * k }; th.body.applyImpulseAtPoint(i, K, true); sh.body.applyImpulseAtPoint(i, K, true); }
+      }
     }
     const order = [pelvis, torso, head, ual, fal, uar, far, thl, shl, thr, shr], m4 = this.m4, inv = this.inv, tp = this.tp, tq = this.tq, one = V(1, 1, 1);
     rag.sync = () => {

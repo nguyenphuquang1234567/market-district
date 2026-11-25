@@ -87,6 +87,14 @@ All runtime assets live in `assets/` and are loaded locally. Re-create with `npm
 | plastered_wall_04 | PBR texture 2k | Rob Tuytel | https://polyhaven.com/a/plastered_wall_04 |
 | worn_plaster_wall | PBR texture 2k | Dimitrios Savva | https://polyhaven.com/a/worn_plaster_wall |
 
+## Ara 3D Gen — the civilians
+
+The 32 civilians in `assets/civilians/` (bodies, faces, hair, clothes, skin and garment textures, the skeleton with jaw
+and eye bones, 34 face shapes each) and the 58 animation clips in `assets/civilians/anims.bin` were generated with Ara
+3D Gen (https://ara3dgen.com) through its MCP server, from the definitions in `tools/civilians/people.json`, and packed
+by `tools/build-civilians.py` (textures de-duplicated and re-encoded to KTX2, eyebrows tinted to the hair, a light tan
+over Ara's skin textures, far versions cut with meshoptimizer). Raw exports are not kept in the repository.
+
 ## three.js example assets
 
 | Asset | Type | Provider | License / terms | Source |

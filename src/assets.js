@@ -170,11 +170,12 @@ export async function loadAssets(renderer, onProgress, { drop = 0 } = {}) {
   const tl = new THREE.TextureLoader(manager), gl = new GLTFLoader(manager), hl = new RGBELoader(manager);
   const aniso = Math.min(8, renderer.capabilities.getMaxAnisotropy());
   let kl = null;
+  const base = import.meta.resolve('three/addons/libs/basis/basis_transcoder.js').replace(/[^/]+$/, '');
   if (useKTX2) {
-    const base = import.meta.resolve('three/addons/libs/basis/basis_transcoder.js').replace(/[^/]+$/, '');
     kl = new KTX2Loader(manager).setTranscoderPath(base).detectSupport(renderer);
     gl.setKTX2Loader(kl);
   }
+  assets.ktx2 = kl || new KTX2Loader().setTranscoderPath(base).detectSupport(renderer);     // (the civilians' textures exist only as KTX2: civ-assets.js)
   const tex = (stem, srgb) => (kl ? kl.loadAsync(stem + '.ktx2' + REV) : tl.loadAsync(stem + '.jpg' + REV)).then(t => {
     shrink(t);
     t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = aniso;

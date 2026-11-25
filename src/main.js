@@ -21,6 +21,8 @@ import { setupGI } from './gi.js';
 import { addStreetLife } from './streetlife.js';
 import { addArchDetail } from './archdetail.js';
 import { Touch, PHONE } from './touch.js';
+import { loadCivilians } from './civ-assets.js';
+import { Civilians } from './civilians.js';
 
 const params = new URLSearchParams(location.search);
 const $ = id => document.getElementById(id);
@@ -43,13 +45,15 @@ function loadSettings() {
 async function start() {
   const settings = loadSettings();
   const probe = new THREE.WebGLRenderer({ canvas: document.createElement('canvas') });
-  const assets = await loadAssets(probe, p => { $('bootBar').style.width = (p * 82).toFixed(0) + '%'; }, { drop: PRESETS[settings.quality]?.texDrop || 0 });
+  const assets = await loadAssets(probe, p => { const bar = $('bootBar'); if (bar) bar.style.width = (p * 82).toFixed(0) + '%'; }, { drop: PRESETS[settings.quality]?.texDrop || 0 });
   probe.dispose(); performance.mark('boot:assets');
   $('bootText').textContent = 'Building district'; $('bootBar').style.width = '88%';
   await new Promise(r => setTimeout(r, 30));
 
   const R = createRenderer(canvas, assets.sky, settings.quality);
   const M = createMaterials();
+  // the civilians' meshes and clips arrive while the district is built (?civ=0: nobody in the streets)
+  const civLoad = params.get('civ') === '0' ? null : loadCivilians(R, +(params.get('civ') || { low: 14, medium: 22, phone: 8 }[settings.quality] || 32)).catch(e => { console.warn('civilians not loaded', e); return null; });      // (fewer people on the lighter presets)
   const world = buildWorld(R, M);
   world.arch = addArchDetail(R, M, world);                                                                 // modelled shutters, grilles, base courses, shop interiors (?arch=0: none)
   if (!params.get('life') || params.get('life') !== '0') world.life = addStreetLife(R, M, world);          // decals, wall paper, meters, roof tanks (?life=0: none, for A/B)
@@ -72,6 +76,10 @@ async function start() {
   G.weapon.root.visible = false;
   G.rigid = await Rigid.create(G, world.dynamic);
   G.bots = new Bots(G, 4); G.carry = CARRY;
+  // the people of the district (civilians.js): bystanders to the match, on nobody's side and nobody's score
+  const civPack = civLoad && await civLoad;
+  if (civPack && civPack.people.length) { G.civs = new Civilians(G, civPack); await G.civs.prewarm(); }
+  performance.mark('boot:people');
   for (const a of [G.player, ...G.bots.list]) G.rigid.addPusher(a);
   G.throw = new Throwables(G);
   G.touch = new Touch(G);                                                   // on-screen controls on a touch screen (touch.js)
@@ -111,7 +119,7 @@ async function start() {
   };
   function resetMatch() {
     G.score = [0, 0]; G.timeLeft = MATCH.time; G.time = 0; G.stats = { shots: 0, hits: 0 };
-    G.fx.reset(); G.flashes.reset(); G.blood.reset(); G.bots.reset(); G.throw.reset(); G.rigid.reset(); G.player.kills = G.player.deaths = 0;
+    G.fx.reset(); G.flashes.reset(); G.blood.reset(); G.bots.reset(); G.throw.reset(); G.rigid.reset(); G.civs?.reset(); G.player.kills = G.player.deaths = 0;
     $('feed').innerHTML = ''; G.hud.feed = []; G.hud.pings.clear(); G.hud.reset();
     G.player.spawn(world.spawns[0][1]);
     G.matchLive = true;
@@ -233,6 +241,7 @@ async function start() {
     G.touch.update();
     G.player.update(dt);
     G.bots.update(dt);
+    G.civs?.update(dt);
     G.throw.update(dt);
     G.rigid.step(dt);
     G.fx.update(dt, R.camera, (p, v) => G.audio.casing({ x: p.x, y: p.y, z: p.z }, v));
@@ -299,6 +308,7 @@ async function start() {
       pacing: G.pacing(), pacing10s: G.pacing(10), audio: G.audio.stats(), input: P.inputCount,
       player: { pos: [+P.pos.x.toFixed(2), +P.pos.y.toFixed(2), +P.pos.z.toFixed(2)], yaw: +(P.yaw * 180 / Math.PI).toFixed(1), pitch: +(P.pitch * 180 / Math.PI).toFixed(1), health: Math.round(P.health), alive: P.alive, kills: P.kills, deaths: P.deaths },
       weapon: { ammo: G.weapon.ammo, reserve: G.weapon.reserve, mode: G.weapon.mode, ads: +G.weapon.ads.toFixed(2), reloading: G.weapon.reloading }, throwables: { ...G.throw.count, selected: G.throw.sel, thrown: G.throw.thrown }, stats: G.stats,
+      civilians: G.civs ? { count: G.civs.list.length, alive: G.civs.list.filter(c => c.alive).length, ...G.civs.stats, voices: G.civs.voice.played, states: G.civs.list.reduce((o, c) => { o[c.state] = (o[c.state] || 0) + 1; return o; }, {}) } : null,
       draws: R.renderer.info.render.calls, tris: R.renderer.info.render.triangles };
     await fetch('/__capture/' + name + '.json', { method: 'POST', body: JSON.stringify(data, null, 1) });
     return data;
@@ -335,7 +345,7 @@ async function start() {
   R.zones = world.zones;
   R.onCull = (p, k) => G.rigid.cullProps(p, 70 * k);  // loose clutter out of reach is not drawn
   G.weapon.root.visible = true; for (const b of G.bots.list) { b.root.visible = true; b.gun.visible = true; }
-  G.throw.warm(true); G.flashes.warm(true, [G.weapon.flashFx]); G.blood.warm(true);
+  G.throw.warm(true); G.flashes.warm(true, [G.weapon.flashFx]); G.blood.warm(true); G.civs?.warm(true);
   // Compile for the target the scene is really drawn into (linear half-float, tone mapped later): compiled for the
   // screen, a material gets a tone-mapped sRGB program nothing uses and still compiles on first sight in play. Twice:
   // with the first-person weapon shown, and hidden as while the player is dead, which also hides its muzzle light,
@@ -361,11 +371,11 @@ async function start() {
   });
   R.render(0.016, 0);                                  // warm every pipeline before the first interactive frame
   G.weapon.root.visible = false; for (const b of G.bots.list) { b.root.visible = false; b.gun.visible = false; }
-  G.throw.warm(false); G.throw.puffs.reset(); G.flashes.warm(false, [G.weapon.flashFx]); G.blood.warm(false);
+  G.throw.warm(false); G.throw.puffs.reset(); G.flashes.warm(false, [G.weapon.flashFx]); G.blood.warm(false); G.civs?.warm(false);
   if (R.Q.lean) G.leanMB = lean(R, assets.sky);
   $('boot').remove(); performance.mark('boot:ready');
   // Load-time phases in ms since navigation: assets fetched and decoded, district built, light loaded or baked, shaders and textures warmed.
-  G.bootTimes = () => Object.fromEntries(['assets', 'world', 'gi', 'ready'].map(k => [k, Math.round(performance.getEntriesByName('boot:' + k)[0]?.startTime ?? -1)]));
+  G.bootTimes = () => Object.fromEntries(['assets', 'world', 'gi', 'people', 'ready'].map(k => [k, Math.round(performance.getEntriesByName('boot:' + k)[0]?.startTime ?? -1)]));
   G.hud.show('start');
   G.los = (a, b) => losClear(a, b, world.colliders) && !G.throw.smoked(a, b);
   if (params.get('bench')) runBench(G, params.get('bench'));        // dev: timings and captures with no console at hand (the native window)

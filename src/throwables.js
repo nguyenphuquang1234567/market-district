@@ -377,7 +377,7 @@ export class Throwables {
       if (n.kind === 'frag') {
         // the delay element burning: a thread of smoke from the fuze
         n.trail -= dt; if (n.trail <= 0) { n.trail = 0.045; G.fx.dust.add(V(p.x, p.y + 0.04, p.z), V((R() - 0.5) * 0.2, 0.25, (R() - 0.5) * 0.2), [0.78, 0.78, 0.76], 0.11, 0.035, 0.55, -0.15, 1.5, 0.1); }
-        if (n.bounces > 0) { n.warnT -= dt; if (n.warnT <= 0) { n.warnT = 0.15; G.bots.grenade(n, p, n.fuse - n.t); } }
+        if (n.bounces > 0) { n.warnT -= dt; if (n.warnT <= 0) { n.warnT = 0.15; G.bots.grenade(n, p, n.fuse - n.t); G.civs?.grenade(p); } }
         if (n.t >= n.fuse) this.explode(n);
       } else this.burn(n, p, dt);
     }
@@ -455,6 +455,18 @@ export class Throwables {
       const killed = a.damage(dmg, o, by, 'blast');
       if (dmg > 12) { const c = V(a.pos.x, a.pos.y + 1.05, a.pos.z), d = V(c.x - o.x, c.y - o.y, c.z - o.z); if (d.lengthSq() > 1e-4) G.blood.hit(a, c, d.normalize(), 'blast', 0.8); }   // fragments through a body
       if (by === P && a !== P && a.team !== P.team) { G.hud.hitmarker(killed ? 'kill' : 'hit'); G.audio.ui('hit'); G.stats.hits++; }
+    }
+    if (G.civs) {                                                                                     // bystanders: the same blast, nobody's score
+      for (const c of G.civs.list) {
+        if (!c.alive) continue;
+        const cy = c.pos.y + c.height * 0.55, d = Math.hypot(c.pos.x - o.x, cy - o.y, c.pos.z - o.z); if (d > BLAST.reach + 1) continue;
+        let open = 0; for (const y of [c.eyeY - 0.05, cy, c.pos.y + 0.28]) if (losClear(o, head.set(c.pos.x, y, c.pos.z), cols)) open++;
+        if (!open) continue;
+        const dmg = BLAST.peak * clamp(1 - d / BLAST.reach, 0, 1) ** 1.4 * (open / 3) ** 0.7; if (dmg < 1) continue;
+        if (dmg > 12) { const at = V(c.pos.x, c.pos.y + 1.05, c.pos.z), dd = V(at.x - o.x, at.y - o.y, at.z - o.z).normalize(); c.stain(o, dd, 'body'); G.blood.hit(c, at, dd, 'blast', 0.8); }      // fragments through a body
+        c.damage(dmg, o, by, 'blast');
+      }
+      G.civs.blast(o);
     }
     const moved = G.rigid.blast(o, BLAST.shove, BLAST.power);
     for (const m of this.live) if (m.kind === 'frag' && m.t > 0.3) { const q = this.pos(m, tv); if (q.distanceTo(o) < 2.2) m.fuse = Math.min(m.fuse, m.t + 0.06 + R() * 0.08); }      // one sets off the next

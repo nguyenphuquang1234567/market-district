@@ -118,7 +118,7 @@ export class Blood {
     for (const d of Object.values(this.sets)) { d.im.count = 0; d.next = 0; }
     this.queue.length = 0; this.grow.length = 0; this.selfDead = -1;
     for (const s of this.lens) { s.on = false; s.e.style.opacity = 0; }
-    const G = this.G; for (const a of [G.player, ...(G.bots?.list || [])]) if (a) a.bleedT = 0;
+    const G = this.G; for (const a of [G.player, ...(G.bots?.list || []), ...(G.civs?.list || [])]) if (a) a.bleedT = 0;
   }
 
   later(t, fn) { this.queue.push({ t, fn }); }
@@ -323,5 +323,5 @@ export class Blood {
       this.later(0.42, () => { const h = this.cast(_p.set(x, y + 0.5, z), DOWN, 1.4, this.nearMeshes(_p, 1.2)); if (h && h.n.y > 0.5) this.place('dot', h.p, h.n, s); });
     }
   }
-  actors() { const G = this.G; return this._all && this._all.length === G.bots.list.length + 1 ? this._all : (this._all = [G.player, ...G.bots.list]); }
+  actors() { const G = this.G, n = G.bots.list.length + 1 + (G.civs?.list.length || 0); return this._all && this._all.length === n ? this._all : (this._all = [G.player, ...G.bots.list, ...(G.civs?.list || [])]); }      // (the wounded who leave a trail: soldiers and bystanders alike)
 }

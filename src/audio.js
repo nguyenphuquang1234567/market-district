@@ -119,7 +119,9 @@ export class Audio {
   _play(name, o = {}) {
     const ctx = this.ctx, vars = ctx && this.S[name]; if (!vars) return null;
     const gain = o.gain ?? 1; if (gain < 0.004 || (this.voices > 60 && gain < 0.5)) return null;
-    let i = (this.rnd() * vars.length) | 0; if (vars.length > 1 && i === this.last[name]) i = (i + 1) % vars.length; this.last[name] = i;      // never the same take twice running
+    let i = (this.rnd() * vars.length) | 0; if (vars.length > 1 && i === this.last[name]) i = (i + 1) % vars.length;                           // never the same take twice running
+    if (o.take != null) i = o.take % vars.length;                              // (a caller that needs to know which take plays: a voice whose lips follow it)
+    this.last[name] = i;
     const src = ctx.createBufferSource(); src.buffer = vars[i]; src.playbackRate.value = (o.rate || 1) * (1 + (this.rnd() - 0.5) * (o.jitter ?? 0.08));
     const g = ctx.createGain(); g.gain.value = gain * (1 + (this.rnd() - 0.5) * 0.16);
     if (o.lp && o.lp < 18000) { const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = Math.max(250, o.lp); f.Q.value = 0.5; src.connect(f); f.connect(g); } else src.connect(g);
@@ -235,6 +237,7 @@ export class Audio {
   bodyfall(pos, speed, part = 'torso', surf = 'concrete', body = null, t = 0) {
     if (!this.ctx) return;
     const trunk = part === 'torso' || part === 'pelvis', head = part === 'head', thigh = part === 'thl' || part === 'thr', shin = part === 'shl' || part === 'shr';
+    const plain = !!body?.bot?.isCivilian;                                     // no helmet, no plate, no kit: a head is a dull knock, a trunk just its weight
     // (a body mostly crumples rather than drops, so the trunk lands slowly but heavily: its loudness follows the square root of the speed)
     const cls = FALL[surf] || 'concrete', soft = cls === 'dirt' || cls === 'soft', v = trunk ? clamp(Math.sqrt(speed / 4), 0.3, 1.15) : clamp(speed / 4, 0.12, 1.25);
     let st = null;
@@ -249,8 +252,8 @@ export class Audio {
       const thud = !!this.S.vo_thud;                                           // the weight coming down, recorded (foley), under the modelled surface
       if (thud) this._play('vo_thud', { ...o, gain: o.gain * (part === 'torso' ? 2.2 : 1.4), rate: part === 'torso' ? 0.86 : 0.98, lp: soft ? Math.min(o.lp, 1100) : o.lp });
       this._play('fall_' + cls, { ...o, gain: o.gain * (part === 'torso' ? 2 : 1.3) * (thud ? 0.6 : 1), rate: part === 'torso' ? 1 : 1.12 });
-      if (part === 'torso' && speed > 1.3 && (!st || st.kit++ < 2)) this._play('gear', { ...o, gain: o.gain * 0.8, delay: o.delay + 0.01 + this.rnd() * 0.02 });
-    } else if (head) this._play(HELM[cls], { ...o, gain: o.gain * 0.8 });
+      if (!plain && part === 'torso' && speed > 1.3 && (!st || st.kit++ < 2)) this._play('gear', { ...o, gain: o.gain * 0.8, delay: o.delay + 0.01 + this.rnd() * 0.02 });
+    } else if (head) this._play(plain ? 'limb' : HELM[cls], { ...o, gain: o.gain * (plain ? 0.6 : 0.8), lp: plain ? Math.min(o.lp, 1800) : o.lp });
     else if (shin) this._play(soft ? 'limb' : 'knee', { ...o, gain: o.gain * 0.7 });
     else if (thigh) this._play('fall_' + cls, { ...o, gain: o.gain * 0.7, rate: 1.25 });
     else this._play('limb', { ...o, gain: o.gain * 0.5 });

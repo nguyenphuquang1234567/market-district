@@ -123,6 +123,7 @@ export class Player {
     let victim = null, vt = wt, zone = 'body';
     const foes = G.bots.list;
     for (const b of foes) { if (!b.alive || b.team === this.team) continue; const h = rayActor(origin, dir, b, vt); if (h) { vt = h.t; victim = b; zone = h.zone; } }
+    if (G.civs) for (const c of G.civs.list) { if (!c.alive || c.dist > 260) continue; const h = rayActor(origin, dir, c, vt); if (h) { vt = h.t; victim = c; zone = h.zone; } }      // bystanders in the line of fire
     const ph = G.rigid.ray(origin, dir, victim ? vt : wt);                  // loose clutter and the fallen in the line of fire
     if (ph && G.rigid.bulletHit(ph, origin, dir, ph.t < 30)) { victim = null; wh = null; wt = vt = ph.t; }
     const muzzle = W.muzzleWorld(V()), end = origin.clone().addScaledVector(dir, victim ? vt : wt);
@@ -141,12 +142,17 @@ export class Player {
         if (pv) { victim = pv; zone = pz; vt = pt; pen = true; G.fx.impact('fabric', origin.clone().addScaledVector(dir, wt + 0.25), dir.clone(), lit, 0.6, false); }
       }
     }
-    if (victim) {
+    if (victim && victim.isCivilian) {                                         // a bystander: no marker and no credit, but a round does to them what it does to anyone
+      const p = origin.clone().addScaledVector(dir, vt);
+      victim.stain(origin, dir, zone); victim.damage(zone === 'head' ? 100 : zone === 'limb' ? 27 : 36, this.pos, this, zone);
+      G.blood.hit(victim, p, dir, zone, 0.9); G.audio.bodyHit({ x: p.x, y: p.y, z: p.z }, 'limb', vt < 30);
+    } else if (victim) {
       const base = zone === 'head' ? 100 : zone === 'limb' ? 27 : 36, dmg = base * (pen ? 0.3 : 1), p = origin.clone().addScaledVector(dir, vt);
       const killed = victim.damage(dmg, this.pos, this, zone);
       G.blood.hit(victim, p, dir, zone, 0.9); G.audio.bodyHit({ x: p.x, y: p.y, z: p.z }, zone, vt < 30);
       G.hud.hitmarker(killed ? 'kill' : zone === 'head' ? 'head' : pen ? 'weak' : 'hit'); G.audio.ui(zone === 'head' ? 'head' : 'hit');
     }
+    G.civs?.shot(origin, dir, end, this);
     if (W.ammo % 3 === 0) G.fx.tracer(muzzle, end, 380);
     G.fx.muzzleSmoke(muzzle, dir, W.heat); if (W.flashKind > 0.9 && G.fx.rnd() < 0.5) G.fx.muzzleSparks(muzzle, dir, W.flashKind);
     const ej = W.ejectWorld(V()), camRight = V(1, 0, 0).applyQuaternion(cam.quaternion);
@@ -154,7 +160,7 @@ export class Player {
     if (this.pos.y + 1.4 - muzzle.y > 0.9 || this.crouch > 0.5) G.fx.kickDust(V(muzzle.x + dir.x * 0.6, this.pos.y + 0.03, muzzle.z + dir.z * 0.6), this.inSun ? 1 : 0.3);
     G.audio.shot(W.shots); G.bots.hear(this.pos, 60, this.team);
     this.recoilY += kickYaw; this.hipRecoilPitch = Math.min(0.009, this.hipRecoilPitch + kickPitch); this.fovKick = 1;
-    G.stats.shots++; if (victim) G.stats.hits++;
+    G.stats.shots++; if (victim && !victim.isCivilian) G.stats.hits++;
   }
 
   update(dt) {
